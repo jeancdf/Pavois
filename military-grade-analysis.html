@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pavois — Military-Grade C-UAS Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #03080f;
+    --surface: #071220;
+    --border: #0f2540;
+    --cyan: #00ffe0;
+    --orange: #ff7a00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --yellow: #ffe600;
+    --purple: #b060ff;
+    --text: #9ab8cc;
+    --white: #e8f4ff;
+    --dim: #3a5870;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── SCAN EFFECTS ── */
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg,
+      transparent 0px, transparent 3px,
+      rgba(0,255,224,0.012) 3px, rgba(0,255,224,0.012) 4px);
+    pointer-events:none; z-index:999;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 40px 56px 28px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content:'';
+    position:absolute; bottom:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--cyan) 30%, var(--orange) 70%, transparent);
+    animation: hline 6s ease-in-out infinite;
+  }
+  @keyframes hline { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+  .h-tag {
+    font-family:'Orbitron',sans-serif; font-size:9px; font-weight:400;
+    color:var(--cyan); letter-spacing:5px; text-transform:uppercase;
+    margin-bottom:10px;
+  }
+  header h1 {
+    font-family:'Orbitron',sans-serif; font-size:38px; font-weight:900;
+    color:var(--white); line-height:1.05; letter-spacing:-1px;
+  }
+  header h1 em { color:var(--cyan); font-style:normal; }
+  header h1 strong { color:var(--orange); }
+  .h-sub {
+    font-size:12px; color:var(--dim); margin-top:8px; letter-spacing:1px;
+  }
+  .threat-level {
+    position:absolute; top:40px; right:56px;
+    font-family:'Orbitron',sans-serif; font-size:10px;
+    border:1px solid var(--red); color:var(--red);
+    padding:8px 18px; letter-spacing:3px;
+    animation:pulse-red 2s ease-in-out infinite;
+  }
+  @keyframes pulse-red { 0%,100%{opacity:0.6; box-shadow:none} 50%{opacity:1; box-shadow:0 0 12px rgba(255,34,68,0.4)} }
+
+  /* ── LAYOUT ── */
+  .page { max-width:1400px; margin:0 auto; padding:0; }
+  .row { display:grid; }
+  .col-2 { grid-template-columns:1fr 1fr; }
+  .col-3 { grid-template-columns:1fr 1fr 1fr; }
+  .col-1-2 { grid-template-columns:1fr 2fr; }
+  .col-2-1 { grid-template-columns:2fr 1fr; }
+
+  .cell {
+    border-right:1px solid var(--border);
+    border-bottom:1px solid var(--border);
+    padding:28px 32px;
+  }
+  .cell:last-child { border-right:none; }
+  .cell.full { grid-column:1/-1; border-right:none; }
+
+  .cell-label {
+    font-family:'Orbitron',sans-serif; font-size:8px; font-weight:600;
+    color:var(--dim); letter-spacing:4px; text-transform:uppercase;
+    margin-bottom:14px;
+  }
+  .cell h2 {
+    font-family:'Orbitron',sans-serif; font-size:15px; font-weight:600;
+    color:var(--white); margin-bottom:18px; letter-spacing:0.5px;
+  }
+
+  /* ── SENSOR TIER ── */
+  .sensor-tier {
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .sensor {
+    display:grid; grid-template-columns:4px 1fr;
+    background:var(--surface);
+    border:1px solid var(--border);
+    transition:all 0.2s;
+  }
+  .sensor:hover { border-color:var(--cyan); }
+  .sensor-bar { background:var(--cyan); }
+  .sensor-bar.orange { background:var(--orange); }
+  .sensor-bar.green { background:var(--green); }
+  .sensor-bar.purple { background:var(--purple); }
+  .sensor-bar.yellow { background:var(--yellow); }
+  .sensor-bar.red { background:var(--red); }
+  .sensor-inner { padding:10px 14px; }
+  .sensor-name {
+    font-family:'Orbitron',sans-serif; font-size:10px; font-weight:600;
+    color:var(--white); margin-bottom:3px;
+  }
+  .sensor-spec { font-size:11px; color:var(--dim); }
+  .sensor-spec code {
+    color:var(--cyan); background:rgba(0,255,224,0.07);
+    padding:1px 5px; font-size:10px;
+  }
+  .sensor-spec code.orange { color:var(--orange); background:rgba(255,122,0,0.08); }
+  .sensor-spec code.green  { color:var(--green);  background:rgba(0,255,136,0.07); }
+  .sensor-spec code.purple { color:var(--purple); background:rgba(176,96,255,0.08); }
+
+  /* ── CAPABILITY CARDS ── */
+  .cap-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cap-card {
+    background:var(--surface); border:1px solid var(--border);
+    padding:12px 14px; transition:all 0.2s; cursor:default;
+  }
+  .cap-card:hover { border-color:var(--cyan); transform:translateY(-1px); }
+  .cap-icon { font-size:18px; margin-bottom:6px; }
+  .cap-name { font-family:'Orbitron',sans-serif; font-size:9px; font-weight:600; color:var(--white); letter-spacing:1px; margin-bottom:5px; }
+  .cap-desc { font-size:11px; color:var(--dim); }
+  .cap-desc code { color:var(--cyan); font-size:10px; }
+
+  /* ── THREAT MATRIX ── */
+  .threat-table { width:100%; border-collapse:collapse; }
+  .threat-table th {
+    font-family:'Orbitron',sans-serif; font-size:8px; font-weight:600;
+    color:var(--dim); letter-spacing:2px; text-align:left;
+    padding:8px 10px; border-bottom:1px solid var(--border);
+  }
+  .threat-table td { padding:8px 10px; border-bottom:1px solid rgba(15,37,64,0.5); font-size:11px; }
+  .threat-table tr:hover td { background:rgba(0,255,224,0.02); }
+  .td-name { color:var(--white); font-weight:500; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin:0 2px; }
+  .dot.hi  { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .dot.med { background:var(--yellow); }
+  .dot.lo  { background:var(--red); }
+  .dot.no  { background:var(--dim); }
+
+  /* ── KILL CHAIN ── */
+  .kill-chain { display:flex; align-items:stretch; gap:0; overflow-x:auto; }
+  .kc-phase {
+    flex:1; min-width:130px;
+    background:var(--surface); border:1px solid var(--border);
+    padding:16px 12px; text-align:center; position:relative;
+    transition:all 0.2s;
+  }
+  .kc-phase:hover { border-color:var(--orange); background:rgba(255,122,0,0.04); }
+  .kc-phase::after {
+    content:'→'; position:absolute; right:-14px; top:50%;
+    transform:translateY(-50%); color:var(--orange); font-size:18px; z-index:2;
+  }
+  .kc-phase:last-child::after { display:none; }
+  .kc-num {
+    font-family:'Orbitron',sans-serif; font-size:9px; color:var(--dim); margin-bottom:6px;
+  }
+  .kc-name {
+    font-family:'Orbitron',sans-serif; font-size:11px; font-weight:600;
+    color:var(--white); margin-bottom:5px;
+  }
+  .kc-tool { font-size:10px; color:var(--orange); }
+
+  /* ── SPEC TABLE ── */
+  .spec-list { display:flex; flex-direction:column; gap:1px; }
+  .spec-row {
+    display:grid; grid-template-columns:1fr 1fr;
+    padding:8px 12px; background:var(--surface);
+    border-left:2px solid var(--border); transition:all 0.2s;
+  }
+  .spec-row:hover { border-left-color:var(--cyan); }
+  .spec-key {
+    font-family:'Orbitron',sans-serif; font-size:9px;
+    color:var(--dim); letter-spacing:1px;
+  }
+  .spec-val { font-size:11px; color:var(--cyan); text-align:right; }
+  .spec-val.orange { color:var(--orange); }
+  .spec-val.green  { color:var(--green); }
+  .spec-val.red    { color:var(--red); }
+
+  /* ── STANDARDS ── */
+  .std-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .std-item {
+    background:var(--surface); border:1px solid var(--border);
+    padding:10px 12px; transition:all 0.2s;
+  }
+  .std-item:hover { border-color:var(--purple); }
+  .std-code {
+    font-family:'Orbitron',sans-serif; font-size:9px; font-weight:600;
+    color:var(--purple); letter-spacing:1px; margin-bottom:3px;
+  }
+  .std-name { font-size:11px; color:var(--dim); }
+
+  /* ── UPGRADE PATH ── */
+  .phase-list { display:flex; flex-direction:column; gap:8px; }
+  .phase {
+    display:grid; grid-template-columns:80px 1fr;
+    background:var(--surface); border:1px solid var(--border);
+    transition:all 0.2s;
+  }
+  .phase:hover { border-color:var(--cyan); }
+  .phase-num {
+    font-family:'Orbitron',sans-serif; font-size:20px; font-weight:900;
+    color:var(--cyan); padding:14px 16px; border-right:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,255,224,0.03);
+  }
+  .phase-num.orange { color:var(--orange); background:rgba(255,122,0,0.03); }
+  .phase-num.purple { color:var(--purple); background:rgba(176,96,255,0.03); }
+  .phase-body { padding:14px 16px; }
+  .phase-title {
+    font-family:'Orbitron',sans-serif; font-size:11px; font-weight:600;
+    color:var(--white); margin-bottom:6px;
+  }
+  .phase-items { font-size:11px; color:var(--dim); }
+  .phase-items li { margin-left:16px; margin-bottom:2px; }
+  .phase-items code { color:var(--cyan); font-size:10px; background:rgba(0,255,224,0.06); padding:1px 4px; }
+  .phase-items code.orange { color:var(--orange); background:rgba(255,122,0,0.07); }
+  .phase-items code.purple { color:var(--purple); background:rgba(176,96,255,0.07); }
+  .phase-items code.red { color:var(--red); background:rgba(255,34,68,0.07); }
+
+  /* ── CODE ── */
+  .code-block {
+    background:#020b13; border:1px solid var(--border);
+    padding:16px 18px; font-family:'DM Mono',monospace;
+    font-size:11px; color:var(--cyan); margin-top:14px;
+    line-height:1.85; white-space:pre; overflow-x:auto;
+  }
+  .code-block .cm { color:var(--dim); }
+  .code-block .kw { color:var(--yellow); }
+  .code-block .st { color:var(--orange); }
+  .code-block .ty { color:var(--purple); }
+  .code-block .ok { color:var(--green); }
+
+  /* ── NOTE / WARN ── */
+  .note { background:rgba(0,255,224,0.04); border-left:3px solid var(--cyan); padding:10px 14px; font-size:12px; color:var(--text); margin-top:14px; }
+  .warn { background:rgba(255,34,68,0.05); border-left:3px solid var(--red); padding:10px 14px; font-size:12px; color:var(--text); margin-top:14px; }
+  .info { background:rgba(176,96,255,0.05); border-left:3px solid var(--purple); padding:10px 14px; font-size:12px; color:var(--text); margin-top:14px; }
+
+  @media(max-width:900px) {
+    .col-2,.col-3,.col-1-2,.col-2-1 { grid-template-columns:1fr; }
+    .cell { border-right:none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="h-tag">Project Pavois // Military-Grade C-UAS Architecture // Mar 2026</div>
+  <h1><em>PIXEL → VOXEL</em><br><strong>MILITARY-GRADE</strong> DRONE DETECTION</h1>
+  <div class="h-sub">Counter-UAS feature analysis — from research prototype to operational C-UAS system</div>
+  <div class="threat-level">⚠ C-UAS ANALYSIS</div>
+</header>
+
+<!-- ═══════════════ ROW 1: SENSOR STACK + PERFORMANCE SPECS ═══════════════ -->
+<div class="row col-2">
+
+  <div class="cell">
+    <div class="cell-label">01 // Multi-Layer Sensor Stack</div>
+    <h2>Detection Modalities to Add</h2>
+    <div class="sensor-tier">
+
+      <div class="sensor">
+        <div class="sensor-bar"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">EO / OPTICAL CAMERAS (existing)</div>
+          <div class="sensor-spec">Pixel→Voxel DDA engine · <code>ray_voxel.cpp</code> · Multi-camera triangulation</div>
+        </div>
+      </div>
+
+      <div class="sensor">
+        <div class="sensor-bar orange"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">THERMAL / IR CAMERA ARRAY</div>
+          <div class="sensor-spec">FLIR Boson / Axon · <code>384×288 @ 60fps</code> · Heat plume detection · Night ops · Same DDA pipeline</div>
+        </div>
+      </div>
+
+      <div class="sensor">
+        <div class="sensor-bar green"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">RF / SDR PASSIVE DETECTION</div>
+          <div class="sensor-spec">HackRF / USRP B200 · <code>2.4GHz, 5.8GHz, 900MHz</code> · Detect control links, video downlinks, DJI OcuSync, WiFi · Direction-finding via TDOA</div>
+        </div>
+      </div>
+
+      <div class="sensor">
+        <div class="sensor-bar purple"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">ACOUSTIC MICROPHONE ARRAY</div>
+          <div class="sensor-spec"><code>4–8 MEMS mics</code> in known geometry · Beamforming + matched-filter for rotor harmonics · 100–300m passive range in low-noise env</div>
+        </div>
+      </div>
+
+      <div class="sensor">
+        <div class="sensor-bar yellow"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">FMCW RADAR (small-target)</div>
+          <div class="sensor-spec"><code>77GHz</code> automotive or <code>24GHz</code> ISM band · Range + radial velocity · Micro-Doppler rotor signature · Works in fog/night</div>
+        </div>
+      </div>
+
+      <div class="sensor">
+        <div class="sensor-bar red"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">ASTM F3411 REMOTE ID PARSER</div>
+          <div class="sensor-spec"><code>WiFi Beacon / BT5 / DJI Aeroscope</code> · FAA Remote ID broadcast · Passive IFF — identifies friendly registered drones</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="note">Each sensor contributes an independent track source to the fusion engine. A drone must defeat ALL active modalities simultaneously — operationally near-impossible against 4+ sensors.</div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">02 // Performance Requirements</div>
+    <h2>Military-Grade Specs to Target</h2>
+    <div class="spec-list">
+      <div class="spec-row"><span class="spec-key">PROBABILITY OF DETECTION (Pd)</span><span class="spec-val green">≥ 0.95 @ 1km</span></div>
+      <div class="spec-row"><span class="spec-key">FALSE ALARM RATE (Pfa)</span><span class="spec-val green">≤ 10⁻⁴ / hr</span></div>
+      <div class="spec-row"><span class="spec-key">TRACK LATENCY (first detect → CoT)</span><span class="spec-val green">≤ 2 seconds</span></div>
+      <div class="spec-row"><span class="spec-key">POSITION ACCURACY CEP</span><span class="spec-val orange">≤ 10m @ 1km range</span></div>
+      <div class="spec-row"><span class="spec-key">MIN DETECTABLE RCS</span><span class="spec-val orange">0.001 m² (DJI Mini class)</span></div>
+      <div class="spec-row"><span class="spec-key">ALTITUDE COVERAGE</span><span class="spec-val">0 – 1200m AGL</span></div>
+      <div class="spec-row"><span class="spec-key">RANGE COVERAGE</span><span class="spec-val">0 – 3km radius</span></div>
+      <div class="spec-row"><span class="spec-key">SIMULTANEOUS TRACKS</span><span class="spec-val">≥ 50 (swarm)</span></div>
+      <div class="spec-row"><span class="spec-key">PROCESSING LATENCY / FRAME</span><span class="spec-val">&lt; 100ms</span></div>
+      <div class="spec-row"><span class="spec-key">CAMERA FPS (min)</span><span class="spec-val">≥ 30 fps / camera</span></div>
+      <div class="spec-row"><span class="spec-key">ENCRYPTION</span><span class="spec-val orange">FIPS 140-2 AES-256</span></div>
+      <div class="spec-row"><span class="spec-key">COMMS STANDARD</span><span class="spec-val orange">STANAG 4586 / CoT</span></div>
+      <div class="spec-row"><span class="spec-key">GPS-DENIED OPERATION</span><span class="spec-val red">Required (INS fallback)</span></div>
+      <div class="spec-row"><span class="spec-key">ENVIRONMENTAL (MIL-STD-810)</span><span class="spec-val red">-40°C to +65°C, IP67</span></div>
+      <div class="spec-row"><span class="spec-key">MTBF</span><span class="spec-val">≥ 2000 hours</span></div>
+      <div class="spec-row"><span class="spec-key">STARTUP TIME</span><span class="spec-val">&lt; 60 seconds</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ROW 2: DETECTION MODALITY MATRIX ═══════════════ -->
+<div class="row">
+  <div class="cell full">
+    <div class="cell-label">03 // Sensor-Threat Coverage Matrix</div>
+    <h2>Which sensors detect which drone categories</h2>
+    <table class="threat-table">
+      <thead>
+        <tr>
+          <th>DRONE CATEGORY</th>
+          <th>EO OPTICAL</th>
+          <th>THERMAL IR</th>
+          <th>RF / SDR</th>
+          <th>ACOUSTIC</th>
+          <th>FMCW RADAR</th>
+          <th>REMOTE ID</th>
+          <th>FUSION CONFIDENCE</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="td-name">DJI Mini / Mavic (consumer)</td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td style="color:var(--green)">HIGH</td>
+        </tr>
+        <tr>
+          <td class="td-name">Fixed-wing FPV (fast, low)</td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td style="color:var(--green)">HIGH</td>
+        </tr>
+        <tr>
+          <td class="td-name">Autonomous (no RF link)</td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot no"></span></td>
+          <td style="color:var(--yellow)">MEDIUM</td>
+        </tr>
+        <tr>
+          <td class="td-name">Night / IR-suppressed</td>
+          <td><span class="dot lo"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td style="color:var(--green)">HIGH</td>
+        </tr>
+        <tr>
+          <td class="td-name">Micro-swarm (Group 1, &lt;250g)</td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td><span class="dot no"></span></td>
+          <td style="color:var(--yellow)">MEDIUM</td>
+        </tr>
+        <tr>
+          <td class="td-name">Large UAS (Group 3+, MALE)</td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot lo"></span></td>
+          <td style="color:var(--green)">HIGH</td>
+        </tr>
+        <tr>
+          <td class="td-name">Loitering munition (kamikaze)</td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot med"></span></td>
+          <td><span class="dot hi"></span></td>
+          <td><span class="dot no"></span></td>
+          <td style="color:var(--orange)">HIGH — URGENT</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">Legend: <span class="dot hi"></span> High detection confidence &nbsp; <span class="dot med"></span> Medium &nbsp; <span class="dot lo"></span> Low &nbsp; <span class="dot no"></span> None. Multi-sensor fusion raises effective Pd to the product of individual misses, not their sum.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ ROW 3: KILL CHAIN + ML ═══════════════ -->
+<div class="row col-2">
+
+  <div class="cell">
+    <div class="cell-label">04 // C-UAS Kill Chain</div>
+    <h2>Detect → Identify → Decide → Defeat</h2>
+    <div class="kill-chain">
+      <div class="kc-phase">
+        <div class="kc-num">D1</div>
+        <div class="kc-name">DETECT</div>
+        <div class="kc-tool">Multi-modal sensor fusion · voxel DDA</div>
+      </div>
+      <div class="kc-phase">
+        <div class="kc-num">D2</div>
+        <div class="kc-name">TRACK</div>
+        <div class="kc-tool">Kalman + MHT · 3D velocity</div>
+      </div>
+      <div class="kc-phase">
+        <div class="kc-num">D3</div>
+        <div class="kc-name">IDENTIFY</div>
+        <div class="kc-tool">ML classifier · RF fingerprint · IFF</div>
+      </div>
+      <div class="kc-phase">
+        <div class="kc-num">D4</div>
+        <div class="kc-name">DECIDE</div>
+        <div class="kc-tool">Rules of engagement · Human-on-loop</div>
+      </div>
+      <div class="kc-phase">
+        <div class="kc-num">D5</div>
+        <div class="kc-name">DEFEAT</div>
+        <div class="kc-tool">RF jamming · Laser DEW · Kinetic</div>
+      </div>
+    </div>
+    <div class="info">Pavois covers D1–D4. D5 (defeat) requires integration with a countermeasure system (e.g., RF jammer, DroneGun, directed energy). The Lattice CoT output is the D4→D5 handoff point.</div>
+    <div class="warn">⚠ D4 (Decide) must be human-on-the-loop for any kinetic or electronic defeat action under LOAC / ROE. No autonomous lethal action without legal authority.</div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">05 // ML Classification Pipeline</div>
+    <h2>Drone vs. Bird vs. Aircraft</h2>
+    <div class="cap-grid">
+      <div class="cap-card">
+        <div class="cap-icon">🎯</div>
+        <div class="cap-name">YOLO-V8 Visual</div>
+        <div class="cap-desc">Fine-tune on synthetic renders from the Blender sim (3000 cams × N frames = massive free training set). Detects drone in motion crop at <code>&lt;15ms/frame</code> on GPU.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">📡</div>
+        <div class="cap-name">RF Fingerprinting</div>
+        <div class="cap-desc">Train CNN on <code>IQ sample</code> time-frequency spectrograms. Identifies drone model from control-link protocol signature — even encrypted packets have timing patterns.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🔊</div>
+        <div class="cap-name">Rotor Harmonic Match</div>
+        <div class="cap-desc">FFT of beamformed acoustic output. Match against a database of <code>rotor harmonic signatures</code> per drone model. Works 50–200m range.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🌀</div>
+        <div class="cap-name">Micro-Doppler Analysis</div>
+        <div class="cap-desc">FMCW radar time-frequency analysis of <code>blade flash</code> signature. Distinguishes drone rotor periodicity from bird wingbeats and vehicle vibration.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">📊</div>
+        <div class="cap-name">IMM Trajectory Model</div>
+        <div class="cap-desc">Interacting Multiple Model filter with <code>hover / constant-velocity / coordinated-turn</code> models. Birds follow biological trajectories; drones follow control inputs.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🔗</div>
+        <div class="cap-name">Fusion Confidence Score</div>
+        <div class="cap-desc">Dempster-Shafer or Bayesian fusion of all classifier outputs into a single <code>0–1 drone confidence</code> + <code>threat class</code>. Only high-confidence tracks reach Lattice.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ROW 4: SECURITY + STANDARDS ═══════════════ -->
+<div class="row col-2">
+
+  <div class="cell">
+    <div class="cell-label">06 // Security Hardening (Cyber)</div>
+    <h2>Military Cybersecurity Requirements</h2>
+    <div class="cap-grid">
+      <div class="cap-card">
+        <div class="cap-icon">🔐</div>
+        <div class="cap-name">FIPS 140-2 / 140-3</div>
+        <div class="cap-desc">All cryptographic operations through a certified module. <code>AES-256-GCM</code> data at rest. <code>TLS 1.3</code> with mutual auth for all track data in transit.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🛡</div>
+        <div class="cap-name">Track Signing + Anti-Spoof</div>
+        <div class="cap-desc">Each CoT/Lattice entity is signed with a sensor private key. Receivers verify signature chain. Injected fake tracks are rejected without a valid HSM signature.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🔒</div>
+        <div class="cap-name">Zero-Trust Architecture</div>
+        <div class="cap-desc">Each sensor node authenticates to the fusion engine via <code>mTLS + PKI</code>. No implicit trust based on network location. Works over tactical radios and satellite links.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">⚡</div>
+        <div class="cap-name">TEMPEST / EMSEC</div>
+        <div class="cap-desc">Processing hardware in TEMPEST-rated enclosures to prevent EM side-channel leakage. Critical for forward deployed systems near adversary SIGINT assets.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🧱</div>
+        <div class="cap-name">STIG / SELinux Baseline</div>
+        <div class="cap-desc">OS hardened to DoD STIG profile. Mandatory access control with <code>SELinux</code>. All sensor processes sandboxed. No unnecessary services or open ports.</div>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🌐</div>
+        <div class="cap-name">GPS Anti-Spoofing + INS Fallback</div>
+        <div class="cap-desc">Cross-validate GPS with visual odometry and IMU dead-reckoning. If GPS deviation &gt; threshold, switch to <code>INS-only ENU</code> mode. Prevents coordinate injection attacks.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">07 // Standards Compliance</div>
+    <h2>Military / NATO Interoperability</h2>
+    <div class="std-grid">
+      <div class="std-item">
+        <div class="std-code">STANAG 4586</div>
+        <div class="std-name">UAS interoperability — ground control station data link</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">STANAG 4607</div>
+        <div class="std-name">GMTI — ground moving target indicator format for track data</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">STANAG 4609</div>
+        <div class="std-name">Motion imagery metadata — MISB KLV for video streams</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">MIL-STD-2525D</div>
+        <div class="std-name">Military symbology for map display (hostile / friendly / unknown UAS)</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">CoT / ATAK</div>
+        <div class="std-name">Cursor on Target — primary tactical data exchange for SOCOM / USMC</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">Link 16 / JTIDS</div>
+        <div class="std-name">NATO tactical data link — track sharing with fighter aircraft and ships</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">MIL-STD-810H</div>
+        <div class="std-name">Environmental test — shock, vibration, temperature, humidity, dust, sand</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">MIL-STD-461G</div>
+        <div class="std-name">EMI/EMC — electromagnetic interference control for tactical environments</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">ASTM F3411-22</div>
+        <div class="std-name">FAA Remote ID standard — parse friendly drone broadcast identifiers</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">FIPS 140-2/3</div>
+        <div class="std-name">Cryptographic module validation — required for all US DoD systems</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">DO-178C</div>
+        <div class="std-name">Airborne software certification — if system controls airspace decisions</div>
+      </div>
+      <div class="std-item">
+        <div class="std-code">NIST SP 800-53</div>
+        <div class="std-name">Security control baseline — required for FedRAMP / ATO approval</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ROW 5: SWARM + ADVANCED ═══════════════ -->
+<div class="row col-2">
+
+  <div class="cell">
+    <div class="cell-label">08 // Swarm Detection</div>
+    <h2>Coordinated Multi-Drone Attack</h2>
+    <div class="sensor-tier">
+      <div class="sensor">
+        <div class="sensor-bar red"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">CLUSTER TRACK GROUPING</div>
+          <div class="sensor-spec">DBSCAN clustering on voxel activations. Treats spatially correlated tracks as a <code>swarm entity</code> with centroid, spread radius, and count.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar red"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">COORDINATION DETECTION</div>
+          <div class="sensor-spec">Graph analysis of inter-drone velocity correlation. Synchronized heading changes → <code>coordinated attack flag</code>. Single drone confusion is different from coherent swarm.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar red"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">SWARM TRAJECTORY PREDICTION</div>
+          <div class="sensor-spec">Predict swarm centroid trajectory 15–30 seconds ahead. Feed predicted intercept point to countermeasure system or alert operator of probable target.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar red"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">SATURATION ATTACK RESILIENCE</div>
+          <div class="sensor-spec">System must maintain ≥50 simultaneous tracks. Priority queue assigns highest threat level to fastest-closing tracks. <code>IMM Kalman</code> scales to N targets.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">09 // Resilience + Continuity</div>
+    <h2>GPS-Denied and EW-Contested Ops</h2>
+    <div class="sensor-tier">
+      <div class="sensor">
+        <div class="sensor-bar yellow"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">VISUAL-INERTIAL ODOMETRY (VIO)</div>
+          <div class="sensor-spec">Use camera array + IMU to maintain ENU coordinate frame without GPS. Falls back automatically when GPS deviation or jamming is detected.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar yellow"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">RF JAMMING DETECTION</div>
+          <div class="sensor-spec">SDR monitors own GPS and communication bands. Sudden AGC rise or SNR drop triggers <code>contested environment mode</code> — reduces reliance on RF sensors.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar yellow"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">REDUNDANT COMM PATHS</div>
+          <div class="sensor-spec">Track data published over <code>primary LAN → PACE plan: SATCOM → HF radio → offline buffer</code>. Lattice sync resumes automatically when link restores.</div>
+        </div>
+      </div>
+      <div class="sensor">
+        <div class="sensor-bar yellow"></div>
+        <div class="sensor-inner">
+          <div class="sensor-name">GRACEFUL SENSOR DEGRADATION</div>
+          <div class="sensor-spec">If any sensor fails, system continues on remaining modalities with increased uncertainty bounds. Pd/Pfa reported dynamically to operator based on active sensors.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ROW 6: PHASED UPGRADE ROADMAP ═══════════════ -->
+<div class="row">
+  <div class="cell full">
+    <div class="cell-label">10 // Phased Implementation Roadmap</div>
+    <h2>From current prototype to military-grade — sequenced build plan</h2>
+    <div class="phase-list">
+
+      <div class="phase">
+        <div class="phase-num">P1</div>
+        <div class="phase-body">
+          <div class="phase-title">FOUNDATION — Coordinate + Real-Time (0–3 months)</div>
+          <ul class="phase-items">
+            <li>Add <code>LLA→ECEF→ENU</code> transform to <code>ray_voxel.cpp</code> — GPS-anchors all camera positions</li>
+            <li>Replace file-loop with <code>OpenCV VideoCapture</code> live stream + lock-free ring buffer per camera</li>
+            <li>Implement Kalman multi-target tracker with persistent <code>track_id</code> and 3D velocity</li>
+            <li>Add <code>CoT XML emitter</code> — first Lattice-compatible track output</li>
+            <li>Fix broken <code>alpha</code> attenuation and add running median background subtraction</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-num" style="color:var(--orange);background:rgba(255,122,0,0.03)">P2</div>
+        <div class="phase-body">
+          <div class="phase-title">MULTI-MODAL — Add IR + RF + Acoustic (3–8 months)</div>
+          <ul class="phase-items">
+            <li>Integrate <code>FLIR Boson</code> thermal stream — same DDA pipeline, new camera input</li>
+            <li>Add <code>SDR RF listener</code> — detect 2.4/5.8GHz drone control links, TDOA direction-finding</li>
+            <li>Add <code>acoustic microphone array</code> beamformer — rotor harmonic matched filter</li>
+            <li>Build <code>track fusion engine</code> — merge optical/thermal/RF/acoustic into single track picture</li>
+            <li>Train <code>YOLOv8</code> on Blender synthetic renders — zero-cost labeled dataset from existing sim</li>
+            <li>Add <code>ASTM F3411 Remote ID</code> parser — passive IFF for friendly drones</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-num" style="color:var(--purple);background:rgba(176,96,255,0.03)">P3</div>
+        <div class="phase-body">
+          <div class="phase-title">MILITARY HARDENING — Security + Standards (6–14 months)</div>
+          <ul class="phase-items">
+            <li>Implement <code>FIPS 140-2 AES-256-GCM</code> encryption for all track data at rest and in transit</li>
+            <li>Add <code>CoT track signing</code> — HSM-signed entities, reject unsigned/invalid tracks</li>
+            <li>Add <code>STANAG 4607 GMTI</code> output for NATO interoperability</li>
+            <li>Add <code>MIL-STD-2525D</code> symbology rendering in Angular map UI</li>
+            <li>Add <code>FMCW radar</code> integration — range/velocity + micro-Doppler classifier</li>
+            <li>Implement <code>VIO GPS-denied mode</code> using camera array + IMU</li>
+            <li>OS hardening to <code>DoD STIG</code> baseline — SELinux, minimal attack surface</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-num" style="color:var(--red);background:rgba(255,34,68,0.03)">P4</div>
+        <div class="phase-body">
+          <div class="phase-title">ADVANCED — Swarm + C-UAS Integration (12–24 months)</div>
+          <ul class="phase-items">
+            <li>Add <code>DBSCAN swarm clustering</code> — detect coordinated multi-drone attack patterns</li>
+            <li>Add <code>swarm trajectory prediction</code> — 15–30s ahead intercept point estimation</li>
+            <li>Integrate with countermeasure system via Lattice <code>tasking API</code> (RF jammer, DEW, kinetic)</li>
+            <li>Add <code>Link 16 / JTIDS</code> output — share tracks with fighter aircraft and naval assets</li>
+            <li><code>TEMPEST enclosure</code> — EM emission shielding for forward deployed hardware</li>
+            <li>Formal <code>Pd/Pfa verification testing</code> against known UAS targets in controlled range trials</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="code-block"><span class="cm">// Expanded track message — military grade CoT with full sensor metadata</span>
+&lt;<span class="kw">event</span> version=<span class="st">"2.0"</span> type=<span class="st">"a-h-A-M-F-Q"</span>  <span class="cm">&lt;!-- HOSTILE UAS --&gt;</span>
+       uid=<span class="st">"pavois-swarm-023-drone-07"</span>
+       time=<span class="st">"2026-03-30T14:23:11.000Z"</span>
+       stale=<span class="st">"2026-03-30T14:23:14.000Z"</span>  <span class="cm">&lt;!-- 3s stale window --&gt;</span>
+       how=<span class="st">"m-g"</span>&gt;
+  &lt;<span class="kw">point</span> lat=<span class="st">"34.052200"</span> lon=<span class="st">"-118.243700"</span> hae=<span class="st">"85.4"</span> ce=<span class="st">"8.0"</span> le=<span class="st">"5.0"</span>/&gt;
+  &lt;<span class="kw">detail</span>&gt;
+    &lt;<span class="kw">track</span> speed=<span class="st">"12.4"</span> course=<span class="st">"312.7"</span>/&gt;
+    &lt;<span class="kw">pavois</span>
+      confidence=<span class="st">"0.94"</span>            <span class="cm">// Bayesian fusion score</span>
+      sensors=<span class="st">"EO,IR,RF,ACOUSTIC"</span>  <span class="cm">// active modalities that detected this</span>
+      drone_model=<span class="st">"DJI_MAVIC3"</span>   <span class="cm">// RF fingerprint match</span>
+      altitude_agl=<span class="st">"73.1"</span>
+      vert_velocity=<span class="st">"-0.8"</span>         <span class="cm">// descending</span>
+      swarm_id=<span class="st">"SWARM-023"</span>        <span class="cm">// part of coordinated group</span>
+      swarm_count=<span class="st">"14"</span>
+      remote_id=<span class="st">"NONE"</span>            <span class="cm">// no FAA Remote ID = higher threat</span>
+      threat_level=<span class="st">"HIGH"</span>
+      track_age_frames=<span class="st">"47"</span>
+      sensor_node=<span class="st">"pavois-node-03"</span>
+      sig=<span class="st">"SHA256:a9f3...c821"</span>   <span class="cm">// HSM track signature</span>
+    /&gt;
+  &lt;/<span class="kw">detail</span>&gt;
+&lt;/<span class="kw">event</span>&gt;</div>
+
+  </div>
+</div>
+
+</div><!-- end .page -->
+</body>
+</html>

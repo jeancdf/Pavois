@@ -22,6 +22,7 @@
 #include <map>
 #include <string>
 #include <algorithm>
+#include <filesystem>
 
 // External libraries for JSON & image loading
 #include "nlohmann/json.hpp"
@@ -137,44 +138,101 @@ Mat3 rotation_matrix_yaw_pitch_roll(float yaw_deg, float pitch_deg, float roll_d
 //----------------------------------------------
 // 4) Load JSON Metadata
 //----------------------------------------------
-std::vector<FrameInfo> load_metadata(const std::string &json_path) {
-    std::vector<FrameInfo> frames;
+struct VoxelGridParams {
+    int N = 500;
+    float voxel_size = 6.f;
+    Vec3 grid_center = {-0.f, 0.f, 500.f};
+    bool from_file = false;
+};
 
+static void parse_frame_entry(const json &entry, std::vector<FrameInfo> &frames) {
+    FrameInfo fi;
+    fi.camera_index   = entry.value("camera_index", 0);
+    fi.frame_index    = entry.value("frame_index", 0);
+    fi.yaw            = entry.value("yaw", 0.f);
+    fi.pitch          = entry.value("pitch", 0.f);
+    fi.roll           = entry.value("roll", 0.f);
+    fi.fov_degrees    = entry.value("fov_degrees", 60.f);
+    fi.image_file     = entry.value("image_file", "");
+
+    if(entry.contains("camera_position") && entry["camera_position"].is_array()){
+        auto arr = entry["camera_position"];
+        if(arr.size() >= 3){
+            fi.camera_position.x = arr[0].get<float>();
+            fi.camera_position.y = arr[1].get<float>();
+            fi.camera_position.z = arr[2].get<float>();
+        }
+    }
+    frames.push_back(fi);
+}
+
+// Supports:
+//  - Legacy: [ { frame }, ... ]
+//  - Wrapped: { "frames": [ ... ], "voxel_grid": { N, voxel_size, grid_center } }
+struct MetadataLoad {
+    std::vector<FrameInfo> frames;
+    VoxelGridParams grid;
+};
+
+MetadataLoad load_metadata(const std::string &json_path) {
+    MetadataLoad out;
     std::ifstream ifs(json_path);
     if(!ifs.is_open()){
         std::cerr << "ERROR: Cannot open " << json_path << std::endl;
-        return frames;
+        return out;
     }
     json j;
     ifs >> j;
-    if(!j.is_array()){
-        std::cerr << "ERROR: JSON top level is not an array.\n";
-        return frames;
-    }
 
-    for(const auto &entry : j) {
-        FrameInfo fi;
-        fi.camera_index   = entry.value("camera_index", 0);
-        fi.frame_index    = entry.value("frame_index", 0);
-        fi.yaw            = entry.value("yaw", 0.f);
-        fi.pitch          = entry.value("pitch", 0.f);
-        fi.roll           = entry.value("roll", 0.f);
-        fi.fov_degrees    = entry.value("fov_degrees", 60.f);
-        fi.image_file     = entry.value("image_file", "");
-
-        // camera_position array
-        if(entry.contains("camera_position") && entry["camera_position"].is_array()){
-            auto arr = entry["camera_position"];
-            if(arr.size()>=3){
-                fi.camera_position.x = arr[0].get<float>();
-                fi.camera_position.y = arr[1].get<float>();
-                fi.camera_position.z = arr[2].get<float>();
+    const json *frame_array = nullptr;
+    if(j.is_array()) {
+        frame_array = &j;
+    } else if(j.is_object() && j.contains("frames") && j["frames"].is_array()) {
+        frame_array = &j["frames"];
+        if(j.contains("voxel_grid") && j["voxel_grid"].is_object()) {
+            const auto &vg = j["voxel_grid"];
+            out.grid.N = vg.value("N", out.grid.N);
+            out.grid.voxel_size = vg.value("voxel_size", out.grid.voxel_size);
+            if(vg.contains("grid_center") && vg["grid_center"].is_array()
+               && vg["grid_center"].size() >= 3) {
+                auto gc = vg["grid_center"];
+                out.grid.grid_center.x = gc[0].get<float>();
+                out.grid.grid_center.y = gc[1].get<float>();
+                out.grid.grid_center.z = gc[2].get<float>();
             }
+            out.grid.from_file = true;
         }
-        frames.push_back(fi);
+    } else {
+        std::cerr << "ERROR: JSON must be a frame array or "
+                     "{ \"frames\": [...], \"voxel_grid\": {...} }.\n";
+        return out;
     }
 
-    return frames;
+    for(const auto &entry : *frame_array) {
+        parse_frame_entry(entry, out.frames);
+    }
+    return out;
+}
+
+static void write_voxel_sidecar_meta(const std::string &output_bin,
+                                     int N, float voxel_size, const Vec3 &grid_center) {
+    std::string meta_path = output_bin;
+    const std::string suf = ".bin";
+    if(meta_path.size() >= suf.size()
+       && meta_path.compare(meta_path.size() - suf.size(), suf.size(), suf) == 0) {
+        meta_path.replace(meta_path.size() - suf.size(), suf.size(), "_meta.json");
+    } else {
+        meta_path += "_meta.json";
+    }
+    std::ofstream m(meta_path);
+    if(!m) {
+        std::cerr << "Warning: could not write " << meta_path << "\n";
+        return;
+    }
+    m << "{\"N\":" << N << ",\"voxel_size\":" << voxel_size
+      << ",\"grid_center\":[" << grid_center.x << "," << grid_center.y << ","
+      << grid_center.z << "]}\n";
+    std::cout << "Wrote " << meta_path << " (for voxelmotionviewer)\n";
 }
 
 //----------------------------------------------
@@ -409,10 +467,15 @@ int main(int argc, char** argv) {
     //------------------------------------------
     // 7.1) Load metadata
     //------------------------------------------
-    std::vector<FrameInfo> frames = load_metadata(metadata_path);
+    MetadataLoad meta = load_metadata(metadata_path);
+    std::vector<FrameInfo> &frames = meta.frames;
     if(frames.empty()) {
         std::cerr << "No frames loaded.\n";
         return 1;
+    }
+    if(meta.grid.from_file) {
+        std::cout << "Using voxel_grid from metadata: N=" << meta.grid.N
+                  << " voxel_size=" << meta.grid.voxel_size << "\n";
     }
     // Group by camera_index
     // map< camera_index, vector<FrameInfo> >
@@ -427,17 +490,18 @@ int main(int argc, char** argv) {
             return a.frame_index < b.frame_index;
         });
     }
+    if(frames_by_cam.size() == 1) {
+        std::cout << "Single camera: rays accumulate along depth (no stereo).\n";
+    }
 
     //------------------------------------------
     // 7.2) Create a 3D voxel grid
     //------------------------------------------
-    const int N = 500;
-    const float voxel_size = 6.f;
-    // Hard-coded center (like your Python example):
-    Vec3 grid_center = {-0.f, 0.f, 500.f};
-    //    Vec3 grid_center = {-0.f, 0.f, 200.f}; // For birds
+    const int N = meta.grid.N;
+    const float voxel_size = meta.grid.voxel_size;
+    Vec3 grid_center = meta.grid.grid_center;
 
-    std::vector<float> voxel_grid(N*N*N, 0.f);
+    std::vector<float> voxel_grid((size_t)N * (size_t)N * (size_t)N, 0.f);
 
     //------------------------------------------
     // 7.3) For each camera, load consecutive frames, detect motion,
@@ -464,10 +528,11 @@ int main(int argc, char** argv) {
         for(size_t i=0; i<cam_frames.size(); i++){
             // Load current frame
             FrameInfo curr_info = cam_frames[i];
-            std::string img_path = images_folder + "/" + curr_info.image_file;
+            std::filesystem::path img_path =
+                std::filesystem::path(images_folder) / curr_info.image_file;
 
             ImageGray curr_img;
-            if(!load_image_gray(img_path, curr_img)) {
+            if(!load_image_gray(img_path.string(), curr_img)) {
                 std::cerr << "Skipping frame due to load error.\n";
                 continue;
             }
@@ -549,10 +614,13 @@ int main(int argc, char** argv) {
         ofs.write(reinterpret_cast<const char*>(&N), sizeof(int));
         ofs.write(reinterpret_cast<const char*>(&voxel_size), sizeof(float));
         // Write the data
-        ofs.write(reinterpret_cast<const char*>(voxel_grid.data()), voxel_grid.size()*sizeof(float));
+        ofs.write(reinterpret_cast<const char*>(voxel_grid.data()),
+                  voxel_grid.size() * sizeof(float));
         ofs.close();
         std::cout << "Saved voxel grid to " << output_bin << "\n";
     }
+
+    write_voxel_sidecar_meta(output_bin, N, voxel_size, grid_center);
 
     return 0;
 }

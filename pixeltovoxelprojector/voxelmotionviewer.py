@@ -18,11 +18,31 @@ Description:
        in a 'screenshots/' folder, so you can keep a history of runs.
 """
 
+import argparse
+import json
+import math
 import os
 import re
-import math
+from pathlib import Path
+
 import numpy as np
 import pyvista as pv
+
+
+def load_grid_center_sidecar(voxel_bin_path: str):
+    """
+    ray_voxel writes <stem>_meta.json next to the .bin (grid_center for display).
+    """
+    p = Path(voxel_bin_path)
+    side = p.with_name(p.stem + "_meta.json")
+    if not side.is_file():
+        return None
+    with open(side, encoding="utf-8") as f:
+        data = json.load(f)
+    gc = data.get("grid_center")
+    if not gc or len(gc) < 3:
+        return None
+    return np.array(gc[:3], dtype=np.float32)
 
 
 def load_voxel_grid(filename):
@@ -159,13 +179,30 @@ def get_next_image_index(folder, prefix="voxel_", suffix=".png"):
 
 
 def main():
+    ap = argparse.ArgumentParser(
+        description="View voxel_grid.bin from ray_voxel (PyVista)."
+    )
+    ap.add_argument(
+        "voxel_bin",
+        nargs="?",
+        default="voxel_grid.bin",
+        help="Path to .bin written by ray_voxel",
+    )
+    args = ap.parse_args()
+
+    bin_path = args.voxel_bin
     # 1) Load the voxel grid
-    voxel_grid, vox_size = load_voxel_grid("voxel_grid.bin")
+    voxel_grid, vox_size = load_voxel_grid(bin_path)
     print("Loaded voxel grid:", voxel_grid.shape, "voxel_size=", vox_size)
     print("Max voxel value:", voxel_grid.max())
 
-    # 2) Define the grid center (x,y,z)
-    grid_center = np.array([30, 0, 14000], dtype=np.float32)
+    # 2) Grid center must match ray_voxel (sidecar from latest run, else default)
+    grid_center = load_grid_center_sidecar(bin_path)
+    if grid_center is None:
+        grid_center = np.array([30, 0, 14000], dtype=np.float32)
+        print("No sidecar *_meta.json; using default grid_center", grid_center)
+    else:
+        print("Using grid_center from sidecar:", grid_center)
 
     # 3) Extract top percentile (Z-up)
     percentile_to_show = 99.9

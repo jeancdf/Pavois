@@ -1,0 +1,6 @@
+# Live camera + GPU voxel preview (realtime_voxel_preview.py)
+opencv-python>=4.8
+numpy>=1.24
+# torch: use PyPI CPU wheel, or NVIDIA CUDA wheel, e.g.:
+#   pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch>=2.1

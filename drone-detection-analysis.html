@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone Detection — Pixel-to-Voxel Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050c13;
+    --panel: #0a1520;
+    --border: #1a3a5c;
+    --accent: #00e5ff;
+    --accent2: #ff6b35;
+    --accent3: #39ff14;
+    --warn: #ffd700;
+    --text: #c8dae8;
+    --dim: #4a6a7a;
+    --red: #ff3040;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  .scanline {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan 5s linear infinite;
+    opacity: 0.12;
+    z-index: 998;
+    pointer-events: none;
+  }
+  @keyframes scan { 0%{transform:translateY(-3px)} 100%{transform:translateY(100vh)} }
+  .blink { animation: blink 1.2s step-end infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  header {
+    padding: 32px 48px 18px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    background: linear-gradient(180deg, #040a10 0%, var(--bg) 100%);
+  }
+  .header-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-size: 46px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: #fff;
+    line-height: 1;
+  }
+  header h1 span.a { color: var(--accent); }
+  header h1 span.b { color: var(--accent2); }
+  .mission-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--accent2);
+    background: rgba(255,107,53,0.1);
+    border: 1px solid var(--accent2);
+    padding: 5px 12px;
+    margin-left: auto;
+    align-self: center;
+    letter-spacing: 2px;
+  }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .section {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 28px 36px;
+    transition: background 0.2s;
+  }
+  .section:hover { background: rgba(0,229,255,0.015); }
+  .section.full { grid-column: 1 / -1; border-right: none; }
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .section h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 18px;
+  }
+
+  /* ---- PIPELINE ---- */
+  .pipeline {
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    gap: 0;
+  }
+  .pipe-step {
+    flex: 1;
+    min-width: 100px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 14px 10px;
+    text-align: center;
+    position: relative;
+    cursor: default;
+    transition: all 0.2s;
+  }
+  .pipe-step:hover { border-color: var(--accent); background: rgba(0,229,255,0.06); }
+  .pipe-step::after {
+    content: '→';
+    position: absolute;
+    right: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--dim);
+    font-size: 16px;
+    z-index: 2;
+  }
+  .pipe-step:last-child::after { display: none; }
+  .pipe-num { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--dim); margin-bottom: 4px; }
+  .pipe-name { font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .pipe-file { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--accent); }
+
+  /* ---- STATUS MATRIX ---- */
+  .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .status-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    transition: all 0.2s;
+  }
+  .status-item:hover { transform: translateY(-2px); }
+  .status-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .exists { color: var(--accent3); }
+  .gap { color: var(--red); }
+  .partial { color: var(--warn); }
+  .status-name { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 3px; }
+  .status-desc { font-size: 11px; color: var(--dim); }
+
+  /* ---- UPGRADE LIST ---- */
+  .upgrade-list { display: flex; flex-direction: column; gap: 8px; }
+  .upgrade-item {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 12px 14px;
+    border-left: 3px solid var(--border);
+    background: var(--panel);
+    transition: all 0.2s;
+  }
+  .upgrade-item:hover { border-left-color: var(--accent) !important; }
+  .p1 { border-left-color: var(--red) !important; }
+  .p2 { border-left-color: var(--warn) !important; }
+  .p3 { border-left-color: var(--accent3) !important; }
+  .upgrade-num { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--dim); padding-top: 2px; }
+  .upgrade-title { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .upgrade-body { font-size: 12px; color: var(--dim); }
+  .upgrade-body code {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent);
+    background: rgba(0,229,255,0.07);
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+  .badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .p1 .badge { color: var(--red); border-color: var(--red); background: rgba(255,48,64,0.1); }
+  .p2 .badge { color: var(--warn); border-color: var(--warn); background: rgba(255,215,0,0.08); }
+  .p3 .badge { color: var(--accent3); border-color: var(--accent3); background: rgba(57,255,20,0.06); }
+
+  /* ---- ARCH DIAGRAM ---- */
+  .arch { display: grid; grid-template-columns: 1fr 60px 1fr 60px 1fr; gap: 0; align-items: center; }
+  .arch-col { display: flex; flex-direction: column; gap: 8px; }
+  .arch-col-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+  .arch-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .arch-box.is-new { border-color: var(--accent); background: rgba(0,229,255,0.04); }
+  .arch-box.is-lat { border-color: var(--accent2); background: rgba(255,107,53,0.04); }
+  .arch-box-lbl { font-family: 'Share Tech Mono', monospace; font-size: 8px; color: var(--dim); letter-spacing: 2px; margin-bottom: 3px; }
+  .arch-box-name { font-size: 12px; font-weight: 700; color: #fff; }
+  .arch-box.is-new .arch-box-name { color: var(--accent); }
+  .arch-box.is-lat .arch-box-name { color: var(--accent2); }
+  .arch-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .arch-arrow-line {
+    width: 2px;
+    height: 40px;
+    background: linear-gradient(180deg, var(--dim), var(--accent));
+    animation: flow 2s linear infinite;
+  }
+  .arch-arrow-line.orange { background: linear-gradient(180deg, var(--dim), var(--accent2)); }
+  @keyframes flow { 0%{opacity:0.3} 50%{opacity:1} 100%{opacity:0.3} }
+  .arch-arrow-lbl {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-align: center;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    line-height: 1.2;
+  }
+  .arch-arrow-lbl.orange { color: var(--accent2); }
+
+  /* ---- LATTICE STEPS ---- */
+  .lattice-steps { display: flex; flex-direction: column; gap: 8px; }
+  .lattice-step {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 14px;
+    padding: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+  .lattice-step:hover { border-color: var(--accent2); }
+  .lattice-step-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent2);
+    line-height: 1;
+  }
+  .lattice-step-title { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .lattice-step-body { font-size: 12px; color: var(--dim); }
+  .lattice-step-body code {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent2);
+    font-size: 10px;
+    background: rgba(255,107,53,0.08);
+    padding: 1px 5px;
+  }
+
+  /* ---- NOTES ---- */
+  .note { background: rgba(0,229,255,0.04); border-left: 3px solid var(--accent); padding: 10px 14px; font-size: 12px; color: var(--text); margin-top: 14px; }
+  .warn { background: rgba(255,48,64,0.05); border-left: 3px solid var(--red); padding: 10px 14px; font-size: 12px; color: var(--text); margin-top: 14px; }
+
+  /* ---- CODE ---- */
+  .code-block {
+    background: #020d15;
+    border: 1px solid var(--border);
+    padding: 16px 18px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 14px;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .code-block .cm { color: var(--dim); }
+  .code-block .kw { color: var(--warn); }
+  .code-block .st { color: var(--accent2); }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .section { border-right: none; }
+    .status-grid { grid-template-columns: 1fr 1fr; }
+    .arch { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <div>
+    <div class="header-tag">PROJECT // PAVOIS // SYSTEM ANALYSIS — MAR 2026</div>
+    <h1>PIXEL<span class="a">→</span>VOXEL <span class="b">DRONE DETECTION</span></h1>
+  </div>
+  <div class="mission-tag">MISSION READINESS ANALYSIS <span class="blink">●</span></div>
+</header>
+
+<div class="main-grid">
+
+  <!-- 01 CURRENT PIPELINE -->
+  <div class="section full">
+    <div class="section-label">01 // EXISTING PIPELINE — what the codebase already does</div>
+    <h2>Current data flow in pixeltovoxelprojector</h2>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-num">01</div>
+        <div class="pipe-name">Frames + metadata.json</div>
+        <div class="pipe-file">camera pos · yaw/pitch/roll · FOV</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">02</div>
+        <div class="pipe-name">Grayscale Load</div>
+        <div class="pipe-file">stb_image · +noise jitter</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">03</div>
+        <div class="pipe-name">Frame Δ Motion Mask</div>
+        <div class="pipe-file">|prev − curr| &gt; threshold</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">04</div>
+        <div class="pipe-name">Per-pixel Ray Build</div>
+        <div class="pipe-file">focal_len · Euler → world dir</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">05</div>
+        <div class="pipe-name">Voxel DDA Walk</div>
+        <div class="pipe-file">cast_ray_into_grid() — C++</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">06</div>
+        <div class="pipe-name">Accumulate N³ Grid</div>
+        <div class="pipe-file">500³ @ 6 m/voxel = 3 km³</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">07</div>
+        <div class="pipe-name">Binary .bin Dump</div>
+        <div class="pipe-file">N · voxel_size · float32 data</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">08</div>
+        <div class="pipe-name">PyVista Render</div>
+        <div class="pipe-file">top-percentile point cloud</div>
+      </div>
+    </div>
+    <div class="note">
+      The geometry backbone is solid: multi-camera ray fusion, correct rotation matrix (yaw/pitch/roll), AABB ray-box intersection, and DDA voxel traversal all exist and work.
+      The codebase was built for low-Earth-orbit debris and bird/motion studies — the physics transfers directly to drone detection once the coordinate frame and output layer are upgraded.
+    </div>
+  </div>
+
+  <!-- 02 CAPABILITY MATRIX -->
+  <div class="section">
+    <div class="section-label">02 // CAPABILITY MATRIX</div>
+    <h2>What exists vs. what is missing</h2>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-tag exists">✓ EXISTS</div>
+        <div class="status-name">Multi-camera ray fusion</div>
+        <div class="status-desc">Camera index grouping + shared voxel grid accumulation across N cameras simultaneously</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag exists">✓ EXISTS</div>
+        <div class="status-name">Frame-diff motion mask</div>
+        <div class="status-desc">Absolute pixel diff > threshold mask. Directly maps to drone pixel detection.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag exists">✓ EXISTS</div>
+        <div class="status-name">Full camera rotation model</div>
+        <div class="status-desc">Yaw/pitch/roll → rotation matrix → world-space ray direction per pixel. GPS-gimbal ready.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag exists">✓ EXISTS</div>
+        <div class="status-name">pybind11 Python bridge</div>
+        <div class="status-desc">process_image_cpp exposes C++ DDA to Python. Django backend can call it directly.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag exists">✓ EXISTS</div>
+        <div class="status-name">OpenMP parallelism</div>
+        <div class="status-desc">#pragma omp parallel already in process_image.cpp. Multi-core throughput scales.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag partial">⚠ PARTIAL</div>
+        <div class="status-name">Distance attenuation</div>
+        <div class="status-desc">alpha param exists but author flagged it broken. Needs 1/r² + angular-size scaling.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">Real-time frame streaming</div>
+        <div class="status-desc">Batch file loop only. No live VideoCapture, no frame queue, no async pipeline.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">Temporal track management</div>
+        <div class="status-desc">No object ID, no Kalman filter, no velocity estimation between consecutive frames.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">WGS84 / ENU coordinates</div>
+        <div class="status-desc">Camera positions are unitless local floats. No GPS anchor, no lat/lon/alt output.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">Drone vs. bird classifier</div>
+        <div class="status-desc">Any pixel motion accumulates equally. No velocity gate, no trajectory model, no ML.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">Background subtraction</div>
+        <div class="status-desc">Static clutter (trees, towers, clouds) contaminates the voxel grid continuously.</div>
+      </div>
+      <div class="status-item">
+        <div class="status-tag gap">✗ MISSING</div>
+        <div class="status-name">Lattice / CoT output</div>
+        <div class="status-desc">Outputs raw .bin binary. No CoT XML, no gRPC protobuf, no REST track endpoint.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 03 UPGRADES -->
+  <div class="section">
+    <div class="section-label">03 // REQUIRED UPGRADES — prioritized</div>
+    <h2>Engineering work to reach drone detection</h2>
+    <div class="upgrade-list">
+
+      <div class="upgrade-item p1">
+        <div class="upgrade-num">01</div>
+        <div>
+          <div class="upgrade-title">WGS84 → ENU coordinate frame</div>
+          <div class="upgrade-body">Add <code>LLA→ECEF→ENU</code> transform. Each camera's GPS fix becomes the origin. Voxel centroids export as real lat/lon/alt. This unblocks Lattice integration entirely.</div>
+        </div>
+        <div class="badge">P1 CRITICAL</div>
+      </div>
+
+      <div class="upgrade-item p1">
+        <div class="upgrade-num">02</div>
+        <div>
+          <div class="upgrade-title">Real-time camera frame ingestion</div>
+          <div class="upgrade-body">Replace file-based loop with live <code>OpenCV VideoCapture</code> or RTSP stream per camera. Add a lock-free ring buffer (N frames deep) so DDA never stalls on I/O. Target ≥ 10 fps per camera.</div>
+        </div>
+        <div class="badge">P1 CRITICAL</div>
+      </div>
+
+      <div class="upgrade-item p1">
+        <div class="upgrade-num">03</div>
+        <div>
+          <div class="upgrade-title">Kalman multi-target track manager</div>
+          <div class="upgrade-body">Cluster voxel grid activations into blobs each frame. Feed blob centroids into a Kalman filter (or JPDA for overlapping tracks). Assign persistent <code>track_id</code>, estimate 3D velocity + heading. Require ≥3 consecutive hits before emitting a confirmed track.</div>
+        </div>
+        <div class="badge">P1 CRITICAL</div>
+      </div>
+
+      <div class="upgrade-item p2">
+        <div class="upgrade-num">04</div>
+        <div>
+          <div class="upgrade-title">Fix attenuation + background model</div>
+          <div class="upgrade-body">Fix the broken <code>alpha</code> attenuation to scale by <code>1/r²</code> and apparent angular size. Add a running median background stack (updated every N seconds) and subtract it from each frame to remove static clutter.</div>
+        </div>
+        <div class="badge">P2 HIGH</div>
+      </div>
+
+      <div class="upgrade-item p2">
+        <div class="upgrade-num">05</div>
+        <div>
+          <div class="upgrade-title">Sparse voxel grid + time decay</div>
+          <div class="upgrade-body">Current 500³ grid = ~500 MB float32 — too large for real-time. Switch to a sparse hash map of occupied cells. Apply per-cell time decay: <code>v[t] = 0.85·v[t-1] + new_hits</code>. Evict cells below threshold.</div>
+        </div>
+        <div class="badge">P2 HIGH</div>
+      </div>
+
+      <div class="upgrade-item p2">
+        <div class="upgrade-num">06</div>
+        <div>
+          <div class="upgrade-title">Drone classification heuristics</div>
+          <div class="upgrade-body">Post-track filters: velocity band 2–30 m/s, altitude ceiling 400m AGL, hover-detection (near-zero velocity bursts), aspect-ratio of voxel blob. Flag birds with a biological trajectory model. Optionally add a CNN classifier on the motion crop.</div>
+        </div>
+        <div class="badge">P2 HIGH</div>
+      </div>
+
+      <div class="upgrade-item p3">
+        <div class="upgrade-num">07</div>
+        <div>
+          <div class="upgrade-title">CoT / Lattice Entity track emitter</div>
+          <div class="upgrade-body">Serialize confirmed tracks as <code>CoT XML</code> (type <code>a-f-A-M-F-Q</code>) for ATAK/TAK Server, or as Lattice Entity protobuf with <code>entity_type=UAS</code>, lat/lon/alt, velocity, timestamp. Publish over UDP/4999 multicast or gRPC to Lattice ingestion endpoint.</div>
+        </div>
+        <div class="badge">P3 MEDIUM</div>
+      </div>
+
+      <div class="upgrade-item p3">
+        <div class="upgrade-num">08</div>
+        <div>
+          <div class="upgrade-title">IR / thermal camera fusion</div>
+          <div class="upgrade-body">Add FLIR/thermal stream alongside EO cameras. Thermal signal is stronger for drone heat plumes at night. Project IR changed pixels through the same DDA pipeline into the shared voxel grid. No architecture change needed — just a new camera stream.</div>
+        </div>
+        <div class="badge">P3 MEDIUM</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 04 TARGET ARCHITECTURE -->
+  <div class="section full">
+    <div class="section-label">04 // TARGET ARCHITECTURE — modified system for Lattice</div>
+    <h2>End-to-end upgraded data flow</h2>
+    <div class="arch">
+
+      <div class="arch-col">
+        <div class="arch-col-label">SENSORS</div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">EO ARRAY</div><div class="arch-box-name">N× Cameras (GPS-anchored)</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">THERMAL</div><div class="arch-box-name">FLIR / IR Stream</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">RF PASSIVE</div><div class="arch-box-name">Drone Radio Detect</div></div>
+      </div>
+
+      <div class="arch-arrow">
+        <div class="arch-arrow-line"></div>
+        <div class="arch-arrow-lbl">FRAME STREAM</div>
+      </div>
+
+      <div class="arch-col">
+        <div class="arch-col-label">CORE ENGINE (this repo)</div>
+        <div class="arch-box"><div class="arch-box-lbl">EXISTING</div><div class="arch-box-name">Motion Detect + DDA Voxel</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">NEW</div><div class="arch-box-name">ENU Coordinate Transform</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">NEW</div><div class="arch-box-name">Sparse Voxel + Time Decay</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">NEW</div><div class="arch-box-name">Kalman Track Manager</div></div>
+        <div class="arch-box is-new"><div class="arch-box-lbl">NEW</div><div class="arch-box-name">Drone Classifier</div></div>
+      </div>
+
+      <div class="arch-arrow">
+        <div class="arch-arrow-line orange"></div>
+        <div class="arch-arrow-lbl orange">CoT / gRPC TRACKS</div>
+      </div>
+
+      <div class="arch-col">
+        <div class="arch-col-label">C2 / INTEGRATION</div>
+        <div class="arch-box is-lat"><div class="arch-box-lbl">ANDURIL</div><div class="arch-box-name">Lattice Entity Store</div></div>
+        <div class="arch-box is-lat"><div class="arch-box-lbl">ATAK</div><div class="arch-box-name">CoT Track Feed</div></div>
+        <div class="arch-box is-lat"><div class="arch-box-lbl">THIS REPO</div><div class="arch-box-name">Angular Map UI (Django + Angular)</div></div>
+      </div>
+
+    </div>
+    <div class="warn">
+      ⚠ <strong>Coordinate system is the critical path.</strong>
+      Everything downstream — classification, Lattice output, map display — depends on having
+      <code>camera_position</code> in WGS84/ENU first. Without it, detected tracks have no
+      real-world location and cannot be fused into Lattice's common operational picture.
+    </div>
+  </div>
+
+  <!-- 05 LATTICE PROTOCOL -->
+  <div class="section full">
+    <div class="section-label">05 // LATTICE INTEGRATION PROTOCOL</div>
+    <h2>How confirmed tracks flow into Anduril Lattice</h2>
+    <div class="lattice-steps">
+
+      <div class="lattice-step">
+        <div class="lattice-step-num">01</div>
+        <div>
+          <div class="lattice-step-title">Voxel cluster → track candidate (3-frame minimum)</div>
+          <div class="lattice-step-body">After DDA accumulation, run a 3D connected-component labeler on the voxel grid to find dense blobs. A blob becomes a "track candidate" only after its centroid appears in ≥3 consecutive frames with consistent heading. Eliminates single-frame noise, crossing birds, and reflections.</div>
+        </div>
+      </div>
+
+      <div class="lattice-step">
+        <div class="lattice-step-num">02</div>
+        <div>
+          <div class="lattice-step-title">Centroid → WGS84 via ENU→ECEF→LLA</div>
+          <div class="lattice-step-body">ENU centroid <code>(east, north, up)</code> + sensor origin <code>(lat₀, lon₀, alt₀)</code> → <code>ECEF</code> → <code>LLA</code>. This lat/lon/alt is what populates the Lattice entity position field. Use <code>pyproj</code> or <code>GeographicLib</code> for the transform.</div>
+        </div>
+      </div>
+
+      <div class="lattice-step">
+        <div class="lattice-step-num">03</div>
+        <div>
+          <div class="lattice-step-title">Emit as CoT XML or Lattice Entity protobuf</div>
+          <div class="lattice-step-body">For ATAK / TAK Server: use CoT type <code>a-f-A-M-F-Q</code> (friendly unmanned aerial). For native Lattice: use the Lattice Entity protobuf with <code>entity_type=UAS</code>, <code>location</code>, <code>velocity</code>, <code>timestamp</code>. Publish over <code>UDP/4999</code> multicast or gRPC stream to the Lattice ingestion endpoint.</div>
+        </div>
+      </div>
+
+      <div class="lattice-step">
+        <div class="lattice-step-num">04</div>
+        <div>
+          <div class="lattice-step-title">Update or expire track</div>
+          <div class="lattice-step-body">Each new detection updates the Lattice entity position + velocity. If no detection for <code>N</code> frames (configurable, ~5s), emit a <code>stale</code> flag. After a configurable timeout, emit a <code>delete</code> event so Lattice removes the icon from the COP (common operational picture).</div>
+        </div>
+      </div>
+
+      <div class="lattice-step">
+        <div class="lattice-step-num">05</div>
+        <div>
+          <div class="lattice-step-title">Angular Map UI — live track display</div>
+          <div class="lattice-step-body">The Angular frontend in this repo subscribes to a Django WebSocket endpoint that mirrors the Lattice/CoT track feed. Renders drone positions on Leaflet or CesiumJS with trail history, velocity vector arrows, altitude AGL, classification confidence, and threat level coloring.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="code-block"><span class="cm">// Example CoT XML — confirmed drone track from Pavois voxel engine</span>
+&lt;<span class="kw">event</span> version=<span class="st">"2.0"</span>
+       type=<span class="st">"a-f-A-M-F-Q"</span>
+       uid=<span class="st">"pavois-track-00042"</span>
+       time=<span class="st">"2026-03-30T14:23:11.000Z"</span>
+       start=<span class="st">"2026-03-30T14:23:11.000Z"</span>
+       stale=<span class="st">"2026-03-30T14:23:16.000Z"</span>
+       how=<span class="st">"m-g"</span>&gt;
+  &lt;<span class="kw">point</span> lat=<span class="st">"34.052200"</span> lon=<span class="st">"-118.243700"</span> hae=<span class="st">"85.4"</span>
+         ce=<span class="st">"12.0"</span> le=<span class="st">"8.0"</span>/&gt;  <span class="cm">&lt;!-- circular error 12m, linear error 8m --&gt;</span>
+  &lt;<span class="kw">detail</span>&gt;
+    &lt;<span class="kw">track</span> speed=<span class="st">"8.2"</span> course=<span class="st">"247.3"</span>/&gt;   <span class="cm">&lt;!-- m/s, degrees true --&gt;</span>
+    &lt;<span class="kw">sensor</span> source=<span class="st">"pavois-voxel"</span>
+            confidence=<span class="st">"0.87"</span>
+            cameras=<span class="st">"3"</span>
+            altitude_agl=<span class="st">"73.1"</span>/&gt;
+  &lt;/<span class="kw">detail</span>&gt;
+&lt;/<span class="kw">event</span>&gt;</div>
+
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pavois — Camera Coverage Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #21262d;
+    --text: #c9d1d9;
+    --dim: #484f58;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #f0883e;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --white: #f0f6fc;
+    --cam0: #58a6ff;
+    --cam1: #3fb950;
+    --overlap: rgba(188, 140, 255, 0.18);
+    --grid-line: rgba(88, 166, 255, 0.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+  .topbar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--white);
+    letter-spacing: -0.5px;
+  }
+  .topbar-title span { color: var(--accent); }
+  .topbar-tag {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+  }
+  .topbar-spacer { flex: 1; }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--yellow);
+    margin-right: 6px;
+    animation: blink 2s step-end infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+  .status-label { font-size: 11px; color: var(--dim); }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 240px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .sidebar-label {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .camera-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .camera-card:hover, .camera-card.active { border-color: var(--accent); }
+  .camera-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .camera-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .camera-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--white);
+    flex: 1;
+  }
+  .cam-status-ok { font-size: 9px; color: var(--green); letter-spacing: 1px; }
+  .field-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+  .field-label { font-size: 10px; color: var(--dim); }
+  .field-input {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 7px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input.green { color: var(--green); }
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: rgba(88,166,255,0.1); }
+  .btn.danger { border-color: var(--red); color: var(--red); }
+  .btn-row { display: flex; gap: 6px; margin-top: 10px; }
+
+  /* ── COVERAGE STATS ── */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(33,38,45,0.5);
+  }
+  .stat-key { font-size: 10px; color: var(--dim); }
+  .stat-val { font-size: 11px; }
+  .stat-val.good { color: var(--green); }
+  .stat-val.warn { color: var(--yellow); }
+  .stat-val.bad  { color: var(--red); }
+
+  /* ── MAP AREA ── */
+  .map-area {
+    position: relative;
+    background: #090e15;
+    overflow: hidden;
+  }
+  #map-canvas {
+    position: absolute;
+    inset: 0;
+    cursor: crosshair;
+  }
+
+  /* ── MAP OVERLAYS ── */
+  .map-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(13,17,23,0.85);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--dim);
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+  }
+  .map-coords {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(13,17,23,0.85);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    font-size: 10px;
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .map-scale {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: rgba(13,17,23,0.85);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    font-size: 10px;
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .map-toolbar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .map-tool-btn {
+    width: 32px; height: 32px;
+    background: rgba(22,27,34,0.92);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    backdrop-filter: blur(4px);
+  }
+  .map-tool-btn:hover, .map-tool-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .right-section {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 12px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+  .legend-swatch {
+    width: 24px; height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .legend-text { font-size: 11px; color: var(--dim); }
+
+  /* ── COMPONENT PLAN ── */
+  .component-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .comp-item {
+    font-size: 10px;
+    padding: 5px 8px;
+    border-left: 2px solid var(--border);
+    color: var(--dim);
+    transition: all 0.15s;
+  }
+  .comp-item:hover { border-left-color: var(--accent); color: var(--text); }
+  .comp-item.root { border-left-color: var(--accent); color: var(--accent); font-weight: 500; }
+  .comp-item.child { margin-left: 12px; }
+  .comp-item.grandchild { margin-left: 24px; border-left-color: var(--purple); }
+
+  /* ── API ROUTES ── */
+  .api-route {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 6px;
+    align-items: start;
+    margin-bottom: 6px;
+    font-size: 10px;
+  }
+  .method {
+    padding: 2px 4px;
+    font-weight: 500;
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+  .method.get { color: var(--green); border: 1px solid var(--green); }
+  .method.post { color: var(--orange); border: 1px solid var(--orange); }
+  .method.put { color: var(--yellow); border: 1px solid var(--yellow); }
+  .method.ws { color: var(--purple); border: 1px solid var(--purple); }
+  .route-path { color: var(--text); padding-top: 2px; }
+
+  .instruction-box {
+    background: rgba(88,166,255,0.06);
+    border: 1px solid rgba(88,166,255,0.2);
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--text);
+    margin-top: 10px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-title">PAVOIS<span>.</span>MAP</div>
+  <div class="topbar-tag">Camera Coverage Planner</div>
+  <div class="topbar-spacer"></div>
+  <span class="status-dot"></span>
+  <span class="status-label">PLANNING MODE — no detection running</span>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div class="main">
+
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Camera list -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Cameras</div>
+
+      <div class="camera-card active" id="cam0-card">
+        <div class="camera-card-header">
+          <div class="camera-dot" style="background:var(--cam0)"></div>
+          <div class="camera-name">Camera 0</div>
+          <span class="cam-status-ok">● LIVE</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Lat / Lon</span>
+          <input class="field-input" id="c0-lat" value="34.052200" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label"></span>
+          <input class="field-input green" id="c0-lon" value="-118.243700" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Yaw (°N)</span>
+          <input class="field-input" id="c0-yaw" type="number" value="30" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">H-FOV (°)</span>
+          <input class="field-input" id="c0-fov" type="number" value="70" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Range (m)</span>
+          <input class="field-input" id="c0-range" type="number" value="30" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Height (m)</span>
+          <input class="field-input" id="c0-height" type="number" value="1.5" oninput="redraw()">
+        </div>
+      </div>
+
+      <div class="camera-card" id="cam1-card">
+        <div class="camera-card-header">
+          <div class="camera-dot" style="background:var(--cam1)"></div>
+          <div class="camera-name">Camera 1</div>
+          <span class="cam-status-ok">● LIVE</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Lat / Lon</span>
+          <input class="field-input" id="c1-lat" value="34.052200" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label"></span>
+          <input class="field-input green" id="c1-lon" value="-118.243650" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Yaw (°N)</span>
+          <input class="field-input" id="c1-yaw" type="number" value="350" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">H-FOV (°)</span>
+          <input class="field-input" id="c1-fov" type="number" value="70" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Range (m)</span>
+          <input class="field-input" id="c1-range" type="number" value="30" oninput="redraw()">
+        </div>
+        <div class="field-row">
+          <span class="field-label">Height (m)</span>
+          <input class="field-input" id="c1-height" type="number" value="1.5" oninput="redraw()">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn primary" onclick="addCamera()">+ Add Camera</button>
+        <button class="btn" onclick="autoAlign()">↺ Auto-Align</button>
+      </div>
+    </div>
+
+    <!-- Voxel grid config -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Voxel Grid</div>
+      <div class="field-row">
+        <span class="field-label">Grid N</span>
+        <input class="field-input" id="grid-n" type="number" value="80" oninput="redraw()">
+      </div>
+      <div class="field-row">
+        <span class="field-label">Voxel (m)</span>
+        <input class="field-input" id="grid-vs" type="number" value="0.4" step="0.1" oninput="redraw()">
+      </div>
+      <div class="field-row">
+        <span class="field-label">Center lat</span>
+        <input class="field-input" id="grid-lat" value="34.052330" oninput="redraw()">
+      </div>
+      <div class="field-row">
+        <span class="field-label">Center lon</span>
+        <input class="field-input green" id="grid-lon" value="-118.243675" oninput="redraw()">
+      </div>
+      <div class="instruction-box" id="grid-size-display">
+        Grid volume: computing...
+      </div>
+    </div>
+
+    <!-- Coverage stats -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Coverage Metrics</div>
+      <div class="stat-row"><span class="stat-key">Cam 0 coverage area</span><span class="stat-val" id="cov0-area">—</span></div>
+      <div class="stat-row"><span class="stat-key">Cam 1 coverage area</span><span class="stat-val" id="cov1-area">—</span></div>
+      <div class="stat-row"><span class="stat-key">Overlap (triangulation zone)</span><span class="stat-val good" id="cov-overlap">—</span></div>
+      <div class="stat-row"><span class="stat-key">Camera baseline</span><span class="stat-val" id="cov-baseline">—</span></div>
+      <div class="stat-row"><span class="stat-key">Baseline / Range ratio</span><span class="stat-val warn" id="cov-ratio">—</span></div>
+      <div class="stat-row"><span class="stat-key">Grid inside overlap</span><span class="stat-val" id="cov-grid">—</span></div>
+    </div>
+
+  </div>
+
+  <!-- MAP AREA -->
+  <div class="map-area">
+    <canvas id="map-canvas"></canvas>
+    <div class="map-toolbar">
+      <button class="map-tool-btn active" title="Pan/Select" id="tool-pan">✥</button>
+      <button class="map-tool-btn" title="Drag cameras" id="tool-move">⊹</button>
+      <button class="map-tool-btn" title="Zoom in" onclick="zoom(1.2)">+</button>
+      <button class="map-tool-btn" title="Zoom out" onclick="zoom(0.83)">−</button>
+      <button class="map-tool-btn" title="Fit all" onclick="fitAll()">⊡</button>
+    </div>
+    <div class="map-hint">Drag cameras to reposition · Scroll to zoom · Blue = Cam 0 · Green = Cam 1 · Purple = Overlap zone · Orange dashed = Voxel grid</div>
+    <div class="map-coords" id="cursor-coords">—</div>
+    <div class="map-scale" id="scale-label">Scale: 1px = — m</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <div class="right-section">
+      <div class="section-title">Map Legend</div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:rgba(88,166,255,0.25);border:1px solid #58a6ff"></div>
+        <span class="legend-text">Camera 0 FOV cone</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:rgba(63,185,80,0.2);border:1px solid #3fb950"></div>
+        <span class="legend-text">Camera 1 FOV cone</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:rgba(188,140,255,0.3);border:1px dashed #bc8cff"></div>
+        <span class="legend-text">Triangulation overlap zone</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:transparent;border:2px dashed #f0883e"></div>
+        <span class="legend-text">Voxel grid boundary (2D)</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:rgba(240,136,62,0.12);border:1px solid #f0883e"></div>
+        <span class="legend-text">Grid inside coverage</span>
+      </div>
+    </div>
+
+    <div class="right-section">
+      <div class="section-title">Angular Components</div>
+      <div class="component-tree">
+        <div class="comp-item root">AppComponent</div>
+        <div class="comp-item child">MapComponent (Leaflet)</div>
+        <div class="comp-item grandchild">CameraLayerComponent</div>
+        <div class="comp-item grandchild">FovConeLayerComponent</div>
+        <div class="comp-item grandchild">VoxelGridLayerComponent</div>
+        <div class="comp-item grandchild">TrackLayerComponent</div>
+        <div class="comp-item child">CameraConfigPanelComponent</div>
+        <div class="comp-item child">CoverageStatsComponent</div>
+        <div class="comp-item child">DetectionStatusBarComponent</div>
+      </div>
+    </div>
+
+    <div class="right-section">
+      <div class="section-title">Django API Routes</div>
+      <div class="api-route"><span class="method get">GET</span><span class="route-path">/api/cameras/</span></div>
+      <div class="api-route"><span class="method post">POST</span><span class="route-path">/api/cameras/</span></div>
+      <div class="api-route"><span class="method put">PUT</span><span class="route-path">/api/cameras/{id}/</span></div>
+      <div class="api-route"><span class="method get">GET</span><span class="route-path">/api/coverage/</span></div>
+      <div class="api-route"><span class="method get">GET</span><span class="route-path">/api/voxel-grid/</span></div>
+      <div class="api-route"><span class="method put">PUT</span><span class="route-path">/api/voxel-grid/</span></div>
+      <div class="api-route"><span class="method ws">WS</span><span class="route-path">/ws/tracks/</span></div>
+      <div class="api-route"><span class="method ws">WS</span><span class="route-path">/ws/detection-status/</span></div>
+    </div>
+
+    <div class="right-section">
+      <div class="section-title">Data Model</div>
+      <pre style="font-size:9px;color:var(--dim);line-height:1.6">CameraConfig {
+  id: string
+  lat: number
+  lon: number
+  alt_m: number
+  yaw_deg: number
+  pitch_deg: number
+  fov_h_deg: number
+  fov_v_deg: number
+  max_range_m: number
+}
+
+VoxelGridConfig {
+  center_lat: number
+  center_lon: number
+  center_alt_m: number
+  N: number
+  voxel_size_m: number
+}
+
+DroneTrack {
+  id: string
+  lat: number
+  lon: number
+  alt_m: number
+  speed_ms: number
+  heading_deg: number
+  confidence: number
+  timestamp: string
+}</pre>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('map-canvas');
+const ctx = canvas.getContext('2d');
+
+// View transform: world coords (meters from center) ↔ canvas pixels
+let viewCenterX = 0; // world meters
+let viewCenterY = 0;
+let metersPerPixel = 0.2; // zoom level
+
+// Camera data (in ENU meters from a common origin)
+// We'll convert lat/lon inputs to ENU for drawing
+const cameras = [
+  { id: 0, color: '#58a6ff', fillColor: 'rgba(88,166,255,0.15)' },
+  { id: 1, color: '#3fb950', fillColor: 'rgba(63,185,80,0.12)' },
+];
+
+let dragging = null;
+let lastMouse = null;
+let isDraggingCamera = null;
+
+// ── COORDINATE HELPERS ──────────────────────────────────────────────
+function latLonToENU(lat, lon, lat0, lon0) {
+  const R = 6371000;
+  const east  = (lon - lon0) * Math.cos(lat0 * Math.PI/180) * R * Math.PI/180;
+  const north = (lat - lat0) * R * Math.PI/180;
+  return { e: east, n: north };
+}
+
+function getCameraParams() {
+  const lat0 = parseFloat(document.getElementById('c0-lat').value) || 0;
+  const lon0 = parseFloat(document.getElementById('c0-lon').value) || 0;
+
+  return cameras.map((c, i) => {
+    const lat = parseFloat(document.getElementById(`c${i}-lat`).value) || 0;
+    const lon = parseFloat(document.getElementById(`c${i}-lon`).value) || 0;
+    const yaw = parseFloat(document.getElementById(`c${i}-yaw`).value) || 0;
+    const fov = parseFloat(document.getElementById(`c${i}-fov`).value) || 60;
+    const range = parseFloat(document.getElementById(`c${i}-range`).value) || 30;
+    const enu = latLonToENU(lat, lon, lat0, lon0);
+    return { ...c, lat, lon, e: enu.e, n: enu.n, yaw, fov, range };
+  });
+}
+
+function getGridParams(lat0, lon0) {
+  const lat  = parseFloat(document.getElementById('grid-lat').value) || lat0;
+  const lon  = parseFloat(document.getElementById('grid-lon').value) || lon0;
+  const N    = parseInt(document.getElementById('grid-n').value) || 80;
+  const vs   = parseFloat(document.getElementById('grid-vs').value) || 0.4;
+  const enu  = latLonToENU(lat, lon, lat0, lon0);
+  const halfSide = N * vs / 2;
+  return { e: enu.e, n: enu.n, halfSide, N, vs, lat, lon };
+}
+
+// ── CANVAS ↔ WORLD TRANSFORMS ──────────────────────────────────────
+function worldToCanvas(e, n) {
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2 + (e - viewCenterX) / metersPerPixel;
+  const cy = H/2 - (n - viewCenterY) / metersPerPixel; // Y flipped
+  return { x: cx, y: cy };
+}
+
+function canvasToWorld(x, y) {
+  const W = canvas.width, H = canvas.height;
+  const e = viewCenterX + (x - W/2) * metersPerPixel;
+  const n = viewCenterY - (y - H/2) * metersPerPixel;
+  return { e, n };
+}
+
+// ── FOV CONE POLYGON ──────────────────────────────────────────────
+function fovPoints(cx_e, cx_n, yaw_deg, fov_deg, range_m, nPts = 40) {
+  const halfFov = fov_deg / 2;
+  const points = [{ e: cx_e, n: cx_n }];
+  for (let i = 0; i <= nPts; i++) {
+    const angleDeg = yaw_deg - halfFov + (fov_deg * i / nPts);
+    const angleRad = angleDeg * Math.PI / 180;
+    // yaw 0 = North (+N), 90 = East (+E)
+    const e = cx_e + range_m * Math.sin(angleRad);
+    const n = cx_n + range_m * Math.cos(angleRad);
+    points.push({ e, n });
+  }
+  return points;
+}
+
+// ── POLYGON INTERSECTION ──────────────────────────────────────────
+function pointInPolygon(px, py, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].e, yi = poly[i].n;
+    const xj = poly[j].e, yj = poly[j].n;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// Compute overlap polygon via sampling (simple approach)
+function computeOverlapArea(poly0, poly1, gridBounds) {
+  const step = metersPerPixel * 3;
+  let overlapCount = 0;
+  let cam0Count = 0;
+  let cam1Count = 0;
+  const eMin = gridBounds.e - gridBounds.halfSide * 2;
+  const eMax = gridBounds.e + gridBounds.halfSide * 2;
+  const nMin = gridBounds.n - gridBounds.halfSide * 2;
+  const nMax = gridBounds.n + gridBounds.halfSide * 2;
+
+  for (let e = eMin; e < eMax; e += step) {
+    for (let n = nMin; n < nMax; n += step) {
+      const in0 = pointInPolygon(e, n, poly0);
+      const in1 = pointInPolygon(e, n, poly1);
+      if (in0) cam0Count++;
+      if (in1) cam1Count++;
+      if (in0 && in1) overlapCount++;
+    }
+  }
+  const cellArea = step * step;
+  return {
+    cam0: cam0Count * cellArea,
+    cam1: cam1Count * cellArea,
+    overlap: overlapCount * cellArea,
+  };
+}
+
+// ── DRAW ──────────────────────────────────────────────────────────
+function drawGrid() {
+  const W = canvas.width, H = canvas.height;
+  const stepM = Math.pow(10, Math.round(Math.log10(metersPerPixel * 80)));
+  ctx.strokeStyle = 'rgba(88,166,255,0.08)';
+  ctx.lineWidth = 1;
+
+  const startE = Math.floor((viewCenterX - W/2*metersPerPixel) / stepM) * stepM;
+  const startN = Math.floor((viewCenterY - H/2*metersPerPixel) / stepM) * stepM;
+
+  for (let e = startE; e < viewCenterX + W/2*metersPerPixel; e += stepM) {
+    const { x } = worldToCanvas(e, 0);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let n = startN; n < viewCenterY + H/2*metersPerPixel; n += stepM) {
+    const { y } = worldToCanvas(0, n);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = 'rgba(88,166,255,0.2)';
+  const { x: ox, y: oy } = worldToCanvas(0, 0);
+  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(W, oy); ctx.stroke();
+
+  // Scale label
+  document.getElementById('scale-label').textContent =
+    `Scale: 1px = ${metersPerPixel.toFixed(2)}m  |  Grid: ${stepM}m`;
+}
+
+function drawFovCone(poly, color, fillColor) {
+  const pts = poly.map(p => worldToCanvas(p.e, p.n));
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawOverlap(poly0, poly1) {
+  // Draw overlap by clipping — simple approximation: fill both with a blended color
+  const W = canvas.width, H = canvas.height;
+  ctx.globalCompositeOperation = 'source-over';
+
+  // We draw individual pixels that are in both polygons using an offscreen approach
+  // For simplicity, just draw a "glow" effect at intersection region
+  // Real implementation would use polygon clipping (e.g. Sutherland-Hodgman)
+
+  const step = Math.max(2, Math.round(metersPerPixel * 2));
+  const eMin = Math.min(...poly0.map(p=>p.e), ...poly1.map(p=>p.e));
+  const eMax = Math.max(...poly0.map(p=>p.e), ...poly1.map(p=>p.e));
+  const nMin = Math.min(...poly0.map(p=>p.n), ...poly1.map(p=>p.n));
+  const nMax = Math.max(...poly0.map(p=>p.n), ...poly1.map(p=>p.n));
+
+  for (let e = eMin; e < eMax; e += step * metersPerPixel) {
+    for (let n = nMin; n < nMax; n += step * metersPerPixel) {
+      if (pointInPolygon(e, n, poly0) && pointInPolygon(e, n, poly1)) {
+        const { x, y } = worldToCanvas(e, n);
+        if (x >= 0 && x < W && y >= 0 && y < H) {
+          ctx.fillStyle = 'rgba(188,140,255,0.28)';
+          ctx.fillRect(x - step/2, y - step/2, step, step);
+        }
+      }
+    }
+  }
+}
+
+function drawVoxelGrid(grid) {
+  const corners = [
+    worldToCanvas(grid.e - grid.halfSide, grid.n + grid.halfSide),
+    worldToCanvas(grid.e + grid.halfSide, grid.n + grid.halfSide),
+    worldToCanvas(grid.e + grid.halfSide, grid.n - grid.halfSide),
+    worldToCanvas(grid.e - grid.halfSide, grid.n - grid.halfSide),
+  ];
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(240,136,62,0.08)';
+  ctx.fill();
+  ctx.strokeStyle = '#f0883e';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label
+  const center = worldToCanvas(grid.e, grid.n);
+  ctx.fillStyle = 'rgba(240,136,62,0.8)';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${grid.N}³ × ${grid.vs}m`, center.x, center.y - 4);
+  ctx.fillText(`= ${(grid.N * grid.vs).toFixed(0)}m cube`, center.x, center.y + 10);
+}
+
+function drawCamera(cam, label) {
+  const { x, y } = worldToCanvas(cam.e, cam.n);
+  // Body
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = cam.color;
+  ctx.fill();
+  ctx.strokeStyle = '#0d1117';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Direction arrow
+  const yawRad = cam.yaw * Math.PI / 180;
+  const dx = Math.sin(yawRad) * 14;
+  const dy = -Math.cos(yawRad) * 14;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + dx, y + dy);
+  ctx.strokeStyle = cam.color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Label
+  ctx.fillStyle = cam.color;
+  ctx.font = 'bold 11px JetBrains Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText(label, x + 10, y - 8);
+}
+
+function drawCompassRose() {
+  const x = canvas.width - 40, y = 40;
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  // N arrow
+  ctx.beginPath();
+  ctx.moveTo(x, y - 16);
+  ctx.lineTo(x, y + 16);
+  ctx.moveTo(x - 16, y);
+  ctx.lineTo(x + 16, y);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillText('N', x, y - 20);
+}
+
+function redraw() {
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
+  canvas.width = W;
+  canvas.height = H;
+
+  ctx.fillStyle = '#090e15';
+  ctx.fillRect(0, 0, W, H);
+
+  drawGrid();
+
+  const lat0 = parseFloat(document.getElementById('c0-lat').value) || 0;
+  const lon0 = parseFloat(document.getElementById('c0-lon').value) || 0;
+  const cams = getCameraParams();
+  const grid = getGridParams(lat0, lon0);
+
+  // Build FOV polygons
+  const poly0 = fovPoints(cams[0].e, cams[0].n, cams[0].yaw, cams[0].fov, cams[0].range);
+  const poly1 = fovPoints(cams[1].e, cams[1].n, cams[1].yaw, cams[1].fov, cams[1].range);
+
+  // Draw FOV cones
+  drawFovCone(poly0, cams[0].color, cams[0].fillColor);
+  drawFovCone(poly1, cams[1].color, cams[1].fillColor);
+
+  // Draw overlap (expensive, throttled)
+  drawOverlap(poly0, poly1);
+
+  // Voxel grid
+  drawVoxelGrid(grid);
+
+  // Cameras on top
+  cams.forEach((c, i) => drawCamera(c, `Cam ${i}`));
+
+  drawCompassRose();
+
+  // Update stats
+  const dx = cams[1].e - cams[0].e;
+  const dy = cams[1].n - cams[0].n;
+  const baseline = Math.sqrt(dx*dx + dy*dy);
+  const avgRange = (cams[0].range + cams[1].range) / 2;
+  const ratio = baseline / avgRange;
+
+  const sectorArea = (r, fovDeg) => Math.PI * r*r * fovDeg/360;
+  const a0 = sectorArea(cams[0].range, cams[0].fov);
+  const a1 = sectorArea(cams[1].range, cams[1].fov);
+
+  document.getElementById('cov0-area').textContent = `${a0.toFixed(0)} m²`;
+  document.getElementById('cov1-area').textContent = `${a1.toFixed(0)} m²`;
+  document.getElementById('cov-baseline').textContent = `${baseline.toFixed(1)} m`;
+  document.getElementById('cov-ratio').style.color = ratio > 0.15 ? 'var(--green)' : ratio > 0.08 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('cov-ratio').textContent = `${ratio.toFixed(2)} ${ratio > 0.15 ? '✓ good' : '⚠ low'}`;
+
+  // Grid stats
+  const sideM = grid.N * grid.vs;
+  document.getElementById('grid-size-display').textContent =
+    `Grid: ${grid.N}³ voxels × ${grid.vs}m = ${sideM.toFixed(0)}×${sideM.toFixed(0)}×${sideM.toFixed(0)} m volume`;
+
+  // Check if grid center is inside overlap
+  const inOverlap = pointInPolygon(grid.e, grid.n, poly0) && pointInPolygon(grid.e, grid.n, poly1);
+  document.getElementById('cov-grid').textContent = inOverlap ? '✓ inside overlap' : '⚠ outside overlap';
+  document.getElementById('cov-grid').style.color = inOverlap ? 'var(--green)' : 'var(--yellow)';
+
+  // Rough overlap estimate
+  const overlapEst = Math.min(a0, a1) * Math.max(0, Math.cos((cams[0].yaw - cams[1].yaw) * Math.PI / 180));
+  document.getElementById('cov-overlap').textContent = `~${Math.max(0, overlapEst).toFixed(0)} m²`;
+}
+
+// ── INTERACTIONS ───────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const world = canvasToWorld(mx, my);
+  document.getElementById('cursor-coords').textContent =
+    `E: ${world.e.toFixed(1)}m  N: ${world.n.toFixed(1)}m`;
+
+  if (dragging) {
+    const dx = (e.clientX - lastMouse.x) * metersPerPixel;
+    const dy = -(e.clientY - lastMouse.y) * metersPerPixel;
+    viewCenterX -= dx;
+    viewCenterY -= dy;
+    lastMouse = { x: e.clientX, y: e.clientY };
+    redraw();
+  }
+});
+
+canvas.addEventListener('mousedown', e => {
+  lastMouse = { x: e.clientX, y: e.clientY };
+  dragging = true;
+});
+canvas.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('mouseleave', () => { dragging = false; });
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 1.15 : 0.87;
+  metersPerPixel *= factor;
+  metersPerPixel = Math.max(0.02, Math.min(5, metersPerPixel));
+  redraw();
+}, { passive: false });
+
+function zoom(factor) {
+  metersPerPixel *= factor;
+  metersPerPixel = Math.max(0.02, Math.min(5, metersPerPixel));
+  redraw();
+}
+
+function fitAll() {
+  const lat0 = parseFloat(document.getElementById('c0-lat').value) || 0;
+  const lon0 = parseFloat(document.getElementById('c0-lon').value) || 0;
+  const cams = getCameraParams();
+  const maxRange = Math.max(...cams.map(c => c.range)) * 1.5;
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  viewCenterX = (cams[0].e + cams[1].e) / 2;
+  viewCenterY = (cams[0].n + cams[1].n) / 2 + maxRange * 0.3;
+  metersPerPixel = (maxRange * 2) / Math.min(W, H);
+  redraw();
+}
+
+function autoAlign() {
+  // Point both cameras toward the center of their baseline (overlap zone)
+  const lat0 = parseFloat(document.getElementById('c0-lat').value) || 0;
+  const lon0 = parseFloat(document.getElementById('c0-lon').value) || 0;
+  const cams = getCameraParams();
+  const midE = (cams[0].e + cams[1].e) / 2;
+  const midN = (cams[0].n + cams[1].n) / 2;
+  const range = cams[0].range;
+  // Point both cameras to be parallel and forward from their midpoint
+  const yaw0 = Math.atan2(0, 1) * 180 / Math.PI; // 0 = North
+  document.getElementById('c0-yaw').value = 0;
+  document.getElementById('c1-yaw').value = 0;
+  redraw();
+}
+
+function addCamera() {
+  alert('Add Camera: In the Angular app, this opens a modal to enter new camera details. For this planner, edit the existing camera fields directly.');
+}
+
+window.addEventListener('resize', redraw);
+
+// ── INIT ──────────────────────────────────────────────────────────
+fitAll();
+</script>
+</body>
+</html>

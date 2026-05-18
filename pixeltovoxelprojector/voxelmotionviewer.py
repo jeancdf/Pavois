@@ -28,6 +28,10 @@ from pathlib import Path
 import numpy as np
 import pyvista as pv
 
+from voxelgrid_builder import maybe_build_default_voxel_grid
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
 
 def load_grid_center_sidecar(voxel_bin_path: str):
     """
@@ -178,6 +182,60 @@ def get_next_image_index(folder, prefix="voxel_", suffix=".png"):
     return max_index + 1
 
 
+def voxel_bin_candidates(path_arg: str):
+    """
+    Resolve common launch locations for the requested voxel grid path.
+    """
+    requested = Path(path_arg)
+    candidates = []
+
+    if requested.is_absolute():
+        candidates.append(requested)
+    else:
+        candidates.extend([
+            Path.cwd() / requested,
+            SCRIPT_DIR / requested,
+        ])
+        if requested.parent == Path("."):
+            candidates.extend([
+                Path.cwd() / "single_cam_run" / requested.name,
+                SCRIPT_DIR / "single_cam_run" / requested.name,
+            ])
+
+    seen = set()
+    unique_candidates = []
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique_candidates.append(candidate)
+
+    return unique_candidates
+
+
+def resolve_voxel_bin_path(path_arg: str) -> Path:
+    candidates = voxel_bin_candidates(path_arg)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+
+    for candidate in candidates:
+        if maybe_build_default_voxel_grid(candidate):
+            return candidate.resolve()
+
+    tried = "\n".join(f"  - {candidate}" for candidate in candidates)
+    raise FileNotFoundError(
+        "Could not find the voxel grid file.\n"
+        f"Requested: {path_arg}\n"
+        f"Tried:\n{tried}\n"
+        "No auto-build source was found either. Generate it first with ray_voxel, "
+        "or keep metadata.json plus frames next to the target .bin path, for example: "
+        "python voxelmotionviewer.py single_cam_run/voxel_grid.bin"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="View voxel_grid.bin from ray_voxel (PyVista)."
@@ -190,7 +248,11 @@ def main():
     )
     args = ap.parse_args()
 
-    bin_path = args.voxel_bin
+    try:
+        bin_path = resolve_voxel_bin_path(args.voxel_bin)
+    except FileNotFoundError as exc:
+        ap.error(str(exc))
+
     # 1) Load the voxel grid
     voxel_grid, vox_size = load_voxel_grid(bin_path)
     print("Loaded voxel grid:", voxel_grid.shape, "voxel_size=", vox_size)
@@ -251,12 +313,12 @@ def main():
     )
 
     # 6) Determine the next screenshot index
-    screenshot_folder = "screenshots"
-    if not os.path.exists(screenshot_folder):
-        os.makedirs(screenshot_folder)
+    screenshot_folder = bin_path.parent / "screenshots"
+    if not screenshot_folder.exists():
+        screenshot_folder.mkdir(parents=True, exist_ok=True)
     next_idx = get_next_image_index(screenshot_folder, prefix="voxel_", suffix=".png")
     out_name = f"voxel_{next_idx:04d}.png"
-    out_path = os.path.join(screenshot_folder, out_name)
+    out_path = screenshot_folder / out_name
     # 7) Show the interactive window at 1920x1080 and save final screenshot
     #    The screenshot is generated when you close the plot window.
     plotter.show(window_size=[3840, 2160], auto_close=False, screenshot=out_path)

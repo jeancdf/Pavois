@@ -18,7 +18,7 @@
 | Nom | Prénom | Rôle projet | Partie du rapport |
 |---|---|---|---|
 | `Jean` | `Cazals de Fabel` | `Supreme Leader` | `Analyse de marché` |
-| `[À compléter]` | `[À compléter]` | `[À compléter]` | `[À compléter]` |
+| `Mohamed Amine` | `Dridi` | `The King` | `Analyse de la problématique` |
 | `[À compléter]` | `[À compléter]` | `[À compléter]` | `[À compléter]` |
 
 ---

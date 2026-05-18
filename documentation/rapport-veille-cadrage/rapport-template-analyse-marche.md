@@ -18,7 +18,7 @@
 | Nom | Prénom | Rôle projet | Partie du rapport |
 |---|---|---|---|
 | `Jean` | `Cazals de Fabel` | `Supreme Leader` | `Analyse de marché` |
-| `[À compléter]` | `[À compléter]` | `[À compléter]` | `[À compléter]` |
+| `Tanel` | `Oubadia` | `Mascotte` | `Expression de la problématique` |
 | `[À compléter]` | `[À compléter]` | `[À compléter]` | `[À compléter]` |
 
 ---
@@ -47,23 +47,14 @@ complément de systèmes existants.
 
 ## 1.1 Énoncé court du problème
 
-`[À compléter par l'équipe]`
-
-Exemple :
-
-> Les sites sensibles, événements publics et unités mobiles font face à une
-> multiplication de drones légers difficiles à détecter à basse altitude, en
-> particulier lorsqu'ils sont petits, rapides, peu coûteux ou non coopératifs.
+`De nombreux objets rapides ou difficiles à suivre peuvent apparaître dans un espace surveillé : balle pendant un match, objet volant dans un festival, projectile léger ou élément non identifié. Le problème est de détecter ces objets en mouvement et d’estimer leur position afin d’aider un opérateur à comprendre rapidement la situation.`
 
 ## 1.2 Énoncé court de la solution
 
-`[À compléter par l'équipe]`
+`PAVOIS propose une solution de détection passive par caméras : les mouvements observés dans plusieurs images sont projetés dans un espace 3D afin de localiser et suivre les objets mobiles sans nécessiter de capteur actif.` 
 
-Exemple :
+`À terme, cette approche pourrait être étendue à des cas plus exigeants, comme la détection de drones ou la surveillance de zones sensibles.`
 
-> PAVOIS propose une couche de détection passive par caméras distribuées, capable
-> de transformer du mouvement image en preuve 3D et de fournir une aide à la
-> décision à l'opérateur.
 
 ## 1.3 Origine du besoin
 

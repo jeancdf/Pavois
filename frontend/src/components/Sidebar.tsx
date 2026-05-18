@@ -1,252 +1,144 @@
-import { useState } from 'react'
-import { useCameraStore } from '../store/cameraStore'
-import { useMapStore } from '../store/mapStore'
+import { PAVOISSim, type SimCamera, type SimTrack } from '../sim/pavoisSim'
+import type { Theme } from '../store/simStore'
 
-// ── tiny shared primitives ───────────────────────────────────────────────────
+// ── Shared primitives ─────────────────────────────────────────────────────────
 
-function SectionLabel({ label }: { label: string }) {
+function StatusDot({ status }: { status: string }) {
+  const colors: Record<string, string> = { active: '#10B981', degraded: '#F59E0B', offline: '#EF4444' }
   return (
-    <p className="font-mono text-[9px] text-[#484f58] tracking-[4px] uppercase">
-      {label}
-    </p>
+    <span style={{
+      display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+      background: colors[status] ?? '#9CA3AF',
+      boxShadow: status === 'active' ? `0 0 0 2px ${colors.active}33` : 'none',
+      flexShrink: 0,
+    }} />
   )
 }
 
-function Divider() {
-  return <div className="border-b border-[#21262d]" />
-}
-
-const inputCls =
-  'bg-[#0d1117] border border-[#30363d] text-[#e6edf3] font-mono ' +
-  'text-[12px] px-2.5 py-1.5 focus:outline-none focus:border-[#58a6ff] ' +
-  'transition-colors w-full'
-
-// ── camera row ───────────────────────────────────────────────────────────────
-
-function CameraRow({ name, onRemove }: { name: string; onRemove: () => void }) {
+function ConfidenceBadge({ value }: { value: number }) {
+  const pct = Math.round(value * 100)
+  const color = value >= 0.7 ? '#10B981' : value >= 0.4 ? '#F59E0B' : '#EF4444'
   return (
-    <div className="flex items-center justify-between group py-0.5">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] shrink-0" />
-        <span className="font-mono text-[11px] text-[#e6edf3] truncate">
-          {name}
-        </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 32, height: 4, background: '#334155', borderRadius: 2 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.4s' }} />
       </div>
-      <button
-        onClick={onRemove}
-        className="ml-2 font-mono text-[13px] leading-none text-[#484f58] hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-        title="Remove camera"
-      >
-        ×
-      </button>
+      <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 10, fontWeight: 600, color }}>{pct}%</span>
     </div>
   )
 }
 
-// ── add-camera form (inline in sidebar) ─────────────────────────────────────
+// ── Camera Panel ──────────────────────────────────────────────────────────────
 
-const DEFAULTS = {
-  name: '',
-  lat: '',
-  lng: '',
-  altitudeM: '5',
-  yawDeg: '0',
-  pitchDeg: '30',
-  hFovDeg: '90',
+interface Props {
+  cameras: SimCamera[]
+  tracks: SimTrack[]
+  currentTime: number
+  selectedCamera: string | null
+  onSelectCamera: (id: string | null) => void
+  theme: Theme
 }
 
-function AddCameraForm({ onDone }: { onDone: () => void }) {
-  const addCamera = useCameraStore((s) => s.addCamera)
-  const setPendingClick = useMapStore((s) => s.setPendingClick)
-  const [form, setForm] = useState(DEFAULTS)
-  const [error, setError] = useState('')
-  const [pickingFromMap, setPickingFromMap] = useState(false)
+const THEME_VARS = {
+  light: { bg: '#0F172A', text: '#F1F5F9', sub: '#94A3B8', border: '#1E293B', hover: '#1E2A3B', selBg: '#1E3A5F' },
+  dark:  { bg: '#060C16', text: '#E2E8F0', sub: '#64748B', border: '#111827', hover: '#111D2E', selBg: '#0E2440' },
+  mono:  { bg: '#1A1D20', text: '#F0F0F0', sub: '#9CA3AF', border: '#272B30', hover: '#22262A', selBg: '#1E3040' },
+}
 
-  const set = (key: keyof typeof DEFAULTS) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [key]: e.target.value }))
-
-  const handlePickOnMap = () => {
-    setPickingFromMap(true)
-    setPendingClick((lat, lng) => {
-      setForm((f) => ({ ...f, lat: lat.toFixed(6), lng: lng.toFixed(6) }))
-      setPickingFromMap(false)
-    })
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const lat = parseFloat(form.lat)
-    const lng = parseFloat(form.lng)
-    if (!form.name.trim()) return setError('Name is required.')
-    if (isNaN(lat) || lat < -90 || lat > 90)
-      return setError('Latitude must be −90 to 90.')
-    if (isNaN(lng) || lng < -180 || lng > 180)
-      return setError('Longitude must be −180 to 180.')
-    addCamera({
-      name: form.name.trim(),
-      lat,
-      lng,
-      altitudeM: parseFloat(form.altitudeM) || 10,
-      yawDeg: parseFloat(form.yawDeg) || 0,
-      pitchDeg: parseFloat(form.pitchDeg) || -30,
-      hFovDeg: parseFloat(form.hFovDeg) || 90,
-    })
-    onDone()
-  }
+export default function Sidebar({ cameras, tracks, currentTime, selectedCamera, onSelectCamera, theme }: Props) {
+  const C = THEME_VARS[theme]
+  const totalActive   = cameras.filter(c => c.status === 'active').length
+  const totalDegraded = cameras.filter(c => c.status === 'degraded').length
+  const totalOffline  = cameras.filter(c => c.status === 'offline').length
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      {/* Name */}
-      <div className="flex flex-col gap-1">
-        <label className="font-mono text-[9px] text-[#484f58] tracking-[3px] uppercase">
-          Name
-        </label>
-        <input
-          className={inputCls}
-          placeholder="e.g. Roof NW"
-          value={form.name}
-          onChange={set('name')}
-          autoFocus
-        />
-      </div>
-
-      {/* Position */}
-      <div className="flex flex-col gap-1">
-        <label className="font-mono text-[9px] text-[#484f58] tracking-[3px] uppercase">
-          Position
-        </label>
-        <button
-          type="button"
-          onClick={handlePickOnMap}
-          className={`w-full font-mono text-[11px] px-3 py-1.5 border transition-colors ${
-            pickingFromMap
-              ? 'text-[#0d1117] bg-[#58a6ff] border-[#58a6ff]'
-              : 'text-[#58a6ff] border-[#58a6ff] hover:bg-[#58a6ff]/10'
-          }`}
-        >
-          {pickingFromMap ? '▶ Click on the map…' : '⊕ Pick on map'}
-        </button>
-        <div className="grid grid-cols-2 gap-2">
-          <input className={inputCls} placeholder="Lat" value={form.lat} onChange={set('lat')} />
-          <input className={inputCls} placeholder="Lng" value={form.lng} onChange={set('lng')} />
+    <div style={{ background: C.bg, color: C.text, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'IBM Plex Sans, sans-serif' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8, fontFamily: 'IBM Plex Mono, monospace' }}>
+          CAPTEURS
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {([
+            ['#10B981', totalActive,   'active',   String(totalActive)   + ' actifs'],
+            ['#F59E0B', totalDegraded, 'degraded', String(totalDegraded) + ' dégradé'],
+            ['#EF4444', totalOffline,  'offline',  String(totalOffline)  + ' hors ligne'],
+          ] as [string, number, string, string][]).map(([, , status, label]) => (
+            <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <StatusDot status={status} />
+              <span style={{ fontSize: 11, color: C.sub }}>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Altitude */}
-      <div className="flex flex-col gap-1">
-        <label className="font-mono text-[9px] text-[#484f58] tracking-[3px] uppercase">
-          Altitude <span className="normal-case tracking-normal text-[#3d444d]">m above ground</span>
-        </label>
-        <input className={inputCls} type="number" value={form.altitudeM} onChange={set('altitudeM')} />
+      {/* Camera list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
+        {cameras.map(cam => {
+          const isSel = selectedCamera === cam.id
+          const detectingTracks = tracks.filter(t => {
+            const pos = PAVOISSim.lerpPos(t.waypoints, currentTime)
+            return PAVOISSim.getDetectingCameras(pos).some(c => c.id === cam.id)
+          })
+          return (
+            <div
+              key={cam.id}
+              onClick={() => onSelectCamera(isSel ? null : cam.id)}
+              style={{
+                padding: '10px 16px', cursor: 'pointer',
+                borderLeft: isSel ? `3px solid ${cam.color}` : '3px solid transparent',
+                background: isSel ? C.selBg : 'transparent',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = isSel ? C.selBg : C.hover }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isSel ? C.selBg : 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <StatusDot status={cam.status} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: cam.status === 'offline' ? C.sub : C.text }}>{cam.id}</span>
+                <span style={{ fontSize: 11, color: C.sub, marginLeft: 'auto' }}>{cam.name}</span>
+                <div style={{ width: 8, height: 8, borderRadius: 1, background: cam.color, opacity: cam.status === 'offline' ? 0.3 : 0.9 }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 15 }}>
+                {cam.status === 'offline' && (
+                  <span style={{ fontSize: 10, color: '#EF4444', fontFamily: 'IBM Plex Mono, monospace', fontStyle: 'italic' }}>Signal perdu</span>
+                )}
+                {cam.status === 'degraded' && (
+                  <span style={{ fontSize: 10, color: '#F59E0B', fontFamily: 'IBM Plex Mono, monospace', fontStyle: 'italic' }}>Signal dégradé</span>
+                )}
+                {cam.status === 'active' && detectingTracks.length > 0 && (
+                  <span style={{ fontSize: 10, color: '#10B981', fontFamily: 'IBM Plex Mono, monospace' }}>
+                    ▸ {detectingTracks.length} contact{detectingTracks.length > 1 ? 's' : ''}
+                  </span>
+                )}
+                {cam.status === 'active' && detectingTracks.length === 0 && (
+                  <span style={{ fontSize: 10, color: C.sub, fontFamily: 'IBM Plex Mono, monospace' }}>En veille</span>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: C.sub, fontFamily: 'IBM Plex Mono, monospace' }}>{cam.fov}° FoV</span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      {/* Yaw / Pitch / H-FOV */}
-      <div className="grid grid-cols-3 gap-2">
-        {(
-          [
-            ['Yaw °', 'yawDeg'],
-            ['Pitch °', 'pitchDeg'],
-            ['H-FOV °', 'hFovDeg'],
-          ] as const
-        ).map(([lbl, key]) => (
-          <div key={key} className="flex flex-col gap-1">
-            <label className="font-mono text-[9px] text-[#484f58] tracking-[2px] uppercase">
-              {lbl}
-            </label>
-            <input className={inputCls} type="number" value={form[key]} onChange={set(key)} />
-          </div>
-        ))}
-      </div>
-
-      {error && <p className="font-mono text-[10px] text-red-400">{error}</p>}
-
-      {/* Actions */}
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onDone}
-          className="flex-1 font-mono text-[11px] text-[#8b949e] border border-[#30363d] px-3 py-1.5 hover:bg-[#21262d] transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="flex-1 font-mono text-[11px] text-[#0d1117] bg-[#58a6ff] border border-[#58a6ff] px-3 py-1.5 hover:bg-[#79b8ff] transition-colors"
-        >
-          Add
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ── sidebar ──────────────────────────────────────────────────────────────────
-
-export default function Sidebar() {
-  const [addingCamera, setAddingCamera] = useState(false)
-  const cameras = useCameraStore((s) => s.cameras)
-  const removeCamera = useCameraStore((s) => s.removeCamera)
-
-  return (
-    <div className="w-64 shrink-0 bg-[#161b22] border-r border-[#21262d] flex flex-col overflow-y-auto">
-
-      {/* ── Cameras section ── */}
-      <div className="flex flex-col gap-3 px-4 py-4 border-b border-[#21262d]">
-        <div className="flex items-center justify-between">
-          <SectionLabel label="Cameras" />
-          {cameras.length > 0 && !addingCamera && (
-            <span className="font-mono text-[9px] text-[#484f58]">
-              {cameras.length}
-            </span>
-          )}
+      {/* Track summary */}
+      <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8, fontFamily: 'IBM Plex Mono, monospace' }}>
+          PISTES ACTIVES
         </div>
-
-        {/* Camera list */}
-        {cameras.length > 0 && (
-          <div className="flex flex-col gap-1">
-            {cameras.map((cam) => (
-              <CameraRow
-                key={cam.id}
-                name={cam.name}
-                onRemove={() => removeCamera(cam.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Inline form or add button */}
-        {addingCamera ? (
-          <>
-            <Divider />
-            <AddCameraForm onDone={() => setAddingCamera(false)} />
-          </>
-        ) : (
-          <button
-            onClick={() => setAddingCamera(true)}
-            className="w-full font-mono text-[11px] text-[#58a6ff] border border-[#30363d] px-3 py-1.5 hover:bg-[#58a6ff]/10 hover:border-[#58a6ff] transition-colors text-left"
-          >
-            + Add Camera
-          </button>
-        )}
+        {tracks.map(t => {
+          const pos = PAVOISSim.lerpPos(t.waypoints, currentTime)
+          const cams = PAVOISSim.getDetectingCameras(pos)
+          const conf = PAVOISSim.getConfidence(cams)
+          return (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: C.text, flex: 1 }}>{t.id}</span>
+              <ConfidenceBadge value={conf} />
+            </div>
+          )
+        })}
       </div>
-
-      {/* ── Voxel Grid section ── */}
-      <div className="flex flex-col gap-3 px-4 py-4 border-b border-[#21262d]">
-        <SectionLabel label="Voxel Grid" />
-        <p className="font-mono text-[11px] text-[#484f58]">Not configured.</p>
-      </div>
-
-      {/* ── Coverage Metrics section ── */}
-      <div className="flex flex-col gap-3 px-4 py-4">
-        <SectionLabel label="Coverage Metrics" />
-        <p className="font-mono text-[11px] text-[#484f58]">
-          {cameras.length === 0
-            ? 'Add cameras to compute coverage.'
-            : `${cameras.length} camera${cameras.length > 1 ? 's' : ''} active`}
-        </p>
-      </div>
-
     </div>
   )
 }

@@ -16,7 +16,7 @@ La surveillance humaine atteint rapidement ses limites lorsqu’il faut suivre d
 - La charge cognitive réduit les performances de détection et augmente le risque d’erreurs.
 - Les fausses alertes peuvent ralentir la prise de décision et diminuer la confiance dans le système.
 
-Ces éléments montrent que la surveillance visuelle seule n’est pas suffisante pour détecter efficacement des objets rapides.
+Ces éléments montrent que la surveillance visuelle seule n’est pas suffisante pour détecter efficacement des objets rapides. Bien que les cas d'usage soient multiples (sport, surveillance), le projet PAVOIS se concentre en priorité sur la sécurité et la détection d'intrusions (ex : drones, projectiles) lors d'événements ou sur des sites sensibles.
 
 ### 1.2 Formulation détaillée de la problématique
 
@@ -70,7 +70,7 @@ La principale source de douleur se situe dans la détection et l’interprétati
 
 - Objets trop rapides pour être suivis visuellement
 - Taille réduite des objets
-- Conditions d’éclairage variables
+- Conditions d’éclairage variables et contraintes météorologiques (nuit, pluie, brouillard, reflets)
 - Présence de nombreux mouvements parasites
 - Difficulté à localiser précisément l’objet
 
@@ -85,6 +85,11 @@ La principale source de douleur se situe dans la détection et l’interprétati
 ### 3.3 Douleur principale
 
 Les opérateurs ne disposent pas d’une information fiable et immédiate sur la position et la trajectoire de l’objet, ce qui retarde la prise de décision.
+
+### 3.4 Contraintes légales et techniques (RGPD et Cybersécurité)
+
+- **Respect de la vie privée (RGPD) :** L'utilisation de caméras dans des espaces publics ou privés nécessite des mécanismes d'anonymisation (ex : floutage des visages) et une gestion stricte de la rétention des images.
+- **Cybersécurité :** Les flux vidéo et les données de localisation sont sensibles et doivent être chiffrés pour éviter toute interception ou altération.
 
 ---
 
@@ -110,6 +115,13 @@ Les financeurs attendent :
 - une réduction des fausses alertes ;
 - un retour sur investissement mesurable.
 
+### 4.3 Modèle économique envisagé
+
+La solution pourra être proposée selon différents modèles :
+- Vente de licences logicielles (pour les infrastructures disposant déjà de caméras compatibles)
+- SaaS (Software as a Service) par abonnement
+- Fourniture d'une solution clé en main (matériel spécifique + logiciel)
+
 ---
 
 ## 5. Enquêtes auprès des utilisateurs
@@ -122,7 +134,7 @@ Aucune enquête terrain formelle n’a encore été réalisée.
 
 Afin de mieux comprendre les besoins, il est recommandé de réaliser :
 
-- 8 à 15 entretiens semi-directifs ;
+- 8 à 15 entretiens semi-directifs (en ciblant en priorité les opérateurs de supervision et les responsables sécurité) ;
 - un questionnaire de 10 à 15 questions ;
 - un atelier de priorisation.
 
@@ -170,7 +182,7 @@ Les résultats doivent être faciles à interpréter.
 
 ### Priorité 5 : Simplicité de déploiement
 
-La solution doit être simple à installer et calibrer.
+La solution doit être simple à installer et calibrer. Dans la mesure du possible, elle devra s'adapter aux caméras de vidéosurveillance standards (CCTV) existantes pour limiter les coûts d'infrastructure.
 
 ### Priorité 6 : Interopérabilité
 
@@ -185,8 +197,9 @@ Le système doit s’intégrer aux infrastructures existantes.
 | Temps de détection | < 1 seconde |
 | Taux de détection | > 95 % |
 | Taux de faux positifs | < 5 % |
-| Précision de localisation | Conforme aux besoins opérationnels |
+| Précision de localisation | Marge d'erreur < 5% de la distance caméra-objet (ex: < 50 cm à 10 m) |
 | Disponibilité | > 99 % |
+| Résilience météo | Fonctionnement maintenu sous pluie/brouillard léger |
 
 ---
 

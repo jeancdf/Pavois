@@ -119,10 +119,8 @@ Les financeurs attendent :
 
 La solution pourra être proposée selon différents modèles :
 - Vente de licences logicielles (pour les infrastructures disposant déjà de caméras compatibles)
-- SaaS (Software as a Service) par abonnement
 - Fourniture d'une solution clé en main (matériel spécifique + logiciel)
 
----
 
 ## 5. Enquêtes auprès des utilisateurs
 

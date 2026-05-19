@@ -118,3 +118,27 @@ refreshed every `--voxel-viz-every 2` frames. For quality over speed:
 
 Legacy metadata remains a **JSON array** of frame objects. Optional wrapped
 form: `{ "frames": [...], "voxel_grid": { "N", "voxel_size", "grid_center" } }`.
+
+### Real-time multi-camera preview (DroidCam / phone streams)
+
+`realtime_multi_voxel_preview.py` accepts two or more repeated `--camera`
+entries. Each entry needs a video source plus measured pose in the shared world
+frame. DroidCam/IP webcam-style URLs can be passed directly to OpenCV:
+
+```powershell
+.\.venv\Scripts\python.exe realtime_multi_voxel_preview.py `
+  --camera "name=left,source=http://192.168.1.10:4747/video,x=0,y=0,z=1.5,yaw=0,pitch=90,roll=0,fov=60" `
+  --camera "name=right,source=http://192.168.1.11:4747/video,x=2,y=0,z=1.5,yaw=0,pitch=90,roll=0,fov=60" `
+  --grid-center 1 10 5 --voxel-size 0.35 --grid-n 64 --foreground
+```
+
+For a first tripod test, place the phones about 2 m apart, lenses at the same
+height, both facing the same direction. Keep `left` at `x=0` and set `right`
+to the measured baseline in meters. If DroidCam exposes the phones as Windows
+virtual webcams instead of URLs, use `source=0` and `source=1`.
+
+Validation without cameras:
+
+```powershell
+.\.venv\Scripts\python.exe realtime_multi_voxel_preview.py --self-test
+```

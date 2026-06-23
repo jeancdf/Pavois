@@ -89,6 +89,7 @@ class CameraRuntime:
     rays_px: int = 0
     rays_ok: int = 0
     scatter_samples: int = 0
+    is_live: bool = False
 
 
 class ThreadedCapture:
@@ -823,60 +824,410 @@ def shared_voxel_panel(
     return out
 
 
-def tile_previews(
+# ---------------------------------------------------------------------------
+# Debug dashboard (dark theme) + enriched 3D scene (point + camera rays).
+# All BGR colors (OpenCV order).
+# ---------------------------------------------------------------------------
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+COL_BG = (22, 19, 17)        # near-black background
+COL_PANEL = (40, 35, 31)     # card background
+COL_PANEL_HI = (54, 47, 41)  # header / lighter card
+COL_TEXT = (235, 235, 235)
+COL_MUTED = (150, 150, 150)
+COL_ACCENT = (210, 180, 70)  # teal accent
+COL_OK = (90, 210, 110)      # green
+COL_WARN = (60, 165, 245)    # orange
+COL_BAD = (70, 70, 235)      # red
+COL_RAY = (120, 230, 255)    # bright camera rays
+COL_OBJECT = (90, 110, 255)  # detected object marker
+
+# Crisp anti-aliased text via Pillow. OpenCV's Hershey font looks pixelated,
+# especially once the window is scaled; Pillow draws real TrueType glyphs.
+# Falls back to cv2.putText if Pillow is unavailable.
+try:
+    from PIL import Image as _PILImage, ImageDraw as _PILDraw, ImageFont as _PILFont
+    _HAS_PIL = True
+except Exception:
+    _HAS_PIL = False
+
+_FONT_REGULAR = [
+    r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+]
+_FONT_BOLD = [
+    r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+_FONT_CACHE: dict = {}
+
+
+def _font(size: int, bold: bool):
+    key = (size, bold)
+    f = _FONT_CACHE.get(key)
+    if f is None and _HAS_PIL:
+        for path in (_FONT_BOLD if bold else _FONT_REGULAR):
+            try:
+                f = _PILFont.truetype(path, size)
+                break
+            except Exception:
+                continue
+        if f is None:
+            f = _PILFont.load_default()
+        _FONT_CACHE[key] = f
+    return f
+
+
+@dataclass
+class Detection:
+    detected: bool
+    world: tuple[float, float, float] | None
+    n_agree: int
+    count: int
+    confidence: float
+    tentative: bool
+
+
+@dataclass
+class View3DState:
+    yaw: float
+    pitch: float
+    last_x: int = 0
+    last_y: int = 0
+    dragging: bool = False
+
+
+def make_mouse_handler(state: View3DState):
+    """Drag with the left button to orbit the 3D scene."""
+
+    def on_mouse(event: int, x: int, y: int, flags: int, _param: Any) -> None:
+        if event == cv2.EVENT_LBUTTONDOWN:
+            state.dragging = True
+            state.last_x, state.last_y = x, y
+        elif event == cv2.EVENT_MOUSEMOVE and state.dragging:
+            state.yaw += (x - state.last_x) * 0.5
+            state.pitch = float(
+                np.clip(state.pitch + (y - state.last_y) * 0.3, -89.0, 89.0)
+            )
+            state.last_x, state.last_y = x, y
+        elif event == cv2.EVENT_LBUTTONUP:
+            state.dragging = False
+
+    return on_mouse
+
+
+def project_norm(
+    norm_xyz: np.ndarray, yaw_deg: float, pitch_deg: float, width: int, height: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Project points in the normalized [-1,1] grid cube to screen pixels.
+
+    Same weak-perspective camera for voxels, cameras and the detected point so
+    everything lines up in one view.
+    """
+    pts = np.asarray(norm_xyz, dtype=np.float32).reshape(-1, 3)
+    yaw = math.radians(yaw_deg)
+    pitch = math.radians(pitch_deg)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    rz = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
+    rx = np.array([[1.0, 0.0, 0.0], [0.0, cp, -sp], [0.0, sp, cp]], dtype=np.float32)
+    rot = rz @ rx
+    p = pts @ rot.T
+    depth = p[:, 1] + 3.0
+    perspective = 1.6 / np.maximum(0.6, depth)
+    sx = (p[:, 0] * perspective * 0.42 + 0.5) * width
+    sy2 = (0.5 - p[:, 2] * perspective * 0.42) * height
+    return sx, sy2, depth
+
+
+def compute_detection(
+    support_flat: torch.Tensor,
+    voxel_flat: torch.Tensor,
+    grid_n: int,
+    gmin_np: np.ndarray,
+    voxel_size: float,
+    min_cameras: int,
+) -> Detection:
+    """Reduce the lit voxels to a single object position (intensity-weighted centroid)."""
+    with torch.inference_mode():
+        support = support_flat.reshape(-1)
+        idx = torch.nonzero(support >= min_cameras, as_tuple=False).flatten()
+        tentative = False
+        if idx.numel() == 0:
+            vmax = float(voxel_flat.max().item())
+            if vmax <= 1e-6:
+                return Detection(False, None, 0, 0, 0.0, False)
+            top = torch.topk(voxel_flat, min(64, voxel_flat.numel())).indices
+            idx = top[voxel_flat[top] >= vmax * 0.6]
+            tentative = True
+        ix = (idx // (grid_n * grid_n)).float()
+        iy = ((idx // grid_n) % grid_n).float()
+        iz = (idx % grid_n).float()
+        w = voxel_flat[idx].float()
+        if float(w.sum().item()) <= 1e-6:
+            w = torch.ones_like(w)
+        wsum = w.sum()
+        cx = float((ix * w).sum() / wsum)
+        cy = float((iy * w).sum() / wsum)
+        cz = float((iz * w).sum() / wsum)
+        n_agree = 1 if tentative else int(support[idx].max().item())
+        count = int(idx.numel())
+    world = (
+        float(gmin_np[0] + cx * voxel_size),
+        float(gmin_np[1] + cy * voxel_size),
+        float(gmin_np[2] + cz * voxel_size),
+    )
+    if tentative:
+        confidence = 0.25
+    else:
+        cam_term = min(1.0, (n_agree - 1) / max(1, min_cameras))
+        size_term = min(1.0, count / 25.0)
+        confidence = max(0.1, 0.55 * cam_term + 0.45 * size_term)
+    return Detection(True, world, n_agree, count, float(confidence), tentative)
+
+
+def scene3d_panel(
+    support_flat: torch.Tensor,
+    voxel_flat: torch.Tensor,
+    grid_n: int,
+    gmin_np: np.ndarray,
+    gmax_np: np.ndarray,
+    voxel_size: float,
+    cam_positions: list[np.ndarray],
+    cam_names: list[str],
+    detection: Detection,
+    yaw: float,
+    pitch: float,
+    width: int,
+    height: int,
+    min_cameras: int,
+    max_points: int,
+) -> np.ndarray:
+    img = np.full((height, width, 3), COL_BG, dtype=np.uint8)
+    span = np.asarray(gmax_np, np.float32) - np.asarray(gmin_np, np.float32)
+    span = np.where(np.abs(span) < 1e-6, 1.0, span).astype(np.float32)
+
+    def to_norm(world_xyz: np.ndarray) -> np.ndarray:
+        return (np.asarray(world_xyz, np.float32) - gmin_np) / span * 2.0 - 1.0
+
+    # Bounding cube for orientation.
+    corners = np.array(
+        [[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)],
+        dtype=np.float32,
+    )
+    csx, csy, _ = project_norm(corners, yaw, pitch, width, height)
+    edges = [
+        (0, 1), (0, 2), (0, 4), (3, 1), (3, 2), (3, 7),
+        (5, 1), (5, 4), (5, 7), (6, 2), (6, 4), (6, 7),
+    ]
+    for a, b in edges:
+        cv2.line(img, (int(csx[a]), int(csy[a])), (int(csx[b]), int(csy[b])),
+                 (60, 54, 48), 1, cv2.LINE_AA)
+
+    # Shared voxel cloud (where cameras agree).
+    with torch.inference_mode():
+        support = support_flat.reshape(-1)
+        vidx = torch.nonzero(support >= min_cameras, as_tuple=False).flatten()
+        if vidx.numel() == 0:
+            vmax = float(voxel_flat.max().item())
+            if vmax > 1e-6:
+                vidx = torch.nonzero(
+                    voxel_flat >= vmax * 0.25, as_tuple=False
+                ).flatten()
+        if vidx.numel() > max_points:
+            vidx = vidx[torch.topk(voxel_flat[vidx], max_points).indices]
+        vidx_np = vidx.detach().cpu().numpy()
+    if vidx_np.size:
+        ix = vidx_np // (grid_n * grid_n)
+        iy = (vidx_np // grid_n) % grid_n
+        iz = vidx_np % grid_n
+        world = np.stack(
+            [
+                gmin_np[0] + ix * voxel_size,
+                gmin_np[1] + iy * voxel_size,
+                gmin_np[2] + iz * voxel_size,
+            ],
+            axis=1,
+        )
+        sx, sy, depth = project_norm(to_norm(world), yaw, pitch, width, height)
+        for i in np.argsort(depth)[::-1]:
+            x, y = int(sx[i]), int(sy[i])
+            if 0 <= x < width and 0 <= y < height:
+                cv2.circle(img, (x, y), 2, (150, 130, 60), -1, cv2.LINE_AA)
+
+    # Detected point + one ray per camera.
+    if detection.detected and detection.world is not None:
+        ox, oy, _ = project_norm(
+            to_norm(np.array(detection.world, np.float32))[None, :],
+            yaw, pitch, width, height,
+        )
+        opx = (int(ox[0]), int(oy[0]))
+        for pos in cam_positions:
+            cxp, cyp, _ = project_norm(to_norm(pos)[None, :], yaw, pitch, width, height)
+            cv2.line(img, (int(cxp[0]), int(cyp[0])), opx, COL_RAY, 1, cv2.LINE_AA)
+        col = COL_WARN if detection.tentative else COL_OBJECT
+        cv2.circle(img, opx, 9, tuple(c // 3 for c in col), -1, cv2.LINE_AA)
+        cv2.circle(img, opx, 5, col, -1, cv2.LINE_AA)
+        cv2.circle(img, opx, 9, col, 1, cv2.LINE_AA)
+        x, y, z = detection.world
+        _draw_text(img, f"x={x:.1f} y={y:.1f} z={z:.1f} m",
+                   (max(6, opx[0] + 12), max(18, opx[1] - 10)), 0.5, COL_TEXT, 1)
+
+    # Camera markers.
+    for pos, name in zip(cam_positions, cam_names):
+        cxp, cyp, _ = project_norm(to_norm(pos)[None, :], yaw, pitch, width, height)
+        cx = int(np.clip(cxp[0], 6, width - 6))
+        cy = int(np.clip(cyp[0], 6, height - 6))
+        cv2.rectangle(img, (cx - 5, cy - 5), (cx + 5, cy + 5), COL_ACCENT, -1)
+        _draw_text(img, name, (cx + 9, cy + 5), 0.45, COL_ACCENT, 1)
+
+    _draw_text(img, "VUE 3D - glisser pour tourner", (12, 22), 0.5, COL_MUTED, 1)
+    return img
+
+
+def _draw_text(img: np.ndarray, text: str, org: tuple[int, int],
+               scale: float = 0.5, color: tuple = COL_TEXT, thick: int = 1) -> None:
+    """Draw crisp anti-aliased text. `org` is a left/baseline anchor (like cv2)."""
+    if not _HAS_PIL:
+        cv2.putText(img, text, org, FONT, scale, color, thick, cv2.LINE_AA)
+        return
+    size = max(11, int(round(scale * 30)))
+    fill = (int(color[0]), int(color[1]), int(color[2]))  # BGR bytes, written positionally
+    pim = _PILImage.fromarray(img)
+    draw = _PILDraw.Draw(pim)
+    try:
+        draw.text((int(org[0]), int(org[1])), text, font=_font(size, thick >= 2),
+                  fill=fill, anchor="ls")
+    except Exception:
+        draw.text((int(org[0]), int(org[1]) - size), text,
+                  font=_font(size, thick >= 2), fill=fill)
+    img[:, :, :] = np.asarray(pim)
+
+
+def _status_dot(img: np.ndarray, x: int, y: int, ok: bool) -> None:
+    cv2.circle(img, (x, y), 6, COL_OK if ok else COL_BAD, -1, cv2.LINE_AA)
+
+
+def _confidence_gauge(img: np.ndarray, x: int, y: int, conf: float, slots: int = 4) -> None:
+    filled = int(round(float(np.clip(conf, 0.0, 1.0)) * slots))
+    for i in range(slots):
+        cv2.circle(img, (x + i * 16, y), 5,
+                   COL_OK if i < filled else (70, 70, 70), -1, cv2.LINE_AA)
+
+
+def build_hints(
+    cameras: list[CameraRuntime], detection: Detection, min_cameras: int
+) -> list[str]:
+    offline = [c.cfg.name for c in cameras if not getattr(c, "is_live", False)]
+    moving = [c for c in cameras if c.motion_px > 0]
+    if offline:
+        return [f"camera {', '.join(offline)} : pas de flux, verifie l'URL / le Wi-Fi"]
+    if detection.detected and not detection.tentative:
+        return [f"OK : objet detecte, {detection.n_agree} cameras d'accord"]
+    if len(moving) == 0:
+        return ["aucun mouvement : bouge un objet devant les cameras"]
+    if len(moving) == 1:
+        return [f"seule {moving[0].cfg.name} voit du mouvement : oriente l'autre camera"]
+    if not detection.detected:
+        return ["les cameras ne se croisent pas : verifie position x/y/z et FOV"]
+    return ["signal faible (1 camera) : pas encore de croisement net"]
+
+
+def render_dashboard(
     cameras: list[CameraRuntime],
-    panel: np.ndarray | None,
-    shared_panel: np.ndarray,
+    scene_img: np.ndarray,
+    detection: Detection,
+    fps: float,
+    device_type: str,
+    hints: list[str],
+    grid_n: int,
+    voxel_size: float,
     preview_width: int,
 ) -> np.ndarray:
-    previews: list[np.ndarray] = []
+    pad = 10
+    title_h = 36
+    det_h = 88
+    scene_h, scene_w = scene_img.shape[:2]
+
+    pane_imgs: list[np.ndarray] = []
     for cam in cameras:
         if cam.last_overlay is None:
-            continue
-        img = cam.last_overlay.copy()
-        cv2.putText(
-            img,
-            f"{cam.cfg.name}  motion {cam.motion_px}  rays {cam.rays_px}/{cam.rays_ok}",
-            (8, 24),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
-            1,
-            cv2.LINE_AA,
+            pane = np.full((180, preview_width, 3), COL_PANEL, dtype=np.uint8)
+        else:
+            ov = cam.last_overlay
+            scale = preview_width / max(1, ov.shape[1])
+            pane = cv2.resize(ov, (preview_width, max(1, int(ov.shape[0] * scale))))
+        header = np.full((30, preview_width, 3), COL_BG, dtype=np.uint8)
+        live = bool(getattr(cam, "is_live", False))
+        _status_dot(header, 14, 15, live)
+        _draw_text(header, cam.cfg.name, (28, 20), 0.55, COL_TEXT, 1)
+        _draw_text(header, f"{'live' if live else 'hors-ligne'} | {fps:4.1f} fps | "
+                   f"mouvement {cam.motion_px} px", (120, 20), 0.42,
+                   COL_OK if live else COL_MUTED, 1)
+        pane_imgs.append(
+            cv2.copyMakeBorder(np.vstack([header, pane]), 0, 8, 0, 0,
+                               cv2.BORDER_CONSTANT, value=COL_BG)
         )
-        target_w = preview_width
-        scale = target_w / max(1, img.shape[1])
-        previews.append(
-            cv2.resize(img, (target_w, max(1, int(img.shape[0] * scale))))
-        )
-    if not previews:
-        left = np.zeros((320, preview_width, 3), dtype=np.uint8)
+
+    if pane_imgs:
+        col_w = max(p.shape[1] for p in pane_imgs)
+        pane_imgs = [
+            cv2.copyMakeBorder(p, 0, 0, 0, col_w - p.shape[1], cv2.BORDER_CONSTANT,
+                               value=COL_BG)
+            if p.shape[1] < col_w else p
+            for p in pane_imgs
+        ]
+        left_col = np.vstack(pane_imgs)
     else:
-        row_w = max(p.shape[1] for p in previews)
-        padded = []
-        for p in previews:
-            if p.shape[1] < row_w:
-                p = cv2.copyMakeBorder(
-                    p, 0, 0, 0, row_w - p.shape[1], cv2.BORDER_CONSTANT, value=0
-                )
-            padded.append(p)
-        left = np.vstack(padded)
+        left_col = np.full((scene_h, preview_width, 3), COL_BG, dtype=np.uint8)
 
-    target_h = left.shape[0]
-    shared_scale = target_h / max(1, shared_panel.shape[0])
-    shared = cv2.resize(
-        shared_panel,
-        (max(260, int(shared_panel.shape[1] * shared_scale)), target_h),
-        interpolation=cv2.INTER_NEAREST,
-    )
+    content_h = max(left_col.shape[0], scene_h)
+    if left_col.shape[0] < content_h:
+        left_col = cv2.copyMakeBorder(left_col, 0, content_h - left_col.shape[0], 0, 0,
+                                      cv2.BORDER_CONSTANT, value=COL_BG)
+    scene_pad = scene_img
+    if scene_h < content_h:
+        scene_pad = cv2.copyMakeBorder(scene_img, 0, content_h - scene_h, 0, 0,
+                                       cv2.BORDER_CONSTANT, value=COL_BG)
 
-    panes = [left, shared]
-    if panel is not None:
-        panel_h = target_h
-        scale = panel_h / max(1, panel.shape[0])
-        right = cv2.resize(panel, (max(260, int(panel.shape[1] * scale)), panel_h))
-        panes.append(right)
-    return np.hstack(panes)
+    body = np.hstack([
+        left_col,
+        np.full((content_h, pad, 3), COL_BG, dtype=np.uint8),
+        scene_pad,
+    ])
+    total_w = body.shape[1]
+
+    title = np.full((title_h, total_w, 3), COL_PANEL_HI, dtype=np.uint8)
+    cv2.rectangle(title, (0, 0), (6, title_h), COL_ACCENT, -1)
+    _draw_text(title, "PAVOIS - debug temps reel", (16, 24), 0.62, COL_TEXT, 1)
+    _draw_text(title, f"{fps:4.1f} fps | {device_type} | grille N={grid_n} vox={voxel_size}m",
+               (max(16, total_w - 360), 24), 0.45, COL_MUTED, 1)
+
+    det = np.full((det_h, total_w, 3), COL_PANEL, dtype=np.uint8)
+    cv2.rectangle(det, (0, 0), (6, det_h), COL_ACCENT, -1)
+    if detection.detected:
+        mark = "OBJET DETECTE"
+        mcol = COL_WARN if detection.tentative else COL_OK
+    else:
+        mark, mcol = "AUCUN OBJET", COL_MUTED
+    _draw_text(det, mark, (16, 28), 0.6, mcol, 2)
+    if detection.detected and detection.world is not None:
+        x, y, z = detection.world
+        _draw_text(det, f"position   x={x:.1f}   y={y:.1f}   z={z:.1f}  m",
+                   (16, 54), 0.5, COL_TEXT, 1)
+        _draw_text(det, f"cameras d'accord : {detection.n_agree}   "
+                   f"({detection.count} voxels)", (16, 76), 0.45, COL_MUTED, 1)
+        _draw_text(det, "confiance", (max(16, total_w - 360), 26), 0.45, COL_MUTED, 1)
+        _confidence_gauge(det, max(110, total_w - 270), 22, detection.confidence)
+    if hints:
+        _draw_text(det, hints[0], (max(16, total_w - 360), 56), 0.42, COL_WARN, 1)
+
+    return np.vstack([
+        title,
+        np.full((pad, total_w, 3), COL_BG, dtype=np.uint8),
+        body,
+        np.full((pad, total_w, 3), COL_BG, dtype=np.uint8),
+        det,
+    ])
 
 
 def run_self_test(args: argparse.Namespace) -> None:
@@ -937,6 +1288,46 @@ def run_self_test(args: argparse.Namespace) -> None:
         f"device={dev.type} peak={peak_val:.1f} "
         f"voxel=({ix},{iy},{iz}) world=({world[0]:.2f},{world[1]:.2f},{world[2]:.2f})"
     )
+
+    if args.headless:
+        return
+
+    # Visual self-test: show the dashboard with a synthetic detection so the 3D
+    # view can be checked (and rotated) without any camera.
+    min_cams = max(2, args.shared_min_cameras)
+    support_t = torch.zeros_like(vox, dtype=torch.uint8)
+    support_t[vox >= max(1e-6, 0.5 * peak_val)] = min_cams
+    detection = compute_detection(support_t, vox, n, (gc - half).astype(np.float32), vs, min_cams)
+    cam_positions = [np.array([c.x, c.y, c.z], np.float32) for c in cfgs]
+    cam_names = [c.name for c in cfgs]
+    placeholder = np.full((240, 320, 3), COL_PANEL, dtype=np.uint8)
+    _draw_text(placeholder, "flux synthetique", (24, 124), 0.6, COL_MUTED, 1)
+    for cam in cams:
+        cam.last_overlay = placeholder.copy()
+        cam.is_live = True
+        cam.motion_px = 120
+    view_state = View3DState(yaw=float(args.view3d_yaw), pitch=float(args.view3d_pitch))
+    cv2.namedWindow("pavois multi", cv2.WINDOW_NORMAL)
+    cv2.setMouseCallback("pavois multi", make_mouse_handler(view_state))
+    print("Self-test visuel : glisser pour tourner, 'q' pour quitter.")
+    try:
+        while True:
+            scene_img = scene3d_panel(
+                support_t, vox, n, (gc - half).astype(np.float32),
+                (gc + half).astype(np.float32), vs, cam_positions, cam_names,
+                detection, view_state.yaw, view_state.pitch,
+                args.view3d_width, args.view3d_height, min_cams, args.view3d_max_points,
+            )
+            hints = build_hints(cams, detection, min_cams)
+            combo = render_dashboard(
+                cams, scene_img, detection, 0.0, dev.type, hints,
+                n, vs, min(420, max(240, args.preview_width)),
+            )
+            cv2.imshow("pavois multi", combo)
+            if cv2.waitKey(30) & 0xFF == ord("q"):
+                break
+    finally:
+        cv2.destroyAllWindows()
 
 
 def main() -> None:
@@ -1077,13 +1468,16 @@ def main() -> None:
         half = 0.5 * n * vs
         gmin_t = torch.tensor(gc - half, device=dev, dtype=torch.float32)
         gmax_t = torch.tensor(gc + half, device=dev, dtype=torch.float32)
+        grid_min_np = (gc - half).astype(np.float32)
+        grid_max_np = (gc + half).astype(np.float32)
+        min_cams = max(2, args.shared_min_cameras)
         voxel_flat = torch.zeros(n * n * n, device=dev, dtype=torch.float32)
         rng = np.random.default_rng()
-        panel = np.zeros((args.view3d_height, args.view3d_width, 3), dtype=np.uint8)
-        shared_panel = np.zeros((args.view3d_height, args.view3d_width, 3), dtype=np.uint8)
 
+        view_state = View3DState(yaw=float(args.view3d_yaw), pitch=float(args.view3d_pitch))
         if not args.headless:
             cv2.namedWindow("pavois multi", cv2.WINDOW_NORMAL)
+            cv2.setMouseCallback("pavois multi", make_mouse_handler(view_state))
 
         frame_i = 0
         last_fps_t = time.perf_counter()
@@ -1099,6 +1493,7 @@ def main() -> None:
             for cam in cameras:
                 assert cam.cap is not None
                 bgr, ts = cam.cap.latest()
+                cam.is_live = bgr is not None
                 if bgr is None:
                     continue
                 active += 1
@@ -1135,62 +1530,34 @@ def main() -> None:
                 continue
 
             frame_i += 1
-            if args.show_heatmap and frame_i % max(1, args.voxel_viz_every) == 0:
-                if args.voxel_view == "3d":
-                    panel = voxel_points_3d_panel(
-                        voxel_flat,
-                        n,
-                        "voxel heat 3d",
-                        args.view3d_width,
-                        args.view3d_height,
-                        args.view3d_yaw,
-                        args.view3d_pitch,
-                        args.view3d_max_points,
-                        0.0,
-                        binary=False,
-                    )
-                else:
-                    panel = voxel_panel(voxel_flat, n)
-            shared_panel = shared_voxel_panel(
-                support_flat,
-                n,
-                max(2, args.shared_min_cameras),
-                args.shared_view,
-                args.view3d_width,
-                args.view3d_height,
-                args.view3d_yaw,
-                args.view3d_pitch,
-                args.view3d_max_points,
-            )
-            combo = tile_previews(
-                cameras,
-                panel if args.show_heatmap else None,
-                shared_panel,
-                max(240, args.preview_width),
-            )
-            if not args.no_hud:
-                total_motion = sum(c.motion_px for c in cameras)
-                total_rays = sum(c.rays_px for c in cameras)
-                total_ok = sum(c.rays_ok for c in cameras)
-                total_scatter = sum(c.scatter_samples for c in cameras)
-                vox_max = float(voxel_flat.max().item())
-                draw_stats_hud(
-                    combo,
-                    [
-                        f"frame {frame_i} | fps {fps:5.1f} | cams {active}/{len(cameras)} | {dev.type}",
-                        f"motion px {total_motion} | rays {total_rays}/{total_ok} | scatter {total_scatter}",
-                        f"vox_max {vox_max:.1f} | grid N={n} vox={vs}m | decay {args.decay}",
-                        f"motion thr {args.motion} scale {args.motion_scale} stride {args.motion_stride}",
-                    ],
-                )
             if frame_i % 15 == 0:
                 now = time.perf_counter()
                 fps = 15.0 / max(1e-6, now - last_fps_t)
                 last_fps_t = now
-                if not args.headless:
-                    cv2.setWindowTitle("pavois multi", f"pavois multi | {fps:.1f} fps | {dev.type}")
+
+            detection = compute_detection(
+                support_flat, voxel_flat, n, grid_min_np, vs, min_cams
+            )
+            cam_positions = [
+                cam.cam_t[0].detach().cpu().numpy()
+                for cam in cameras
+                if cam.cam_t is not None
+            ]
+            cam_names = [cam.cfg.name for cam in cameras if cam.cam_t is not None]
+            scene_img = scene3d_panel(
+                support_flat, voxel_flat, n, grid_min_np, grid_max_np, vs,
+                cam_positions, cam_names, detection,
+                view_state.yaw, view_state.pitch,
+                args.view3d_width, args.view3d_height, min_cams, args.view3d_max_points,
+            )
+            hints = build_hints(cameras, detection, min_cams)
+            combo = render_dashboard(
+                cameras, scene_img, detection, fps, dev.type, hints,
+                n, vs, min(420, max(240, args.preview_width)),
+            )
 
             if not args.headless:
+                cv2.setWindowTitle("pavois multi", f"PAVOIS | {fps:.1f} fps | {dev.type}")
                 cv2.imshow("pavois multi", combo)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break

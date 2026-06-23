@@ -230,7 +230,7 @@ def main() -> None:
     ap.add_argument(
         "--motion-min-area",
         type=int,
-        default=32,
+        default=2,
         help="Drop connected blobs smaller than this (pixels); 0=off.",
     )
     ap.add_argument(

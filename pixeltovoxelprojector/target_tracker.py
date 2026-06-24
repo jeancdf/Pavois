@@ -26,13 +26,16 @@ from dataclasses import dataclass
 
 @dataclass
 class TrackerConfig:
-    gate_radius: float = 40.0     # association gate for a fresh track (velocity unknown)
-    gate_track: float = 14.0      # base gate once velocity is established...
-    gate_speed_k: float = 2.0     # ...widened by this * speed (fast movers need a wider gate)
-    gate_max: float = 140.0       # cap on the established gate
-    confirm_hits: int = 3         # need this many hits...
-    confirm_window: int = 5       # ...within the last N updates (M-of-N)
-    confirm_travel: float = 6.0   # ...this much net displacement (rejects in-place flicker)...
+    # Defaults are tuned STRICT for the mission (a slow, distant target on an
+    # ~empty sky): they reject noise/clutter and keep false positives near zero.
+    # The fast/close-object profiles (e.g. indoor-fast) widen these explicitly.
+    gate_radius: float = 18.0     # association gate for a fresh track (velocity unknown)
+    gate_track: float = 10.0      # base gate once velocity is established...
+    gate_speed_k: float = 0.0     # ...widened by this * speed (raise for fast movers)
+    gate_max: float = 20.0        # cap on the established gate
+    confirm_hits: int = 4         # need this many hits...
+    confirm_window: int = 6       # ...within the last N updates (M-of-N)
+    confirm_travel: float = 12.0  # ...this much net displacement (rejects in-place flicker)...
     confirm_resid: float = 6.0    # ...this small an avg residual (rejects erratic clutter)...
     confirm_straight: float = 0.5 # ...and net_disp >= this * path_length (rejects wandering)
     max_coast: int = 8            # delete after this many consecutive misses

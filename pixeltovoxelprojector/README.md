@@ -84,9 +84,11 @@ Indoor test with a nearby object moving by more than 40 pixels per frame:
 
 `python realtime_small_target_preview.py --device 0 --backend DSHOW --profile indoor-fast`
 
-The default `--profile distant-target` keeps the original distant aircraft/drone
-settings. Explicit options such as `--gate-radius`, `--confirm-hits`,
-`--tophat-scales`, or `--gaussian` override the selected profile.
+The default `--profile distant-target` is tuned STRICT for the mission (a slow,
+distant target on an ~empty sky): the small `9`-pixel top-hat scale and a strict
+tracker, so false positives stay near zero. Explicit options such as
+`--gate-radius`, `--confirm-hits`, `--tophat-scales`, or `--gaussian` override
+the selected profile.
 For a very small aircraft on blue sky, use `--profile very-distant-aircraft`.
 It computes only the dark 9-pixel top-hat scale, hides the response panel,
 tentative tracks and trails, and displays up to twelve confirmed targets. It
@@ -108,17 +110,20 @@ Live keys: `q` quit, `+` / `-` sensitivity, `p` cycle polarity
 (both/bright/dark), `b` toggle the slow-background brick (turn it **off** for a
 handheld / moving camera).
 
-Detector flags: `--polarity {both,bright,dark}`, `--tophat-scales 9,31`
-(multi-scale highlighter — keeps the max response over several kernel sizes so
-tiny *and* bigger objects pop without tuning; add a bigger scale e.g.
-`--tophat-scales 9,31,61` for objects held close to the camera; `--tophat N`
-forces a single size), `--thresh-sigma 6` (threshold = median + k·MAD),
-`--min-area` / `--max-area` (`--max-area 0` = no upper size limit, the default),
+Detector flags: `--polarity {both,bright,dark}`, `--tophat-scales 9` (highlighter
+size — the mission default is the **small** scale only, because a distant target
+is only a few pixels and bigger scales also light up cloud/background structure
+= more false positives; add bigger scales e.g. `--tophat-scales 9,31` for
+close/large test objects, or use `--profile indoor-fast`; `--tophat N` forces a
+single size), `--thresh-sigma 6` (threshold = median + k·MAD), `--min-area` /
+`--max-area` (`--max-area 0` = no upper size limit, the default),
 `--no-background`, `--source clip.mp4` (replay a recorded sky video).
 
-Tracker flags: `--confirm-hits 3` / `--confirm-window 5` (M-of-N persistence),
-`--min-travel 6` (min displacement to confirm — rejects in-place flicker),
-`--gate-radius 30` / `--gate-track 14` (association gates), `--max-coast 8`.
+Tracker flags (mission defaults are STRICT to keep false positives near zero):
+`--confirm-hits 4` / `--confirm-window 6` (M-of-N persistence), `--min-travel 12`
+(min displacement to confirm — rejects in-place flicker), `--gate-radius 18` /
+`--gate-track 10` / `--gate-speed-k 0` (association gates), `--max-coast 8`. The
+`indoor-fast` profile widens these for fast, nearby objects.
 
 Validate without a camera:
 

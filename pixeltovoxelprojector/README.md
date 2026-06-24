@@ -61,6 +61,72 @@ Use `--pitch` / `--grid-center` / `--voxel-size` on the capture script if the
 default volume does not intersect your rays (e.g. pointing at the sky from a
 window).
 
+### Phase 1 + 2: small-target detection & tracking (distant drone)
+
+`small_target_detector.py` + `target_tracker.py` + `realtime_small_target_preview.py`
+are the new detection/tracking core (see `documentation/plan-detection-drones.md`).
+Unlike the voxel previews below, they do **not** use PyTorch.
+
+- **Phase 1 (detect):** *hunt* for faint, tiny spots (a distant drone) instead
+  of deleting small blobs the way `--motion-min-area` does. Three bricks: a slow
+  background model, a **multi-scale** top-hat highlighter (bright **and** dark
+  targets, any object size), and a sub-pixel centroid.
+- **Phase 2 (track):** link detections over time into tracks. A track is only
+  **confirmed** once it persists *and* moves coherently — so a flickering wire
+  (shimmers in place) and random speckle are filtered out, while a real mover
+  becomes a stable marker.
+
+Single camera (no GPU needed):
+
+`python realtime_small_target_preview.py --device 0`
+
+Indoor test with a nearby object moving by more than 40 pixels per frame:
+
+`python realtime_small_target_preview.py --device 0 --backend DSHOW --profile indoor-fast`
+
+The default `--profile distant-target` keeps the original distant aircraft/drone
+settings. Explicit options such as `--gate-radius`, `--confirm-hits`,
+`--tophat-scales`, or `--gaussian` override the selected profile.
+For a very small aircraft on blue sky, use `--profile very-distant-aircraft`.
+It computes only the dark 9-pixel top-hat scale, hides the response panel,
+tentative tracks and trails, and displays up to twelve confirmed targets. It
+accepts one-pixel particles and draws fixed-length direction arrows, independent
+of target speed. Its wider association gate handles fast particles, while a
+confirmed aircraft marker can coast for 30 missed frames to avoid flicker. When
+the aircraft joins its contrail into one elongated component, the detector
+tracks only the compact strongest point instead of the trail centroid.
+`indoor-fast` uses cheap frame differencing instead of the multi-scale top-hat
+and refreshes the response panel every five frames. Tune it with `+` / `-`, or
+use `--motion-threshold`, `--motion-min-area`, and `--heatmap-every 0`.
+
+Left pane: live image. **Confirmed** tracks show a solid marker + a velocity
+arrow + a trail + id; **tentative** (not-yet-confirmed) tracks show a small grey
+dot (hide them with `--no-tentative`). Right pane: the top-hat response heatmap,
+to tune the threshold by eye.
+
+Live keys: `q` quit, `+` / `-` sensitivity, `p` cycle polarity
+(both/bright/dark), `b` toggle the slow-background brick (turn it **off** for a
+handheld / moving camera).
+
+Detector flags: `--polarity {both,bright,dark}`, `--tophat-scales 9,31`
+(multi-scale highlighter — keeps the max response over several kernel sizes so
+tiny *and* bigger objects pop without tuning; add a bigger scale e.g.
+`--tophat-scales 9,31,61` for objects held close to the camera; `--tophat N`
+forces a single size), `--thresh-sigma 6` (threshold = median + k·MAD),
+`--min-area` / `--max-area` (`--max-area 0` = no upper size limit, the default),
+`--no-background`, `--source clip.mp4` (replay a recorded sky video).
+
+Tracker flags: `--confirm-hits 3` / `--confirm-window 5` (M-of-N persistence),
+`--min-travel 6` (min displacement to confirm — rejects in-place flicker),
+`--gate-radius 30` / `--gate-track 14` (association gates), `--max-coast 8`.
+
+Validate without a camera:
+
+`python realtime_small_target_preview.py --self-test`  → prints
+`SMALL_TARGET_SELF_TEST_OK` (detector sub-pixel accuracy + tracker confirms a
+mover + rejects noise). The tracker also self-tests on its own:
+`python target_tracker.py` → `TRACKER_SELF_TEST_OK`.
+
 ### Real-time preview (camera + voxel projections)
 
 Uses **PyTorch**; uses **CUDA** automatically if a GPU build is installed.

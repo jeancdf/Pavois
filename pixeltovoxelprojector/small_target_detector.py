@@ -47,6 +47,16 @@ class SmallTargetConfig:
     max_area: int = 0               # 0 = no upper limit; set >0 to keep only tiny targets
     max_bbox_size: int = 0          # 0 = no limit; reject elongated clutter
     large_blob_peak: bool = False   # reduce elongated blobs to their strongest point
+    # Motion gate (FIXED camera): the single principled clutter filter. A contrail
+    # / cloud / fixed object is STATIC, so once seen it becomes background; a real
+    # flying target (aircraft, fast particle) MOVES, so it stays foreground. We
+    # keep only detections that coincide with moving foreground (OpenCV MOG2
+    # background subtraction). This replaces the old collinear / persistence / tip
+    # heuristics with one standard "detect movers on a fixed camera" mechanism.
+    motion_gate: bool = True
+    motion_history: int = 120       # frames of background memory (static clutter absorbed over ~this)
+    motion_var_threshold: float = 16.0  # MOG2 sensitivity (lower = more foreground)
+    motion_dilate: int = 6          # tolerance (px) matching a detection to the foreground mask
     max_targets: int = 30           # cap returned detections (strongest first)
     warmup_frames: int = 10         # build the background before detecting
 
@@ -161,6 +171,17 @@ class SmallTargetDetector:
 
     def reset(self) -> None:
         self.bg: np.ndarray | None = None
+        self._fgmask: np.ndarray | None = None
+        cfg = self.cfg
+        self._bgsub = (
+            cv2.createBackgroundSubtractorMOG2(
+                history=cfg.motion_history,
+                varThreshold=cfg.motion_var_threshold,
+                detectShadows=False,
+            )
+            if cfg.motion_gate
+            else None
+        )
         self.frame_count = 0
 
     def _ensure_ses(self) -> None:
@@ -179,6 +200,11 @@ class SmallTargetDetector:
             if gray_f32.dtype == np.uint8
             else np.clip(gray_f32, 0, 255).astype(np.uint8)
         )
+
+        # --- Motion model: update the moving-foreground mask every frame ------
+        # Must run before any early return so the background model stays current.
+        if self._bgsub is not None:
+            self._fgmask = self._bgsub.apply(g_u8)
 
         # --- Brick 2: multi-scale top-hat highlighter ------------------------
         # Run the top-hat at several structuring-element sizes and keep the max
@@ -288,8 +314,31 @@ class SmallTargetDetector:
                 pol = cfg.polarity
             dets.append(TargetDetection(cu, cv_, score, area, pol, (x, y, bw, bh)))
 
+        # The single clutter filter: keep only detections that coincide with
+        # moving foreground. Static structure (a settled contrail, clouds, fixed
+        # objects) is background and drops out; movers (aircraft, fast particles)
+        # stay. Replaces the old collinear / persistence / tip heuristics.
+        if cfg.motion_gate and self._fgmask is not None:
+            dets = self._motion_gate(dets)
         dets.sort(key=lambda d: d.score, reverse=True)
         return dets[: cfg.max_targets], response
+
+    def _motion_gate(self, dets: list[TargetDetection]) -> list[TargetDetection]:
+        """Keep detections that sit on (or within motion_dilate px of) moving
+        foreground. A real flying target moves, so it is foreground; a static
+        contrail/cloud is absorbed into the background and gated out."""
+        fg = self._fgmask
+        h, w = fg.shape
+        r = self.cfg.motion_dilate
+        kept: list[TargetDetection] = []
+        for d in dets:
+            x, y = int(round(d.u)), int(round(d.v))
+            x0, x1 = max(0, x - r), min(w, x + r + 1)
+            y0, y1 = max(0, y - r), min(h, y + r + 1)
+            window = fg[y0:y1, x0:x1]
+            if window.size and int(window.max()) > 0:
+                kept.append(d)
+        return kept
 
 
 def synthesize_frame(

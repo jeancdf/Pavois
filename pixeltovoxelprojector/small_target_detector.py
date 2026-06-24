@@ -34,7 +34,10 @@ except ImportError:  # pragma: no cover - callers print an install hint
 @dataclass
 class SmallTargetConfig:
     polarity: str = "both"          # "bright" | "dark" | "both"
-    tophat_scales: tuple = (9, 31)  # structuring-element sizes (px); response = max over scales
+    tophat_scales: tuple = (9,)     # SE sizes (px); response = max over scales. Mission default
+    #                                 is the small scale only (distant target = a few pixels);
+    #                                 add bigger scales (e.g. 9,31) for close/large test objects,
+    #                                 at the cost of more cloud/background false positives.
     use_background: bool = True     # brick 1; meaningful only for a fixed camera
     bg_alpha: float = 0.02          # running-average rate (small = slow sky)
     bg_novelty: float = 6.0         # min |frame - background| to count as "new"

@@ -85,6 +85,7 @@ PROFILE_DEFAULTS = {
         "heatmap_every": 1,
         "min_area": 1, "max_area": 0, "max_bbox_size": 0, "max_targets": 30,
         "large_blob_peak": False,
+        "motion_gate": True,
         "show_tentative": True, "show_arrows": True, "show_trails": True,
         "display_tracks": 0, "display_max_speed": 0.0, "display_max_misses": 0,
         "fixed_arrow_length": 0.0, "arrow_min_speed": 0.5,
@@ -108,6 +109,7 @@ PROFILE_DEFAULTS = {
         "heatmap_every": 0,
         "min_area": 1, "max_area": 80, "max_bbox_size": 16, "max_targets": 24,
         "large_blob_peak": True,
+        "motion_gate": True,
         "show_tentative": False, "show_arrows": True, "show_trails": False,
         "display_tracks": 12, "display_max_speed": 0.0, "display_max_misses": 30,
         "fixed_arrow_length": 22.0, "arrow_min_speed": 0.25,
@@ -338,11 +340,35 @@ def run_self_test() -> int:
     static_dets, _ = motion_detector.update(indoor_b)
     fast_detector_ok = not first_dets and bool(moving_dets) and not static_dets
 
+    # F) motion gate: a STATIC bright spot (a settled contrail / fixed object) is
+    # absorbed into the background and gated out, while a MOVING spot stays.
+    gate_det = SmallTargetDetector(SmallTargetConfig(
+        polarity="bright", use_background=False, warmup_frames=0,
+        motion_history=30,
+    ))
+    static_seen = []
+    moving_seen = []
+    for t in range(80):
+        frame = np.full((120, 200), 60, dtype=np.uint8)
+        cv2.circle(frame, (50, 60), 3, 255, -1)            # fixed spot (clutter)
+        mx = 20 + (t * 2) % 160
+        cv2.circle(frame, (mx, 30), 3, 255, -1)            # spot moving left->right
+        dets, _ = gate_det.update(frame.astype(np.float32))
+        if t < 40:
+            continue                                       # let the background settle
+        static_seen.append(any(abs(d.u - 50) < 6 and abs(d.v - 60) < 6 for d in dets))
+        moving_seen.append(any(abs(d.u - mx) < 6 and abs(d.v - 30) < 6 for d in dets))
+    # The static spot should be gated out most of the time; the mover kept most of the time.
+    gate_ok = (np.mean(static_seen) < 0.2) and (np.mean(moving_seen) > 0.6)
+
     print(f"detector: hit_rate={rate:.2f} median_err_px={med_err:.2f}")
     print(f"tracker: confirmed_follow={'yes' if ever_confirmed else 'no'} "
           f"follow_err_px={_median(follow):.2f} noise_false_confirmed={noise_false} "
           f"fast_mover_ok={fast_ok} fast_detector_ok={fast_detector_ok}")
-    if detector_ok and track_ok and noise_ok and fast_ok and fast_detector_ok:
+    print(f"motion-gate: static_kept_frac={np.mean(static_seen):.2f} "
+          f"moving_kept_frac={np.mean(moving_seen):.2f} ok={gate_ok}")
+    if (detector_ok and track_ok and noise_ok and fast_ok and fast_detector_ok
+            and gate_ok):
         print("SMALL_TARGET_SELF_TEST_OK")
         return 0
     print("SMALL_TARGET_SELF_TEST_FAIL", file=sys.stderr)
@@ -364,6 +390,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--source", type=str, default="", help="Video file path or URL (overrides --device).")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
+    ap.add_argument("--max-side", type=int, default=960,
+                    help="Downscale frames whose longest side exceeds this, "
+                         "preserving aspect ratio (fixes oversized portrait "
+                         "phone clips); 0 = keep native size.")
     ap.add_argument("--backend", choices=("AUTO", "MSMF", "DSHOW", "DEFAULT"), default="AUTO")
     # Detector
     ap.add_argument("--detector", choices=("tophat", "motion"), default=None,
@@ -385,6 +415,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-bbox-size", type=int, default=None,
                     help="Reject detections wider or taller than this; 0=off.")
     ap.add_argument("--max-targets", type=int, default=None)
+    ap.add_argument("--no-motion-gate", action="store_true",
+                    help="Disable the moving-foreground gate (needs a FIXED camera; a "
+                         "moving camera should turn this off). Without it, static clutter "
+                         "like a contrail reappears as targets.")
+    ap.add_argument("--motion-history", type=int, default=120,
+                    help="Frames of background memory; static clutter is absorbed over ~this.")
     ap.add_argument("--warmup", type=int, default=10)
     ap.add_argument("--motion-threshold", type=float, default=None,
                     help="Frame-difference threshold for the motion detector.")
@@ -471,6 +507,7 @@ def main() -> None:
         args.max_coast if args.max_coast is not None
         else profile["max_coast"]
     )
+    motion_gate = profile.get("motion_gate", True) and not args.no_motion_gate
 
     scales = (args.tophat,) if args.tophat > 0 else tuple(
         int(x) for x in tophat_scales.split(",") if x.strip()
@@ -487,6 +524,8 @@ def main() -> None:
         max_area=max_area,
         max_bbox_size=max_bbox_size,
         large_blob_peak=profile["large_blob_peak"],
+        motion_gate=motion_gate,
+        motion_history=args.motion_history,
         max_targets=max_targets,
         warmup_frames=args.warmup,
     )
@@ -531,7 +570,10 @@ def main() -> None:
 
     win = "pavois petite-cible"
     if not args.headless:
-        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+        # WINDOW_KEEPRATIO so OpenCV letterboxes instead of stretching the image
+        # when the window is resized (a portrait phone clip would look squashed
+        # otherwise).
+        cv2.namedWindow(win, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
 
     fps, fps_t, frames = 0.0, time.perf_counter(), 0
     cached_heat: np.ndarray | None = None
@@ -540,6 +582,19 @@ def main() -> None:
             ok, bgr = cap.read()
             if not ok or bgr is None or getattr(bgr, "size", 0) == 0:
                 break
+
+            # Proportionally shrink oversized sources (e.g. a 1080x1920 phone
+            # clip) so the window fits the screen and detection runs faster.
+            # Aspect ratio is preserved, so the image is never distorted.
+            if args.max_side > 0:
+                h0, w0 = bgr.shape[:2]
+                longest = max(h0, w0)
+                if longest > args.max_side:
+                    scale = args.max_side / longest
+                    bgr = cv2.resize(
+                        bgr, (round(w0 * scale), round(h0 * scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
 
             gray_u8 = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
             if (

@@ -1,4 +1,4 @@
-#include "frame_diff.hpp"
+#include "pavois/detection/frame_diff.hpp"
 
 #include <cstdlib>
 
@@ -33,4 +33,3 @@ FrameDiffResult detect_pixel_changes(
 }
 
 }  // namespace pavois
-

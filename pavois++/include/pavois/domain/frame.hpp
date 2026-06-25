@@ -1,4 +1,24 @@
 #pragma once
 
-// Frame is the raw image unit for the pipeline:
-// grayscale pixel buffer, width, height, timestamp, and optional frame index.
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace pavois {
+
+struct GrayFrame {
+    int width = 0;
+    int height = 0;
+    std::uint64_t frame_id = 0;
+    std::vector<std::uint8_t> pixels;
+
+    std::size_t size() const {
+        return pixels.size();
+    }
+
+    bool empty() const {
+        return pixels.empty();
+    }
+};
+
+}  // namespace pavois

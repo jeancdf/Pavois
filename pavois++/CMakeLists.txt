@@ -8,11 +8,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(pavois_detect
     src/main.cpp
+    src/config/config_loader.cpp
+    src/detection/blob_detector.cpp
     src/frame_diff.cpp
+    src/transport/event_bus.cpp
     src/v4l2_camera.cpp
 )
 
 target_include_directories(pavois_detect PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 

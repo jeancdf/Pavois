@@ -1,4 +1,4 @@
-#include "v4l2_camera.hpp"
+#include "pavois/capture/camera.hpp"
 
 #include <fcntl.h>
 #include <linux/videodev2.h>

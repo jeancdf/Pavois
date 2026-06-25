@@ -22,13 +22,13 @@ cmake --build build
 ## Run
 
 ```bash
-./build/pavois_detect --device /dev/video0 --frames 10
+./build/pavois_detect
+./build/pavois_detect --config pavois++.conf
 ```
 
 ## Notes
 
 - No OpenCV.
-- No motion detection yet.
-- No overlay yet.
-- Just camera read + image buffer validation.
-
+- Uses `pavois++.conf` for device, resolution, and detection thresholds.
+- Prints detection events as JSON lines on stdout.
+- Prints human-readable status on stderr.

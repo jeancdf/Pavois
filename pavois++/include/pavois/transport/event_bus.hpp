@@ -1,13 +1,13 @@
 #pragma once
 
-#include "pavois/domain/detection_event.hpp"
+#include "pavois/domain/track_update.hpp"
 
 #include <ostream>
 #include <string>
 
 namespace pavois {
 
-std::string to_json(const DetectionEvent& event);
-void emit_event(std::ostream& out, const DetectionEvent& event);
+std::string to_csv(const TrackUpdate& update);
+void emit_track_update(std::ostream& out, const TrackUpdate& update);
 
 }  // namespace pavois

@@ -15,6 +15,7 @@ add_executable(pavois_detect
     src/math/pose.cpp
     src/runtime/camera_worker.cpp
     src/transport/event_bus.cpp
+    src/transport/udp_sender.cpp
     src/v4l2_camera.cpp
 )
 

@@ -29,6 +29,8 @@ struct AppConfig {
     int frames = -1;
     int fusion_window_ms = 150;
     std::string config_path = "pavois++.conf";
+    std::string output_host;
+    int output_port = 0;
     std::vector<CameraConfig> cameras;
 };
 

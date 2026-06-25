@@ -10,9 +10,12 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <utility>
 
 namespace pavois {
 namespace {
@@ -29,8 +32,19 @@ double clamp01(double value) {
 
 }  // namespace
 
-CameraWorker::CameraWorker(const CameraConfig& cfg, FusionEngine& fusion, std::ostream& log_out, std::mutex& log_mutex)
-    : cfg_(cfg), fusion_(fusion), log_out_(log_out), log_mutex_(log_mutex) {}
+CameraWorker::CameraWorker(
+    const CameraConfig& cfg,
+    FusionEngine& fusion,
+    std::ostream& log_out,
+    std::mutex& log_mutex,
+    std::shared_ptr<UdpSender> udp_sender,
+    bool emit_raw_observations)
+    : cfg_(cfg),
+      fusion_(fusion),
+      log_out_(log_out),
+      log_mutex_(log_mutex),
+      udp_sender_(std::move(udp_sender)),
+      emit_raw_observations_(emit_raw_observations) {}
 
 void CameraWorker::log_line(const std::string& line) {
     std::lock_guard<std::mutex> lock(log_mutex_);
@@ -46,6 +60,13 @@ void CameraWorker::operator()() {
     if (!camera.open()) {
         log_line("camera " + cfg_.id + " open failed: " + camera.last_error());
         return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        std::cerr << "camera " << cfg_.id << " open ok "
+                  << camera.width() << "x" << camera.height()
+                  << " device=" << cfg_.device << '\n';
     }
 
     GrayFrame frame;
@@ -68,6 +89,15 @@ void CameraWorker::operator()() {
 
         const FrameDiffResult diff = detect_pixel_changes(frame, previous_frame, cfg_.diff_threshold);
         const std::vector<Blob> blobs = detect_blobs(diff.diff_mask, frame.width, frame.height, cfg_.min_blob_area);
+
+        {
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            std::cerr << "camera " << cfg_.id
+                      << " frame=" << frame_id
+                      << " changed=" << diff.changed_pixels
+                      << " blobs=" << blobs.size() << '\n';
+        }
+
         if (blobs.empty()) {
             previous_frame = frame;
             ++frame_id;
@@ -101,7 +131,36 @@ void CameraWorker::operator()() {
 
         if (const std::optional<TrackUpdate> update = fusion_.submit(obs)) {
             std::lock_guard<std::mutex> lock(log_mutex_);
+            std::cerr << "fused track object=" << update->object_id
+                      << " x=" << update->x
+                      << " y=" << update->y
+                      << " z=" << update->z
+                      << " confidence=" << update->confidence
+                      << '\n';
             emit_track_update(log_out_, *update);
+            if (udp_sender_ && udp_sender_->valid()) {
+                udp_sender_->send_line(to_csv(*update));
+            }
+        } else if (emit_raw_observations_ && udp_sender_ && udp_sender_->valid()) {
+            std::ostringstream line;
+            line << "raw,"
+                 << obs.camera_id << ','
+                 << obs.frame_id << ','
+                 << obs.timestamp_us << ','
+                 << std::fixed << std::setprecision(2)
+                 << obs.centroid_x << ','
+                 << obs.centroid_y << ','
+                 << obs.blob_area << ','
+                 << std::setprecision(3)
+                 << obs.confidence;
+            udp_sender_->send_line(line.str());
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            std::cerr << "sent raw observation camera=" << obs.camera_id
+                      << " frame=" << obs.frame_id
+                      << " centroid=" << obs.centroid_x << "," << obs.centroid_y
+                      << " area=" << obs.blob_area
+                      << " confidence=" << obs.confidence
+                      << '\n';
         }
 
         previous_frame = frame;

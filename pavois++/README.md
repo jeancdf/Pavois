@@ -25,6 +25,7 @@ cmake --build build
 ```bash
 ./build/pavois_detect
 ./build/pavois_detect --config pavois++.conf
+./build/pavois_detect --config pavois++.conf --host 127.0.0.1 --port 5005
 ```
 
 ## Notes
@@ -33,4 +34,5 @@ cmake --build build
 - Uses `pavois++.conf` for camera pose, resolution, thresholds, and fusion window.
 - Output is a compact CSV-like track line, not JSON.
 - The Pi-side binary is only the acquisition + fusion stage; the VPS will do pattern recognition later.
+- If `output_host` and `output_port` are set, the same track line is also sent over UDP.
 - Errors are written to `stderr`; fused tracks are written to `stdout`.

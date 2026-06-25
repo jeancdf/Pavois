@@ -100,6 +100,14 @@ AppConfig load_config_file(const std::string& path) {
                 config.config_path = value;
                 continue;
             }
+            if (key == "output_host") {
+                config.output_host = value;
+                continue;
+            }
+            if (key == "output_port") {
+                config.output_port = std::stoi(value);
+                continue;
+            }
 
             if (key.rfind("camera.", 0) == 0) {
                 const std::string tail = key.substr(7);

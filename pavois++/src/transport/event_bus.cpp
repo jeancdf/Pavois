@@ -8,41 +8,35 @@
 namespace pavois {
 namespace {
 
-std::string json_escape(const std::string& input) {
+std::string join_cameras(const std::vector<std::string>& cameras) {
     std::ostringstream out;
-    for (char c : input) {
-        switch (c) {
-            case '\\': out << "\\\\"; break;
-            case '"': out << "\\\""; break;
-            case '\n': out << "\\n"; break;
-            case '\r': out << "\\r"; break;
-            case '\t': out << "\\t"; break;
-            default: out << c; break;
+    for (std::size_t i = 0; i < cameras.size(); ++i) {
+        if (i > 0) {
+            out << '|';
         }
+        out << cameras[i];
     }
     return out.str();
 }
 
 }  // namespace
 
-std::string to_json(const DetectionEvent& event) {
+std::string to_csv(const TrackUpdate& update) {
     std::ostringstream out;
-    out << "{";
-    out << "\"type\":\"" << json_escape(event.type) << "\",";
-    out << "\"frame_id\":" << event.frame_id << ",";
-    out << "\"camera_id\":\"" << json_escape(event.camera_id) << "\",";
-    out << "\"blob_area\":" << event.blob_area << ",";
-    out << "\"centroid\":["
-        << std::fixed << std::setprecision(2)
-        << event.centroid_x << "," << event.centroid_y << "],";
-    out << "\"confidence\":" << std::fixed << std::setprecision(3) << event.confidence;
-    out << "}";
+    out << update.object_id << ','
+        << update.timestamp_us << ','
+        << std::fixed << std::setprecision(3)
+        << update.x << ','
+        << update.y << ','
+        << update.z << ','
+        << std::setprecision(4)
+        << update.confidence << ','
+        << join_cameras(update.cameras);
     return out.str();
 }
 
-void emit_event(std::ostream& out, const DetectionEvent& event) {
-    out << to_json(event) << '\n';
+void emit_track_update(std::ostream& out, const TrackUpdate& update) {
+    out << to_csv(update) << '\n';
 }
 
 }  // namespace pavois
-

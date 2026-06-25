@@ -11,6 +11,9 @@ add_executable(pavois_detect
     src/config/config_loader.cpp
     src/detection/blob_detector.cpp
     src/frame_diff.cpp
+    src/fusion/fusion_engine.cpp
+    src/math/pose.cpp
+    src/runtime/camera_worker.cpp
     src/transport/event_bus.cpp
     src/v4l2_camera.cpp
 )

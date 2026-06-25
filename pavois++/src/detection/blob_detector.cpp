@@ -1,5 +1,6 @@
 #include "pavois/detection/blob_detector.hpp"
 
+#include <algorithm>
 #include <queue>
 #include <string>
 
@@ -99,4 +100,3 @@ DetectionEvent make_detection_event(
 }
 
 }  // namespace pavois
-

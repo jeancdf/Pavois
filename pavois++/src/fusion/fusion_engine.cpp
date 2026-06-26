@@ -11,11 +11,23 @@ std::uint64_t ms_to_us(int ms) {
     return static_cast<std::uint64_t>(ms) * 1000ULL;
 }
 
+double dot(const Vec3& a, const Vec3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
 double distance3(const Vec3& a, const Vec3& b) {
     const double dx = a.x - b.x;
     const double dy = a.y - b.y;
     const double dz = a.z - b.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+Vec3 sub(const Vec3& a, const Vec3& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+double clamp(double value, double min_value, double max_value) {
+    return std::max(min_value, std::min(max_value, value));
 }
 
 }  // namespace
@@ -118,17 +130,39 @@ std::optional<TrackUpdate> FusionEngine::fuse_locked() {
     }
 
     Vec3 pos{point[0], point[1], point[2]};
+
+    double baseline = 0.0;
+    for (std::size_t i = 0; i < usable.size(); ++i) {
+        const Vec3 cam_i{usable[i].cam_x, usable[i].cam_y, usable[i].cam_z};
+        const Vec3 to_point = sub(pos, cam_i);
+        if (dot(to_point, rays[i].direction) <= 0.0) {
+            return std::nullopt;
+        }
+        for (std::size_t j = i + 1; j < usable.size(); ++j) {
+            const Vec3 cam_j{usable[j].cam_x, usable[j].cam_y, usable[j].cam_z};
+            baseline = std::max(baseline, distance3(cam_i, cam_j));
+            const double dir_dot = clamp(dot(rays[i].direction, rays[j].direction), -1.0, 1.0);
+            const double same_direction_cos = std::cos(5.0 * 3.14159265358979323846 / 180.0);
+            if (dir_dot > same_direction_cos) {
+                return std::nullopt;
+            }
+        }
+    }
+
     double residual_sum = 0.0;
     for (const auto& ray : rays) {
         residual_sum += ray_residual(ray, pos);
     }
     const double residual = residual_sum / static_cast<double>(rays.size());
+    const double max_residual = std::max(0.35, baseline * 0.15);
+    if (residual > max_residual) {
+        return std::nullopt;
+    }
 
     double confidence = std::min(0.99, 0.35 + 0.18 * static_cast<double>(rays.size()));
-    confidence = std::max(0.0, confidence - std::min(0.4, residual / 100.0));
+    confidence = std::max(0.0, confidence - std::min(0.4, residual / std::max(1.0, baseline)));
 
     return update_track_locked(pos, newest, confidence, cameras);
 }
 
 }  // namespace pavois
-

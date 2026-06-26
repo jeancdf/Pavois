@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace pavois {
 
@@ -38,4 +39,3 @@ private:
 };
 
 }  // namespace pavois
-

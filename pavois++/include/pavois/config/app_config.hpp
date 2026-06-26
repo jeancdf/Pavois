@@ -22,6 +22,11 @@ struct CameraConfig {
     double pitch_deg = 90.0;
     double roll_deg = 0.0;
     double fov_deg = 65.0;
+    double gps_lat = 0.0;
+    double gps_lon = 0.0;
+    double gps_alt = 0.0;
+    double heading_deg = 0.0;
+    bool has_gps_pose = false;
     bool enabled = true;
 };
 
@@ -31,6 +36,10 @@ struct AppConfig {
     std::string config_path = "pavois++.conf";
     std::string output_host;
     int output_port = 0;
+    double reference_lat = 0.0;
+    double reference_lon = 0.0;
+    double reference_alt = 0.0;
+    bool has_reference_gps = false;
     std::vector<CameraConfig> cameras;
 };
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -23,6 +24,29 @@ bool parse_bool(const std::string& value) {
     return v == "1" || v == "true" || v == "TRUE" || v == "yes" || v == "on";
 }
 
+void gps_to_local_approx(
+    double lat_deg,
+    double lon_deg,
+    double alt_m,
+    double origin_lat_deg,
+    double origin_lon_deg,
+    double origin_alt_m,
+    double& x_m,
+    double& y_m,
+    double& z_m) {
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kEarthRadiusM = 6378137.0;
+    const double lat = lat_deg * kPi / 180.0;
+    const double lon = lon_deg * kPi / 180.0;
+    const double origin_lat = origin_lat_deg * kPi / 180.0;
+    const double origin_lon = origin_lon_deg * kPi / 180.0;
+    const double mean_lat = (lat + origin_lat) * 0.5;
+
+    x_m = (lon - origin_lon) * std::cos(mean_lat) * kEarthRadiusM;
+    y_m = (lat - origin_lat) * kEarthRadiusM;
+    z_m = alt_m - origin_alt_m;
+}
+
 void apply_camera_field(CameraConfig& camera, const std::string& field, const std::string& value) {
     if (field == "id") camera.id = value;
     else if (field == "device") camera.device = value;
@@ -38,6 +62,19 @@ void apply_camera_field(CameraConfig& camera, const std::string& field, const st
     else if (field == "pitch_deg") camera.pitch_deg = std::stod(value);
     else if (field == "roll_deg") camera.roll_deg = std::stod(value);
     else if (field == "fov_deg") camera.fov_deg = std::stod(value);
+    else if (field == "gps_lat") {
+        camera.gps_lat = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "gps_lon") {
+        camera.gps_lon = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "gps_alt") {
+        camera.gps_alt = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "heading_deg") camera.heading_deg = std::stod(value);
     else if (field == "enabled") camera.enabled = parse_bool(value);
 }
 
@@ -55,6 +92,19 @@ void apply_legacy_field(CameraConfig& camera, const std::string& field, const st
     else if (field == "pitch_deg") camera.pitch_deg = std::stod(value);
     else if (field == "roll_deg") camera.roll_deg = std::stod(value);
     else if (field == "fov_deg") camera.fov_deg = std::stod(value);
+    else if (field == "gps_lat") {
+        camera.gps_lat = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "gps_lon") {
+        camera.gps_lon = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "gps_alt") {
+        camera.gps_alt = std::stod(value);
+        camera.has_gps_pose = true;
+    }
+    else if (field == "heading_deg") camera.heading_deg = std::stod(value);
     else if (field == "enabled") camera.enabled = parse_bool(value);
 }
 
@@ -108,6 +158,21 @@ AppConfig load_config_file(const std::string& path) {
                 config.output_port = std::stoi(value);
                 continue;
             }
+            if (key == "reference_lat") {
+                config.reference_lat = std::stod(value);
+                config.has_reference_gps = true;
+                continue;
+            }
+            if (key == "reference_lon") {
+                config.reference_lon = std::stod(value);
+                config.has_reference_gps = true;
+                continue;
+            }
+            if (key == "reference_alt") {
+                config.reference_alt = std::stod(value);
+                config.has_reference_gps = true;
+                continue;
+            }
 
             if (key.rfind("camera.", 0) == 0) {
                 const std::string tail = key.substr(7);
@@ -146,6 +211,46 @@ AppConfig load_config_file(const std::string& path) {
             }
         }
         config.cameras.push_back(legacy_camera);
+    }
+
+    bool have_origin = config.has_reference_gps;
+    double origin_lat = config.reference_lat;
+    double origin_lon = config.reference_lon;
+    double origin_alt = config.reference_alt;
+
+    if (!have_origin) {
+        for (const auto& camera : config.cameras) {
+            if (camera.has_gps_pose) {
+                origin_lat = camera.gps_lat;
+                origin_lon = camera.gps_lon;
+                origin_alt = camera.gps_alt;
+                have_origin = true;
+                break;
+            }
+        }
+    }
+
+    if (have_origin) {
+        config.reference_lat = origin_lat;
+        config.reference_lon = origin_lon;
+        config.reference_alt = origin_alt;
+        config.has_reference_gps = true;
+        for (auto& camera : config.cameras) {
+            if (!camera.has_gps_pose) {
+                continue;
+            }
+            gps_to_local_approx(
+                camera.gps_lat,
+                camera.gps_lon,
+                camera.gps_alt,
+                origin_lat,
+                origin_lon,
+                origin_alt,
+                camera.x,
+                camera.y,
+                camera.z);
+            camera.yaw_deg = camera.heading_deg;
+        }
     }
 
     return config;

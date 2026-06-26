@@ -2,6 +2,7 @@
 
 #include "pavois/domain/frame.hpp"
 
+#include <cstdio>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,7 +47,14 @@ private:
     void stop_streaming();
     void close_device();
     bool dequeue_frame(GrayFrame& out);
+    bool open_network_stream();
+    bool read_network_frame(GrayFrame& out);
+    static bool is_network_source(const std::string& source);
+    static std::string shell_escape_single_quotes(const std::string& value);
     static void yuyv_to_gray(const std::uint8_t* src, std::uint8_t* dst, int width, int height);
+
+    FILE* pipe_ = nullptr;
+    bool network_mode_ = false;
 };
 
 }  // namespace pavois

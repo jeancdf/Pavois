@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <sstream>
 #include <utility>
@@ -25,6 +26,14 @@ V4L2Camera::~V4L2Camera() {
 }
 
 bool V4L2Camera::open() {
+    if (is_network_source(device_)) {
+        network_mode_ = true;
+        width_ = requested_width_;
+        height_ = requested_height_;
+        return open_network_stream();
+    }
+
+    network_mode_ = false;
     fd_ = ::open(device_.c_str(), O_RDWR | O_NONBLOCK, 0);
     if (fd_ < 0) {
         last_error_ = "open(" + device_ + "): " + std::strerror(errno);
@@ -43,6 +52,45 @@ bool V4L2Camera::open() {
         close_device();
         return false;
     }
+    return true;
+}
+
+bool V4L2Camera::is_network_source(const std::string& source) {
+    return source.rfind("rtsp://", 0) == 0 ||
+           source.rfind("http://", 0) == 0 ||
+           source.rfind("https://", 0) == 0;
+}
+
+std::string V4L2Camera::shell_escape_single_quotes(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 16);
+    escaped.push_back('\'');
+    for (char c : value) {
+        if (c == '\'') {
+            escaped += "'\\''";
+        } else {
+            escaped.push_back(c);
+        }
+    }
+    escaped.push_back('\'');
+    return escaped;
+}
+
+bool V4L2Camera::open_network_stream() {
+    const std::string url = shell_escape_single_quotes(device_);
+    std::ostringstream cmd;
+    cmd << "ffmpeg -nostdin -loglevel error"
+        << " -i " << url
+        << " -vf scale=" << requested_width_ << ':' << requested_height_ << ",format=gray"
+        << " -f rawvideo -pix_fmt gray pipe:1";
+
+    pipe_ = ::popen(cmd.str().c_str(), "r");
+    if (pipe_ == nullptr) {
+        last_error_ = "popen(ffmpeg): " + std::string(std::strerror(errno));
+        return false;
+    }
+
+    last_error_.clear();
     return true;
 }
 
@@ -150,6 +198,9 @@ bool V4L2Camera::start_streaming() {
 }
 
 void V4L2Camera::stop_streaming() {
+    if (network_mode_) {
+        return;
+    }
     if (fd_ < 0 || !streaming_) {
         return;
     }
@@ -159,6 +210,11 @@ void V4L2Camera::stop_streaming() {
 }
 
 void V4L2Camera::close_device() {
+    if (pipe_ != nullptr) {
+        ::pclose(pipe_);
+        pipe_ = nullptr;
+    }
+
     for (auto& buffer : buffers_) {
         if (buffer.start && buffer.start != MAP_FAILED) {
             munmap(buffer.start, buffer.length);
@@ -172,6 +228,30 @@ void V4L2Camera::close_device() {
         ::close(fd_);
         fd_ = -1;
     }
+}
+
+bool V4L2Camera::read_network_frame(GrayFrame& out) {
+    if (pipe_ == nullptr) {
+        last_error_ = "network stream not open";
+        return false;
+    }
+
+    out.width = width_;
+    out.height = height_;
+    out.pixels.resize(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_));
+
+    std::size_t offset = 0;
+    while (offset < out.pixels.size()) {
+        const std::size_t n = std::fread(out.pixels.data() + offset, 1, out.pixels.size() - offset, pipe_);
+        if (n == 0) {
+            last_error_ = "ffmpeg stream ended";
+            return false;
+        }
+        offset += n;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 bool V4L2Camera::dequeue_frame(GrayFrame& out) {
@@ -222,6 +302,9 @@ bool V4L2Camera::dequeue_frame(GrayFrame& out) {
 }
 
 bool V4L2Camera::read_frame(GrayFrame& out) {
+    if (network_mode_) {
+        return read_network_frame(out);
+    }
     if (fd_ < 0) {
         last_error_ = "camera not open";
         return false;

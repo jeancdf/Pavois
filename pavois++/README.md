@@ -55,7 +55,7 @@ You can keep the rest of the pipeline unchanged.
 
 ## GPS Demo Mode
 
-If you prefer a simpler demo setup, you can provide rough GPS positions instead of manual `x/y/z`.
+If you prefer a simpler demo setup, you can provide rough GPS positions instead of manual pose values.
 
 Use these fields:
 
@@ -76,5 +76,5 @@ The front-end output should be treated as:
 objN,lat,lon,alt,timestamp_us
 ```
 
-The `x/y/z` values stay internal to the fusion step and are not meant for the front app.
+The local fusion step still uses an internal local coordinate system, but the front app only receives GPS-style output.
 - Errors are written to `stderr`; fused tracks are written to `stdout`.

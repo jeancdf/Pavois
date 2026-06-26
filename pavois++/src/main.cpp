@@ -133,7 +133,11 @@ int run(int argc, char** argv) {
             std::cout,
             output_mutex,
             udp_sender,
-            enabled_cameras == 1));
+            enabled_cameras == 1,
+            config.reference_lat,
+            config.reference_lon,
+            config.reference_alt,
+            config.has_reference_gps));
     }
 
     for (auto& thread : threads) {

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <limits>
@@ -21,13 +22,37 @@ namespace pavois {
 namespace {
 
 std::uint64_t now_us() {
-    using clock = std::chrono::steady_clock;
+    using clock = std::chrono::system_clock;
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(clock::now().time_since_epoch()).count());
 }
 
 double clamp01(double value) {
     return std::max(0.0, std::min(1.0, value));
+}
+
+std::string to_gps_csv(
+    const TrackUpdate& update,
+    double reference_lat,
+    double reference_lon,
+    double reference_alt) {
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kEarthRadiusM = 6378137.0;
+    const double ref_lat_rad = reference_lat * kPi / 180.0;
+    const double lat = reference_lat + (update.y / kEarthRadiusM) * (180.0 / kPi);
+    const double lon = reference_lon +
+        (update.x / (kEarthRadiusM * std::cos(ref_lat_rad))) * (180.0 / kPi);
+    const double alt = reference_alt + update.z;
+
+    std::ostringstream out;
+    out << "obj" << update.object_id << ','
+        << std::fixed << std::setprecision(7)
+        << lat << ','
+        << lon << ','
+        << std::setprecision(2)
+        << alt << ','
+        << update.timestamp_us;
+    return out.str();
 }
 
 }  // namespace
@@ -38,13 +63,21 @@ CameraWorker::CameraWorker(
     std::ostream& log_out,
     std::mutex& log_mutex,
     std::shared_ptr<UdpSender> udp_sender,
-    bool emit_raw_observations)
+    bool emit_raw_observations,
+    double reference_lat,
+    double reference_lon,
+    double reference_alt,
+    bool has_reference_gps)
     : cfg_(cfg),
       fusion_(fusion),
       log_out_(log_out),
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
-      emit_raw_observations_(emit_raw_observations) {}
+      emit_raw_observations_(emit_raw_observations),
+      reference_lat_(reference_lat),
+      reference_lon_(reference_lon),
+      reference_alt_(reference_alt),
+      has_reference_gps_(has_reference_gps) {}
 
 void CameraWorker::log_line(const std::string& line) {
     std::lock_guard<std::mutex> lock(log_mutex_);
@@ -135,11 +168,19 @@ void CameraWorker::operator()() {
                       << " x=" << update->x
                       << " y=" << update->y
                       << " z=" << update->z
-                      << " confidence=" << update->confidence
+                      << " ts_us=" << update->timestamp_us
                       << '\n';
-            emit_track_update(log_out_, *update);
             if (udp_sender_ && udp_sender_->valid()) {
-                udp_sender_->send_line(to_csv(*update));
+                if (has_reference_gps_) {
+                    const std::string payload = to_gps_csv(
+                        *update, reference_lat_, reference_lon_, reference_alt_);
+                    udp_sender_->send_line(payload);
+                    std::cerr << "sent gps track " << payload << '\n';
+                } else {
+                    const std::string payload = to_csv(*update);
+                    udp_sender_->send_line(payload);
+                    std::cerr << "sent local track " << payload << '\n';
+                }
             }
         } else if (emit_raw_observations_ && udp_sender_ && udp_sender_->valid()) {
             std::ostringstream line;
@@ -150,9 +191,7 @@ void CameraWorker::operator()() {
                  << std::fixed << std::setprecision(2)
                  << obs.centroid_x << ','
                  << obs.centroid_y << ','
-                 << obs.blob_area << ','
-                 << std::setprecision(3)
-                 << obs.confidence;
+                 << obs.blob_area;
             udp_sender_->send_line(line.str());
             std::lock_guard<std::mutex> lock(log_mutex_);
             std::cerr << "sent raw observation camera=" << obs.camera_id

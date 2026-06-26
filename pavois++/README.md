@@ -69,6 +69,7 @@ Use these fields:
 
 The loader converts the GPS coordinates into local meters automatically and uses `heading_deg` as the camera yaw.
 If no reference is set, the first camera with GPS becomes the local origin.
+The fusion engine rejects bad solutions using geometry checks: ray direction consistency, front-of-camera validation, and reprojection residual.
 
 The front-end output should be treated as:
 

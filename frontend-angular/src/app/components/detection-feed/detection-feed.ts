@@ -1,6 +1,6 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
-import { DetectionService } from '../../services/detection.service';
+import { RealtimeService } from '../../services/realtime.service';
 import { RawDetection } from '../../models/raw-detection.model';
 
 const MAX_ITEMS = 10;
@@ -12,14 +12,14 @@ const MAX_ITEMS = 10;
   styleUrl: './detection-feed.css',
 })
 export class DetectionFeed implements OnDestroy {
-  private readonly detectionService = inject(DetectionService);
+  private readonly realtime = inject(RealtimeService);
   private readonly subscription: Subscription;
 
-  readonly connected = this.detectionService.connected;
+  readonly connected = this.realtime.connected;
   readonly items = signal<RawDetection[]>([]);
 
   constructor() {
-    this.subscription = this.detectionService.detections$.subscribe((detection) => {
+    this.subscription = this.realtime.rawDetections$.subscribe((detection) => {
       this.items.update((current) => [detection, ...current].slice(0, MAX_ITEMS));
     });
   }

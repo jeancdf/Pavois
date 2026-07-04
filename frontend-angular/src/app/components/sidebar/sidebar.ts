@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { RealtimeService } from '../../services/realtime.service';
 
 @Component({
   selector: 'app-sidebar',
@@ -6,4 +7,7 @@ import { Component } from '@angular/core';
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.css',
 })
-export class Sidebar {}
+export class Sidebar {
+  private readonly realtime = inject(RealtimeService);
+  readonly cameras = this.realtime.cameras;
+}

@@ -1,4 +1,19 @@
 <aside class="sidebar">
   <div class="sidebar-header">CAMÉRAS</div>
-  <div class="sidebar-empty">Aucune caméra calibrée pour le moment.</div>
+
+  @if (cameras().length === 0) {
+    <div class="sidebar-empty">Aucune caméra calibrée pour le moment.</div>
+  } @else {
+    <ul class="camera-list">
+      @for (camera of cameras(); track camera.id) {
+        <li class="camera-card">
+          <span class="camera-id">{{ camera.id }}</span>
+          <span class="camera-coords">{{ camera.lat.toFixed(6) }}, {{ camera.lon.toFixed(6) }}</span>
+          <span class="camera-meta">
+            azimut {{ camera.azimuthDeg }}° · FOV {{ camera.fovDeg }}° · portée {{ camera.rangeM }} m
+          </span>
+        </li>
+      }
+    </ul>
+  }
 </aside>

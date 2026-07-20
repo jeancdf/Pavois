@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy, signal } from '@angular/core';
+import { Injectable, OnDestroy, effect, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { RawDetection } from '../models/raw-detection.model';
@@ -6,56 +6,97 @@ import { CameraPosition } from '../models/world-position.model';
 import { TrackUpdate } from '../models/track-update.model';
 import { CAMERAS_GPS_CONFIG, FALLBACK_RANGE_M } from '../config/cameras.config';
 import { llaToLocalEnu } from '../utils/geo';
+import { AuthService } from './auth.service';
 
 const RECONNECT_DELAY_MS = 2000;
 
-/**
- * Point d'entrée unique vers le WebSocket de la passerelle (NestJS, ou son
- * mock local) : une seule connexion, démultiplexée par `payload.event`.
- */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService implements OnDestroy {
   readonly connected = signal(false);
+  readonly connectedSince = signal<number | null>(null);
   readonly cameras = signal<CameraPosition[]>(this.buildCamerasFromGpsConfig());
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
+
+  // Compteurs KPI — mis à jour en temps réel dans le handler de messages
+  readonly totalDetections = signal(0);
+  readonly activeTrackCount = signal(0);
+  private readonly seenTrackIds = new Set<string>();
 
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
-  constructor() {
-    this.connect();
+  constructor(private readonly authService: AuthService) {
+    // Déclenche la connexion dès que l'utilisateur est authentifié
+    effect(() => {
+      if (this.authService.isAuthenticated()) {
+        this.connect();
+      }
+    });
   }
 
   private connect(): void {
-    const ws = new WebSocket(environment.wsUrl);
+    // Évite une double connexion si une est déjà en cours ou ouverte
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
+    const token = this.authService.getToken();
+    if (!token) return;
+
+    const url = `${environment.wsBaseUrl}?token=${encodeURIComponent(token)}`;
+    const ws = new WebSocket(url);
     this.ws = ws;
 
-    ws.onopen = () => this.connected.set(true);
+    ws.onopen = () => {
+      this.connected.set(true);
+      this.connectedSince.set(Date.now());
+    };
 
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
         switch (payload.event) {
-          case 'raw_detection':
-            this.rawDetections$.next(payload.data as RawDetection);
+          case 'raw_detection': {
+            const det = payload.data as RawDetection;
+            this.rawDetections$.next(det);
+            this.totalDetections.update((n) => n + 1);
             break;
+          }
           case 'camera_positions':
             this.cameras.set(payload.data as CameraPosition[]);
             break;
-          case 'track_update':
-            this.trackUpdates$.next(payload.data as TrackUpdate);
+          case 'track_update': {
+            const track = payload.data as TrackUpdate;
+            this.trackUpdates$.next(track);
+            if (!this.seenTrackIds.has(track.trackId)) {
+              this.seenTrackIds.add(track.trackId);
+              this.activeTrackCount.update((n) => n + 1);
+            }
             break;
+          }
         }
       } catch {
         console.error('RealtimeService: message WebSocket invalide', event.data);
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       this.connected.set(false);
-      if (!this.destroyed) {
+      this.connectedSince.set(null);
+      this.ws = null;
+
+      // Code 4001 = token refusé par le serveur → déconnexion forcée, pas de reconnexion
+      if (event.code === 4001) {
+        this.authService.clearToken();
+        return;
+      }
+
+      if (!this.destroyed && this.authService.isAuthenticated()) {
         this.reconnectTimer = setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
       }
     };
@@ -69,7 +110,6 @@ export class RealtimeService implements OnDestroy {
     this.ws?.close();
   }
 
-  /** Positions caméra connues statiquement (cf. cameras.config.ts), en GPS direct. */
   private buildCamerasFromGpsConfig(): CameraPosition[] {
     const cameras = CAMERAS_GPS_CONFIG.map((cam) => ({
       id: cam.id,
@@ -80,9 +120,6 @@ export class RealtimeService implements OnDestroy {
       rangeM: FALLBACK_RANGE_M,
     }));
 
-    // Spécifique à ce test à très courte base : la portée affichée est la
-    // distance entre les deux caméras, pour que les cônes restent visibles et
-    // comparables. Ce n'est PAS une portée opérationnelle réelle.
     if (CAMERAS_GPS_CONFIG.length >= 2) {
       const [a, b] = CAMERAS_GPS_CONFIG;
       const { x, y } = llaToLocalEnu(b.lat, b.lon, b.alt, { lat: a.lat, lng: a.lon, alt: a.alt });

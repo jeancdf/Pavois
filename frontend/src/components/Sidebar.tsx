@@ -45,6 +45,13 @@ const THEME_VARS = {
   mono:  { bg: '#1A1D20', text: '#F0F0F0', sub: '#9CA3AF', border: '#272B30', hover: '#22262A', selBg: '#1E3040' },
 }
 
+const CLASSIFICATION_ICONS: Record<string, string> = {
+  drone: '🛸',
+  airplane: '✈️',
+  bird: '🐦',
+  other: '❓'
+}
+
 export default function Sidebar({ cameras, tracks, currentTime, selectedCamera, onSelectCamera, theme }: Props) {
   const C = THEME_VARS[theme]
   const totalActive   = cameras.filter(c => c.status === 'active').length
@@ -130,10 +137,14 @@ export default function Sidebar({ cameras, tracks, currentTime, selectedCamera, 
           const pos = PAVOISSim.lerpPos(t.waypoints, currentTime)
           const cams = PAVOISSim.getDetectingCameras(pos)
           const conf = PAVOISSim.getConfidence(cams)
+          const icon = CLASSIFICATION_ICONS[t.classification] || '❓'
           return (
             <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: C.text, flex: 1 }}>{t.id}</span>
+              <span style={{ fontSize: 11, color: C.text, flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span title={t.classification.toUpperCase()} style={{ cursor: 'help' }}>{icon}</span>
+                <span>{t.id}</span>
+              </span>
               <ConfidenceBadge value={conf} />
             </div>
           )

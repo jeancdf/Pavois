@@ -9,7 +9,12 @@
     <ul class="feed-list">
       @for (item of items(); track item.timestamp) {
         <li class="feed-item">
-          <span class="track-id">{{ item.trackId }}</span>
+          <div class="track-top-row">
+            <span class="track-id">{{ item.trackId }}</span>
+            <span class="classif-badge" [class]="'classif-' + (item.classification ?? 'other')">
+              {{ classifLabel(item.classification) }}
+            </span>
+          </div>
           <span class="track-coords">{{ item.lat.toFixed(6) }}, {{ item.lng.toFixed(6) }}</span>
           <span class="track-alt">alt {{ item.alt.toFixed(1) }} m</span>
         </li>

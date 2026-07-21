@@ -1,0 +1,19 @@
+<section class="track-feed">
+  <header class="feed-header">
+    <span class="feed-title">PISTES — COORDONNÉES GPS</span>
+  </header>
+
+  @if (items().length === 0) {
+    <p class="feed-empty">En attente de positions (track_update)…</p>
+  } @else {
+    <ul class="feed-list">
+      @for (item of items(); track item.timestamp) {
+        <li class="feed-item">
+          <span class="track-id">{{ item.trackId }}</span>
+          <span class="track-coords">{{ item.lat.toFixed(6) }}, {{ item.lng.toFixed(6) }}</span>
+          <span class="track-alt">alt {{ item.alt.toFixed(1) }} m</span>
+        </li>
+      }
+    </ul>
+  }
+</section>

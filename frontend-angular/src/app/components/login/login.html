@@ -1,0 +1,42 @@
+<div class="login-backdrop">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="32" height="32" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+        <polygon points="11,2 20,7 20,15 11,20 2,15 2,7" fill="#3B82F6" opacity="0.15" stroke="#3B82F6" stroke-width="1.5" />
+        <polygon points="11,5 17,8.5 17,13.5 11,17 5,13.5 5,8.5" fill="#3B82F6" opacity="0.3" />
+        <circle cx="11" cy="11" r="2.5" fill="#3B82F6" />
+      </svg>
+      <span class="login-brand">PAVOIS</span>
+    </div>
+
+    <h1 class="login-title">Connexion requise</h1>
+    <p class="login-subtitle">
+      Entrez votre token d'accès pour établir la connexion WebSocket au serveur de détection.
+    </p>
+
+    <form class="login-form" (ngSubmit)="submit()">
+      <label class="login-label" for="token-input">TOKEN D'ACCÈS</label>
+      <input
+        id="token-input"
+        class="login-input"
+        type="text"
+        placeholder="ex: dev-pavois-token"
+        [ngModel]="tokenInput()"
+        (ngModelChange)="tokenInput.set($event)"
+        autocomplete="off"
+        spellcheck="false"
+      />
+
+      @if (error()) {
+        <p class="login-error">{{ error() }}</p>
+      }
+
+      <button type="submit" class="login-btn">Se connecter</button>
+    </form>
+
+    <p class="login-hint">
+      Le token sera stocké localement et injecté dans chaque connexion WebSocket.
+      En cas de refus du serveur (code 4001), vous serez renvoyé ici.
+    </p>
+  </div>
+</div>

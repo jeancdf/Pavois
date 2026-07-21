@@ -1,0 +1,120 @@
+.login-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #060c16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.login-card {
+  width: 420px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.login-brand {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #f1f5f9;
+}
+
+.login-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.login-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #475569;
+}
+
+.login-input {
+  width: 100%;
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #e2e8f0;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.login-input:focus {
+  border-color: #3b82f6;
+}
+
+.login-error {
+  font-size: 12px;
+  color: #ef4444;
+  margin: 0;
+  padding: 6px 10px;
+  background: #ef444411;
+  border-radius: 4px;
+  border-left: 3px solid #ef4444;
+}
+
+.login-btn {
+  margin-top: 4px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 11px 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.login-btn:hover {
+  background: #2563eb;
+}
+
+.login-hint {
+  font-size: 11px;
+  color: #334155;
+  margin: 0;
+  line-height: 1.5;
+  border-top: 1px solid #1e293b;
+  padding-top: 16px;
+}

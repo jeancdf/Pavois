@@ -1,0 +1,23 @@
+<section class="detection-feed">
+  <header class="feed-header">
+    <span class="feed-title">DÉTECTIONS BRUTES</span>
+    <span class="status" [class.status-ok]="connected()" [class.status-down]="!connected()">
+      {{ connected() ? 'connecté' : 'déconnecté' }}
+    </span>
+  </header>
+
+  @if (items().length === 0) {
+    <p class="feed-empty">En attente de détections…</p>
+  } @else {
+    <ul class="feed-list">
+      @for (item of items(); track item.frameIndex) {
+        <li class="feed-item">
+          <span class="cam">{{ item.cameraId }}</span>
+          <span class="coords">x={{ item.x.toFixed(1) }} y={{ item.y.toFixed(1) }}</span>
+          <span class="size">size={{ item.size }}</span>
+          <span class="confidence">{{ (item.confidence * 100).toFixed(0) }}%</span>
+        </li>
+      }
+    </ul>
+  }
+</section>

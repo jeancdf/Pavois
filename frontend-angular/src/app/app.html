@@ -1,13 +1,23 @@
-<div class="app-shell">
-  <app-top-bar></app-top-bar>
-  <div class="app-body">
-    <app-sidebar></app-sidebar>
-    <main class="main-content">
-      <app-map></app-map>
-      <div class="feeds-row">
-        <app-track-feed></app-track-feed>
-        <app-detection-feed></app-detection-feed>
-      </div>
-    </main>
+@if (!auth.isAuthenticated()) {
+  <app-login></app-login>
+} @else {
+  <div class="app-shell">
+    <app-top-bar></app-top-bar>
+    <div class="app-body">
+      <app-sidebar></app-sidebar>
+      <main class="main-content">
+        <app-map></app-map>
+        <div class="feeds-row">
+          <app-track-feed></app-track-feed>
+          <app-detection-feed></app-detection-feed>
+        </div>
+      </main>
+    </div>
   </div>
-</div>
+
+  @if (trackSelection.selectedTrackId()) {
+    <app-track-detail></app-track-detail>
+  }
+
+  <app-toast></app-toast>
+}

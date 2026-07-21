@@ -1,21 +1,40 @@
 <section class="detection-feed">
   <header class="feed-header">
     <span class="feed-title">DÉTECTIONS BRUTES</span>
-    <span class="status" [class.status-ok]="connected()" [class.status-down]="!connected()">
-      {{ connected() ? 'connecté' : 'déconnecté' }}
-    </span>
   </header>
 
-  @if (items().length === 0) {
-    <p class="feed-empty">En attente de détections…</p>
+  <div class="filter-row">
+    <span class="filter-label">CONF. MIN</span>
+    <input
+      type="range"
+      min="0"
+      max="1"
+      step="0.05"
+      class="filter-slider"
+      [value]="minConfidence()"
+      (input)="setMinConfidence($event)"
+    />
+    <span class="filter-value">{{ (minConfidence() * 100).toFixed(0) }}%</span>
+  </div>
+
+  @if (filteredItems().length === 0) {
+    <p class="feed-empty">
+      @if (items().length === 0) {
+        En attente de détections…
+      } @else {
+        Aucune détection ≥ {{ (minConfidence() * 100).toFixed(0) }}%
+      }
+    </p>
   } @else {
     <ul class="feed-list">
-      @for (item of items(); track item.frameIndex) {
+      @for (item of filteredItems(); track item.frameIndex) {
         <li class="feed-item">
           <span class="cam">{{ item.cameraId }}</span>
           <span class="coords">x={{ item.x.toFixed(1) }} y={{ item.y.toFixed(1) }}</span>
-          <span class="size">size={{ item.size }}</span>
-          <span class="confidence">{{ (item.confidence * 100).toFixed(0) }}%</span>
+          <span class="size">s={{ item.size }}</span>
+          <span class="confidence" [class.conf-high]="item.confidence >= 0.95">
+            {{ (item.confidence * 100).toFixed(0) }}%
+          </span>
         </li>
       }
     </ul>

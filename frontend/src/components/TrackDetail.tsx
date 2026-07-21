@@ -32,6 +32,13 @@ function ConfidenceBadgeLg({ value }: { value: number }) {
   )
 }
 
+const CLASSIFICATION_DETAILS: Record<string, { label: string; bg: string; color: string; icon: string }> = {
+  drone: { label: 'DRONE', bg: '#EF444418', color: '#EF4444', icon: '🛸' },
+  airplane: { label: 'AVION', bg: '#3B82F618', color: '#3B82F6', icon: '✈️' },
+  bird: { label: 'OISEAU', bg: '#10B98118', color: '#10B981', icon: '🐦' },
+  other: { label: 'AUTRE', bg: '#64748B18', color: '#64748B', icon: '❓' }
+}
+
 export default function TrackDetail({ track, currentTime, theme, onClose }: Props) {
   const C = THEME_VARS[theme]
   const pos  = PAVOISSim.lerpPos(track.waypoints, currentTime)
@@ -65,6 +72,20 @@ export default function TrackDetail({ track, currentTime, theme, onClose }: Prop
         }}>
           {STATUS_LABELS[track.status] ?? track.status.toUpperCase()}
         </span>
+        {track.classification && (
+          <span style={{
+            fontFamily: 'IBM Plex Mono, monospace', fontSize: 10, fontWeight: 700,
+            color: CLASSIFICATION_DETAILS[track.classification]?.color || '#64748B',
+            background: CLASSIFICATION_DETAILS[track.classification]?.bg || '#64748B18',
+            padding: '2px 7px', borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}>
+            <span>{CLASSIFICATION_DETAILS[track.classification]?.icon}</span>
+            <span>{CLASSIFICATION_DETAILS[track.classification]?.label}</span>
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: C.sub, fontFamily: 'IBM Plex Mono, monospace' }}>{track.id}</span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.sub, cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
       </div>

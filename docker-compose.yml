@@ -1,18 +1,4 @@
-version: '3.8'
-
 services:
-  # 1. Serveur UDP & WebSocket Python (Port 5000 UDP / 3000 WebSocket)
-  udp-listener:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: pavois-udp-listener
-    restart: unless-stopped
-    ports:
-      - "5000:5000/udp"
-      - "3000:3000/tcp"
-
-  # 2. Serveur VPS NestJS (Port 5000 UDP / 3002 HTTP & WebSocket)
   vps-server:
     build:
       context: ./vps
@@ -24,3 +10,18 @@ services:
       - "3002:3002/tcp"
     env_file:
       - ./vps/.env
+
+  frontend-angular:
+    build:
+      context: ./frontend-angular
+      dockerfile: Dockerfile
+    container_name: pavois-frontend-angular
+    restart: unless-stopped
+    depends_on:
+      - vps-server
+    environment:
+      PAVOIS_API_URL: ${PAVOIS_API_URL:-}
+      PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-}
+      PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
+    ports:
+      - "8080:80/tcp"

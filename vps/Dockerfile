@@ -24,9 +24,9 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/.env ./.env
 
-# Ports HTTP/WebSocket (3002 par défaut) et UDP (5000 par défaut)
+# Ports HTTP/WebSocket (3002 par défaut) et UDP (41234 par défaut)
 EXPOSE 3002/tcp
-EXPOSE 5000/udp
+EXPOSE 41234/udp
 
 # Démarrage du serveur VPS
 CMD ["node", "dist/main.js"]

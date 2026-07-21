@@ -1,0 +1,63 @@
+.track-feed {
+  width: 240px;
+  flex-shrink: 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: #e2e8f0;
+}
+
+.feed-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e293b;
+  margin-bottom: 10px;
+}
+
+.feed-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #64748b;
+}
+
+.feed-empty {
+  font-size: 12px;
+  color: #475569;
+  font-style: italic;
+}
+
+.feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.feed-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.track-id {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.track-coords {
+  color: #e2e8f0;
+}
+
+.track-alt {
+  color: #64748b;
+  font-size: 10px;
+}

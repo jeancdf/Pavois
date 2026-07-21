@@ -1,0 +1,15 @@
+/* You can add global styles to this file, and also import other style files */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #0b1220;
+  color: #f1f5f9;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+

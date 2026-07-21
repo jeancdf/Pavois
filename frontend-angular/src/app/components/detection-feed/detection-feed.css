@@ -22,23 +22,6 @@
   color: #64748b;
 }
 
-.status {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.status-ok {
-  color: #10b981;
-  background: #10b98122;
-}
-
-.status-down {
-  color: #ef4444;
-  background: #ef444422;
-}
 
 .feed-empty {
   font-size: 12px;
@@ -85,4 +68,43 @@
 .confidence {
   color: #10b981;
   margin-left: auto;
+}
+
+.conf-high {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+/* Filtre slider */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #0f172a;
+}
+
+.filter-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+.filter-slider {
+  flex: 1;
+  accent-color: #3b82f6;
+  height: 3px;
+  cursor: pointer;
+}
+
+.filter-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #93c5fd;
+  min-width: 32px;
+  text-align: right;
 }

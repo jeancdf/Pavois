@@ -2,20 +2,40 @@ import { AfterViewInit, Component, ElementRef, OnDestroy, effect, inject, viewCh
 import * as L from 'leaflet';
 import { Subscription } from 'rxjs';
 import { RealtimeService } from '../../services/realtime.service';
+import { TrackSelectionService } from '../../services/track-selection.service';
 import { CameraPosition } from '../../models/world-position.model';
-import { TrackUpdate } from '../../models/track-update.model';
+import { ObjectClassification, TrackUpdate } from '../../models/track-update.model';
 
 const EARTH_RADIUS_M = 6371000;
 const TRAIL_LENGTH = 30;
-// Niveau de zoom natif max des tuiles OpenStreetMap : au-delà, Leaflet
-// agrandit numériquement les tuiles (flou) mais les cônes/marqueurs restent
-// nets et s'écartent visuellement — utile pour un test à l'échelle d'une
-// pièce (quelques mètres) où la résolution native (~20 cm/px à z19) est trop
-// grossière pour bien distinguer les positions.
 const TILE_MAX_NATIVE_ZOOM = 19;
 const MAX_ZOOM = 23;
 const DEFAULT_ZOOM = 21;
 const TRACK_COLORS = ['#f59e0b', '#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fb7185'];
+
+const CLASSIFICATION_ICONS: Record<ObjectClassification, { emoji: string; color: string }> = {
+  drone:    { emoji: '🚁', color: '#ef4444' },
+  airplane: { emoji: '✈️', color: '#3b82f6' },
+  bird:     { emoji: '🐦', color: '#10b981' },
+  other:    { emoji: '❓', color: '#64748b' },
+};
+
+function buildTrackIcon(track: TrackUpdate, borderColor: string): L.DivIcon {
+  const { emoji, color } = track.classification
+    ? CLASSIFICATION_ICONS[track.classification]
+    : { emoji: '❓', color: '#64748b' };
+
+  const html = `<div style="
+    width: 28px; height: 28px; border-radius: 50%;
+    background: ${color}33;
+    border: 2px solid ${borderColor};
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; line-height: 1; cursor: pointer;
+    box-shadow: 0 0 6px ${color}66;
+  ">${emoji}</div>`;
+
+  return L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14], tooltipAnchor: [14, 0] });
+}
 
 /** Déplace un point GPS d'une distance (m) dans une direction (cap en degrés). */
 function projectLatLng(lat: number, lon: number, bearingDeg: number, distanceM: number): L.LatLngExpression {
@@ -26,7 +46,7 @@ function projectLatLng(lat: number, lon: number, bearingDeg: number, distanceM: 
   return [lat + (dLat * 180) / Math.PI, lon + (dLon * 180) / Math.PI];
 }
 
-/** Polygone du cône de champ de vision, directement en GPS (cf. PLAN.md buildFovPolygon). */
+/** Polygone du cône de champ de vision, directement en GPS. */
 function buildFovLatLngs(camera: CameraPosition, segments = 24): L.LatLngExpression[] {
   const points: L.LatLngExpression[] = [[camera.lat, camera.lon]];
   const halfFov = camera.fovDeg / 2;
@@ -37,15 +57,13 @@ function buildFovLatLngs(camera: CameraPosition, segments = 24): L.LatLngExpress
   return points;
 }
 
-/** Point juste derrière la caméra (direction opposée à son cap), pour poser l'étiquette
- *  sans qu'elle ne recouvre le champ de vision. */
 function behindCameraPoint(camera: CameraPosition, distanceM = 1.5): L.LatLngExpression {
   return projectLatLng(camera.lat, camera.lon, camera.azimuthDeg + 180, distanceM);
 }
 
 interface TrackLayers {
   line: L.Polyline;
-  marker: L.CircleMarker;
+  marker: L.Marker;
 }
 
 @Component({
@@ -57,6 +75,7 @@ interface TrackLayers {
 export class MapView implements AfterViewInit, OnDestroy {
   private readonly mapElRef = viewChild.required<ElementRef<HTMLDivElement>>('mapEl');
   private readonly realtime = inject(RealtimeService);
+  private readonly trackSelection = inject(TrackSelectionService);
 
   private map: L.Map | null = null;
   private cameraLayers: L.Layer[] = [];
@@ -89,11 +108,6 @@ export class MapView implements AfterViewInit, OnDestroy {
 
     this.subscription = this.realtime.trackUpdates$.subscribe((track) => this.renderTrackUpdate(track));
 
-    // Le conteneur n'a pas forcément sa taille finale au moment où Leaflet
-    // s'initialise (la mise en page flex se stabilise après ce premier rendu),
-    // ce qui fait que les tuiles se positionnent mal ("bouts de carte"
-    // dispersés). On force un recalcul une fois la mise en page posée, puis à
-    // chaque redimensionnement du conteneur.
     const mapEl = this.mapElRef().nativeElement;
     requestAnimationFrame(() => this.map?.invalidateSize());
     if (typeof ResizeObserver !== 'undefined') {
@@ -126,8 +140,6 @@ export class MapView implements AfterViewInit, OnDestroy {
         fillOpacity: 0.25,
       }).addTo(this.map!);
 
-      // Étiquette posée juste derrière la caméra (côté opposé au cap), pour
-      // ne pas recouvrir le champ de vision qu'elle représente.
       const label = L.circleMarker(behindCameraPoint(camera), {
         radius: 4,
         color: '#3b82f6',
@@ -146,7 +158,7 @@ export class MapView implements AfterViewInit, OnDestroy {
     if (!this.colorByTrackId.has(track.trackId)) {
       this.colorByTrackId.set(track.trackId, TRACK_COLORS[this.colorByTrackId.size % TRACK_COLORS.length]);
     }
-    const color = this.colorByTrackId.get(track.trackId)!;
+    const trailColor = this.colorByTrackId.get(track.trackId)!;
     const point: L.LatLngExpression = [track.lat, track.lng];
 
     const trail = [point, ...(this.trailsByTrackId.get(track.trackId) ?? [])].slice(0, TRAIL_LENGTH);
@@ -154,16 +166,20 @@ export class MapView implements AfterViewInit, OnDestroy {
 
     let layers = this.trackLayers.get(track.trackId);
     if (!layers) {
+      const icon = buildTrackIcon(track, trailColor);
       layers = {
-        line: L.polyline(trail, { color, weight: 2, opacity: 0.7 }).addTo(this.map),
-        marker: L.circleMarker(point, { radius: 6, color, fillColor: color, fillOpacity: 1 })
+        line: L.polyline(trail, { color: trailColor, weight: 2, opacity: 0.7 }).addTo(this.map),
+        marker: L.marker(point, { icon })
           .addTo(this.map)
-          .bindTooltip(track.trackId, { permanent: true, direction: 'right' }),
+          .bindTooltip(track.trackId, { permanent: true, direction: 'right' })
+          .on('click', () => this.trackSelection.select(track.trackId)),
       };
       this.trackLayers.set(track.trackId, layers);
     } else {
       layers.line.setLatLngs(trail);
       layers.marker.setLatLng(point);
+      // Mise à jour de l'icône si la classification change
+      layers.marker.setIcon(buildTrackIcon(track, trailColor));
     }
   }
 }

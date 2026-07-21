@@ -1,11 +1,34 @@
+declare global {
+  interface Window {
+    __PAVOIS_ENV__?: {
+      apiUrl?: string;
+      wsBaseUrl?: string;
+      devToken?: string;
+    };
+  }
+}
+
+const browserWindow = typeof window !== 'undefined' ? window : undefined;
+const runtimeEnv = browserWindow?.__PAVOIS_ENV__;
+const origin = browserWindow?.location?.origin ?? 'http://localhost:8080';
+const fallbackApiUrl = `${origin}/api`;
+const originUrl = new URL(origin);
+const fallbackWsBaseUrl = `${originUrl.protocol === 'https:' ? 'wss' : 'ws'}://${originUrl.hostname}:3002`;
+const isLocalhost = ['localhost', '127.0.0.1'].includes(originUrl.hostname);
+const fallbackDevToken = isLocalhost ? 'dev-pavois-token' : '';
+
+function resolveRuntimeValue(value: string | undefined, fallback: string): string {
+  return value && value.trim().length > 0 ? value : fallback;
+}
+
 export const environment = {
   production: false,
-  apiUrl: 'http://192.168.137.1:3000',
+  apiUrl: resolveRuntimeValue(runtimeEnv?.apiUrl, fallbackApiUrl),
   // URL de base sans token — le token est injecté dynamiquement par AuthService
-  wsBaseUrl: 'ws://192.168.137.8:3000',
+  wsBaseUrl: resolveRuntimeValue(runtimeEnv?.wsBaseUrl, fallbackWsBaseUrl),
   // Token de dev pré-rempli automatiquement en local pour éviter de saisir à
   // chaque démarrage. Ne jamais mettre de valeur ici en production.
-  devToken: 'dev-pavois-token',
+  devToken: resolveRuntimeValue(runtimeEnv?.devToken, fallbackDevToken),
   // Origine du repère local ENU : position GPS réelle de cam0 (cf.
   // app/config/cameras.config.ts). cam0 se retrouve donc exactement à (0,0).
   geoOrigin: { lat: 48.82608, lng: 2.3659, alt: 58.52 },

@@ -1,0 +1,51 @@
+<div class="track-detail-panel">
+  <div class="panel-header">
+    <span class="panel-title">PISTE — {{ selection.selectedTrackId() }}</span>
+    <button class="panel-close" (click)="selection.deselect()" aria-label="Fermer">×</button>
+  </div>
+
+  @if (latestUpdate(); as u) {
+    <div class="panel-body">
+      <div class="detail-grid">
+        @if (u.classification) {
+          <div class="detail-row">
+            <span class="detail-label">TYPE</span>
+            <span class="classif-badge" [class]="'classif-' + u.classification">
+              {{ classifLabel(u.classification) }}
+            </span>
+          </div>
+        }
+        <div class="detail-row">
+          <span class="detail-label">LAT</span>
+          <span class="detail-value">{{ u.lat.toFixed(6) }}°</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">LNG</span>
+          <span class="detail-value">{{ u.lng.toFixed(6) }}°</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">ALT</span>
+          <span class="detail-value">{{ u.alt.toFixed(1) }} m</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">HEURE</span>
+          <span class="detail-value">{{ formatTime(u.timestamp) }}</span>
+        </div>
+      </div>
+
+      <div class="history-section">
+        <div class="history-title">HISTORIQUE ({{ history().length }} pts)</div>
+        <div class="history-list">
+          @for (h of history(); track h.timestamp) {
+            <div class="history-item">
+              <span class="h-coords">{{ h.lat.toFixed(5) }}, {{ h.lng.toFixed(5) }}</span>
+              <span class="h-alt">{{ h.alt.toFixed(0) }} m</span>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  } @else {
+    <p class="panel-empty">En attente de données pour cette piste…</p>
+  }
+</div>

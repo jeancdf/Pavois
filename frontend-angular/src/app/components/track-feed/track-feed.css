@@ -48,6 +48,13 @@
   font-size: 11px;
 }
 
+.track-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .track-id {
   color: #f59e0b;
   font-weight: 700;
@@ -60,4 +67,38 @@
 .track-alt {
   color: #64748b;
   font-size: 10px;
+}
+
+/* Badges de classification */
+.classif-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.classif-drone {
+  color: #fca5a5;
+  background: #ef444422;
+  border: 1px solid #ef444444;
+}
+
+.classif-airplane {
+  color: #93c5fd;
+  background: #3b82f622;
+  border: 1px solid #3b82f644;
+}
+
+.classif-bird {
+  color: #6ee7b7;
+  background: #10b98122;
+  border: 1px solid #10b98144;
+}
+
+.classif-other {
+  color: #94a3b8;
+  background: #64748b22;
+  border: 1px solid #64748b44;
 }

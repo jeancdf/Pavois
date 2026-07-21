@@ -29,19 +29,32 @@ function randomRawDetection() {
   };
 }
 
-// Petit déplacement simulé autour de l'origine, exprimé directement en degrés
-// GPS (mêmes unités que le vrai backend) — ~0.0001° ≈ 10 m.
+const CLASSIFICATIONS = ['drone', 'airplane', 'bird', 'other'];
+// Classification fixe par piste pour que le mock soit cohérent
+const trackClassifications = { obj0: 'drone', obj1: 'bird' };
+
 function simulatedTrackUpdate() {
   tick += 1;
   const t = tick / 10;
-  return {
-    type: 'track_update',
-    trackId: 'obj0',
-    lat: ORIGIN_LAT + 0.00015 * Math.sin(t * 0.3),
-    lng: ORIGIN_LNG + 0.00015 * Math.cos(t * 0.3),
-    alt: ORIGIN_ALT,
-    timestamp: Date.now(),
-  };
+  // Deux pistes simulées sur des trajectoires circulaires distinctes
+  const tracks = [
+    {
+      trackId: 'obj0',
+      lat: ORIGIN_LAT + 0.00015 * Math.sin(t * 0.3),
+      lng: ORIGIN_LNG + 0.00015 * Math.cos(t * 0.3),
+      alt: ORIGIN_ALT,
+      classification: trackClassifications['obj0'],
+    },
+    {
+      trackId: 'obj1',
+      lat: ORIGIN_LAT + 0.0003 * Math.sin(t * 0.15 + 1),
+      lng: ORIGIN_LNG + 0.0003 * Math.cos(t * 0.15 + 1),
+      alt: ORIGIN_ALT + 10,
+      classification: trackClassifications['obj1'],
+    },
+  ];
+  const track = tracks[tick % 2];
+  return { type: 'track_update', timestamp: Date.now(), ...track };
 }
 
 wss.on('connection', (socket) => {

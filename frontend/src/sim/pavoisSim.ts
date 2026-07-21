@@ -17,11 +17,14 @@ export interface SimCamera {
 
 export interface Waypoint { x: number; y: number; z: number; t: number }
 
+export type ObjectClassification = 'drone' | 'airplane' | 'bird' | 'other'
+
 export interface SimTrack {
   id: string
   name: string
   color: string
   status: 'confirmed' | 'tentative' | 'lost'
+  classification: ObjectClassification
   waypoints: Waypoint[]
 }
 
@@ -63,7 +66,7 @@ const TRACKS_DEF: SimTrack[] = [
   {
     // Assault drone: sprint → 180° reversal → hover recon → panic escape
     // ~80 m/s sprints  ↔  ~7 m/s hover  (11:1 ratio)
-    id: 'TRK-001', name: 'Contact Alpha', color: '#EF4444', status: 'confirmed',
+    id: 'TRK-001', name: 'Contact Alpha', color: '#EF4444', status: 'confirmed', classification: 'drone',
     waypoints: [
       { x:22, y:3,  z:5, t:0.0 },  // NE entry
       { x:18, y:3,  z:6, t:0.5 },  // W sprint        4 u / 0.5 s → 80 m/s
@@ -82,7 +85,7 @@ const TRACKS_DEF: SimTrack[] = [
   {
     // Surveillance drone: fast ingress → slow recon loop → fast egress
     // ~70 m/s transit  ↔  ~15 m/s recon crawl  (5:1 ratio)
-    id: 'TRK-002', name: 'Contact Bravo', color: '#F59E0B', status: 'tentative',
+    id: 'TRK-002', name: 'Contact Bravo', color: '#F59E0B', status: 'tentative', classification: 'drone',
     waypoints: [
       { x:2,  y:15, z:4, t:1.0 },  // W entry
       { x:6,  y:11, z:5, t:1.6 },  // NE sprint       5.7 u / 0.6 s → 95 m/s
@@ -100,7 +103,7 @@ const TRACKS_DEF: SimTrack[] = [
   {
     // Evasive zigzag: hard direction reversals every 0.6 s, bleeds off at end
     // ~70 m/s zigzag  ↔  ~18 m/s bleed-off  (4:1 ratio + constant heading flips)
-    id: 'TRK-003', name: 'Contact Charlie', color: '#8B5CF6', status: 'tentative',
+    id: 'TRK-003', name: 'Contact Charlie', color: '#8B5CF6', status: 'tentative', classification: 'drone',
     waypoints: [
       { x:20, y:20, z:3, t:3.0 },  // SE entry, low
       { x:16, y:17, z:5, t:3.6 },  // NW         5 u / 0.6 s → 83 m/s
@@ -118,7 +121,7 @@ const TRACKS_DEF: SimTrack[] = [
   {
     // Bird: slow, organic wandering at low altitude — not a threat
     // ~14-18 m/s throughout, gentle curves, no sharp turns
-    id: 'TRK-004', name: 'Contact Delta', color: '#34d399', status: 'tentative',
+    id: 'TRK-004', name: 'Contact Delta', color: '#34d399', status: 'tentative', classification: 'bird',
     waypoints: [
       { x:9,  y:19, z:2, t:0.0 },  // starts SW area, low
       { x:11, y:17, z:2, t:1.5 },  // drifts NE       2.8 u / 1.5 s → 19 m/s

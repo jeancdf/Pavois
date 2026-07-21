@@ -116,6 +116,10 @@ export default function MapViewer() {
   const showCoverage   = useSimStore((s) => s.showCoverage)
   const showPrediction = useSimStore((s) => s.showPrediction)
 
+  // Live WebSocket tracks refs & subscription
+  const liveEntitiesRef = useRef<Map<string, DroneEntityGroup>>(new Map())
+  const liveTracks = useSimStore((s) => s.liveTracks)
+
   // Keep refs in sync
   useEffect(() => { simTimeRef.current = currentTime }, [currentTime])
   useEffect(() => {
@@ -126,6 +130,94 @@ export default function MapViewer() {
     showPredRef.current = showPrediction
     droneEntitiesRef.current.forEach(g => { g.prediction.show = showPrediction })
   }, [showPrediction])
+
+  // ── Render live WebSocket tracks ──────────────────────────────────────────────
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+
+    const liveEntities = liveEntitiesRef.current
+    const currentLiveIds = new Set(Object.keys(liveTracks))
+
+    // 1. Supprimer les pistes perdues/effacées du store
+    for (const [id, group] of liveEntities.entries()) {
+      if (!currentLiveIds.has(id)) {
+        viewer.entities.remove(group.marker)
+        viewer.entities.remove(group.trail)
+        viewer.entities.remove(group.velocity)
+        viewer.entities.remove(group.prediction)
+        liveEntities.delete(id)
+      }
+    }
+
+    // 2. Ajouter ou mettre à jour les pistes actives
+    for (const [id, track] of Object.entries(liveTracks)) {
+      if (track.positions.length === 0) continue
+
+      const lastPos = track.positions[track.positions.length - 1]
+      const lastCartesian = Cartesian3.fromDegrees(lastPos.lng, lastPos.lat, lastPos.alt)
+
+      const droneColor = Color.fromCssColorString(track.status === 'lost' ? '#64748B' : track.color)
+      const trailColor = droneColor.withAlpha(0.6)
+
+      let group = liveEntities.get(id)
+
+      if (!group) {
+        // Créer les entités Cesium
+        const marker = viewer.entities.add({
+          position: lastCartesian,
+          point: {
+            pixelSize: 14,
+            color: droneColor,
+            outlineColor: Color.WHITE,
+            outlineWidth: 2.5,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          label: {
+            text: `${track.classification === 'drone' ? '🛸 ' : track.classification === 'airplane' ? '✈️ ' : track.classification === 'bird' ? '🐦 ' : '❓ '}${track.name}`,
+            font: '700 11px IBM Plex Mono, monospace',
+            fillColor: droneColor,
+            outlineColor: Color.fromCssColorString('#0d1117'),
+            outlineWidth: 2,
+            style: 2,
+            pixelOffset: new Cartesian2(18, 0),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        })
+
+        const trail = viewer.entities.add({
+          polyline: {
+            positions: track.positions.map(p => Cartesian3.fromDegrees(p.lng, p.lat, p.alt)),
+            width: 3.0,
+            material: trailColor,
+            clampToGround: false,
+          },
+        })
+
+        // Entités vides pour compatibilité
+        const velocity = viewer.entities.add({ polyline: { positions: [], show: false } })
+        const prediction = viewer.entities.add({ polyline: { positions: [], show: false } })
+
+        group = { marker, trail, velocity, prediction }
+        liveEntities.set(id, group)
+      } else {
+        // Mettre à jour les entités existantes
+        group.marker.position = lastCartesian as any
+        if (group.marker.point) {
+          group.marker.point.color = droneColor as any
+        }
+        if (group.marker.label) {
+          const emoji = track.classification === 'drone' ? '🛸 ' : track.classification === 'airplane' ? '✈️ ' : track.classification === 'bird' ? '🐦 ' : '❓ '
+          group.marker.label.text = (track.status === 'lost' ? `[PERDU] ${emoji}${track.name}` : `${emoji}${track.name}`) as any
+          group.marker.label.fillColor = droneColor as any
+        }
+        if (group.trail.polyline) {
+          group.trail.polyline.positions = track.positions.map(p => Cartesian3.fromDegrees(p.lng, p.lat, p.alt)) as any
+          group.trail.polyline.material = trailColor as any
+        }
+      }
+    }
+  }, [liveTracks])
 
   // ── Init Cesium viewer ────────────────────────────────────────────────────────
   useEffect(() => {

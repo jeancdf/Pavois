@@ -9,6 +9,7 @@ import DeploymentView from './components/DeploymentView'
 import ReplayView from './components/ReplayView'
 import { useSimStore } from './store/simStore'
 import { PAVOISSim } from './sim/pavoisSim'
+import { useWebSocket } from './hooks/useWebSocket'
 
 const THEME_VARS = {
   light: { bg: '#F7F9FC', border: '#E2E8F0', mapBg: '#EEF2F8' },
@@ -17,6 +18,9 @@ const THEME_VARS = {
 }
 
 export default function App() {
+  // Établit la connexion WebSocket en arrière-plan
+  useWebSocket()
+
   const {
     theme, view, currentTime, running,
     selectedCamera, selectedTrack,

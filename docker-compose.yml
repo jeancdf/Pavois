@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # 1. Serveur UDP & WebSocket Python (Port 5000 UDP / 3000 WebSocket)
+  udp-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pavois-udp-listener
+    restart: unless-stopped
+    ports:
+      - "5000:5000/udp"
+      - "3000:3000/tcp"
+
+  # 2. Serveur VPS NestJS (Port 5000 UDP / 3002 HTTP & WebSocket)
+  vps-server:
+    build:
+      context: ./vps
+      dockerfile: Dockerfile
+    container_name: pavois-vps-server
+    restart: unless-stopped
+    ports:
+      - "41234:41234/udp"
+      - "3002:3002/tcp"
+    env_file:
+      - ./vps/.env

@@ -39,6 +39,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           console.log('[UDP] Détection 2D brute parsée et diffusée :', detection);
           this.eventsGateway.broadcast('raw_detection', detection);
         } else if (parts[0].startsWith('obj') && parts.length >= 5) {
+<<<<<<< Updated upstream
           const trackUpdate: any = {
             type: 'track_update',
             trackId: parts[0],
@@ -46,6 +47,32 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
             lng: parseFloat(parts[2]),
             alt: parseFloat(parts[3]),
             timestamp: parseFloat(parts[4]),
+=======
+          const trackId = parts[0];
+          const lat = parseFloat(parts[1]);
+          const lng = parseFloat(parts[2]);
+          const alt = parseFloat(parts[3]);
+          const timestamp = parseFloat(parts[4]);
+          const explicitClass = parts.length >= 6 ? parts[5].trim() : undefined;
+
+          const classification = this.classifyTrack(
+            trackId,
+            lat,
+            lng,
+            alt,
+            timestamp,
+            explicitClass,
+          );
+
+          const state = this.trackStates.get(trackId);
+
+          const trackUpdate = {
+            type: 'track_update',
+            trackId,
+            lat,
+            lng,
+            alt,
+            timestamp,
           };
           if (parts.length >= 6) {
             trackUpdate.classification = parts[5].trim();

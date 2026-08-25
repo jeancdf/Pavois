@@ -20,13 +20,15 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Copie du build compilé depuis l'étape builder
+# Copie du build compilé depuis l'étape builder (SANS le fichier .env)
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/.env ./.env
 
 # Ports HTTP/WebSocket (3002 par défaut) et UDP (41234 par défaut)
 EXPOSE 3002/tcp
 EXPOSE 41234/udp
+
+# SÉCURITÉ NIVEAU 2 : Basculement vers l'utilisateur non-privilégié 'node' (Principle of Least Privilege)
+USER node
 
 # Démarrage du serveur VPS
 CMD ["node", "dist/main.js"]

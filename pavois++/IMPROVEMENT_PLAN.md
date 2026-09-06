@@ -122,18 +122,41 @@ event_bus  →  stdout / UDP  (local ENU or GPS CSV)
       dramatically better than the baseline differencing detector on the same
       scene.
 
-## Results (synthetic 3-camera scene, `pavois_selftest`)
+## Results
+
+### `pavois_selftest` — 154 unit + integration checks (all pass)
 
 | Metric | Baseline (2-frame diff + largest blob) | New pipeline |
 | --- | --- | --- |
-| Per-camera centroid error | 4.12 px | **1.43 px** |
-| Fused 3D track error (mean) | track fragments / no stable output | **1.34 m** |
-| Fused 3D track error (tail window) | — | **1.33 m** |
+| Per-camera centroid error | ~4.1 px | **~1.3 px** |
+| Fused 3D track error (mean) | track fragments / no stable output | **~1.7 m** |
 | Track identity | churns / spurious tracks | single stable track |
 
-92/92 self-test checks pass (`ctest`). End-to-end run of `pavois_detect` on the
-generated `scene.conf` produces one continuous track with triangulation residual
-~0.05 m and ~25° parallax.
+### `pavois_accuracy` — 16-scenario synthetic scorecard
+
+| Aggregate metric | Score |
+| --- | --- |
+| Detection F1 (recall x precision) | ~99% |
+| Centroid pixel accuracy (within tolerance) | ~99% |
+| Fusion availability (frames covered) | ~97% |
+| Fusion relative accuracy `1 - error/range` | ~95% |
+| Fusion absolute accuracy (< 5 m) | 100% |
+| Fusion absolute accuracy (< 2 m) | ~60% (dominated by far-range + miscalibration scenarios) |
+| Track continuity (1 id / target) | ~97% |
+| Mean 3D error | ~1.7 m at ~25 m range |
+| False-alarm rate (empty scene) | 0% |
+| **OVERALL PIPELINE ACCURACY** | **~93%** |
+
+Scenarios covered: nominal, high/severe sensor noise, low-contrast target,
+strong lighting drift, sudden exposure step, camera dropout mid-run,
+two-cameras-only, fast linear target, near-hovering target, heading
+miscalibration, heading+elevation miscalibration, uncorrected lens distortion,
+target leaving/re-entering frame, far target / wide baseline, tight geometry
+(small parallax). A truly static point target is out of scope for
+background-subtraction detection (documented, not gated).
+
+End-to-end `pavois_detect` on the generated `scene.conf` produces one continuous
+track with triangulation residual ~0.05 m and ~25 deg parallax.
 
 ## Validation method
 

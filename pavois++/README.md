@@ -18,7 +18,7 @@ The current C++ MVP is structured for the Raspberry Pi target:
 ```bash
 cmake -S . -B build
 cmake --build build
-ctest --test-dir build --output-on-failure   # runs pavois_selftest
+ctest --test-dir build --output-on-failure   # pavois_selftest + pavois_accuracy
 ```
 
 ## Run
@@ -41,6 +41,32 @@ ctest --test-dir build --output-on-failure   # runs pavois_selftest
 lighting drift, static distractors) and writes a matching `scene.conf`. Any
 `camera.N.device` that is a directory of `.pgm` frames (optionally with a
 `fps.txt`) is replayed as a live source.
+
+## Tests & accuracy (no camera needed)
+
+```bash
+./build/pavois_selftest      # 150+ unit/integration checks (linalg, Kalman, image
+                             # ops, geometry, triangulation, tracker, fusion, replay)
+./build/pavois_accuracy      # scorecard: 16 synthetic scenarios -> accuracy %
+```
+
+`pavois_accuracy` renders each scenario (sensor noise, low contrast, lighting
+drift, exposure steps, camera dropout, 2-camera-only, fast/hovering targets,
+heading miscalibration, lens distortion, occlusion gap, far/wide and tight
+geometry), runs the full pipeline against ground truth, and reports:
+
+- **detection** — recall, precision, and % of centroids within pixel tolerance
+- **fusion** — availability, % of updates within 2 m / 5 m, and *relative*
+  accuracy `1 - error/range` (fair across near and far targets)
+- **track continuity** — one ID per real target
+- a blended **OVERALL PIPELINE ACCURACY %**, plus a false-alarm rate on an
+  empty scene
+
+It exits non-zero (CI gate) if the overall score, any scenario, or the
+false-alarm rate crosses its threshold. Current baseline on the synthetic
+battery: **~93% overall**, detection F1 ~99%, mean 3D error ~1.7 m at ~25 m
+range, 0% false alarms. Add scenarios in `tests/scene_sim.hpp` /
+`tests/accuracy.cpp`.
 
 ## Detection pipeline
 

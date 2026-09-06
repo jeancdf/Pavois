@@ -70,16 +70,37 @@ Camera settings are loaded from `pavois++.conf`. Each camera can define:
 
 ## Current Implementation
 
-The current C++ MVP follows this exact runtime:
+1. `main.cpp` loads `AppConfig` and starts one `CameraWorker` thread per enabled
+   camera, plus a shared `FusionEngine`.
+2. Each worker opens a `FrameSource` (`make_frame_source`): V4L2, an ffmpeg
+   network stream (low-latency flags, backlog drop, auto-reconnect), or a
+   `ReplaySource` (directory of `.pgm` frames) for offline testing. Every frame
+   carries a `captured_us` timestamp stamped at read time.
+3. `MotionDetector` (`src/detection/motion_detector.cpp`) turns a frame into at
+   most one `Observation`:
+   - short temporal **background warm-up** (no baked-in ghosts),
+   - box blur, global-brightness-bias removal (exposure/white-balance drift),
+   - **running-average background** + per-pixel adaptive threshold,
+   - morphological open/close, connected components,
+   - blob filters (area, fill ratio, aspect, border) from config,
+   - blob scoring (area, fill, motion energy, temporal continuity),
+   - **2D constant-velocity Kalman** on the centroid,
+   - **M-of-N confirmation** before anything is emitted.
+4. `FusionEngine` buffers a short history per camera and, once per fusion cycle:
+   - **time-aligns** each camera's observation to a common instant
+     (interpolating the pixel track),
+   - back-projects with intrinsics + radial distortion + a correct compass
+     heading / elevation model (`src/math/pose.cpp`),
+   - **triangulates** (`src/fusion/triangulation.cpp`): weighted least squares,
+     cheirality gate, pairwise-parallax gate, per-ray residual gate, and
+     leave-one-out RANSAC for 3+ cameras,
+   - feeds the point to the **`Tracker`** (`src/fusion/tracker.cpp`):
+     constant-velocity Kalman per track, distance gating with a recovery band
+     that prevents fragmentation, M-of-N confirmation, coast + delete.
+5. Confirmed tracks are emitted on a fixed cadence as
+   `obj<id>,x,y,z,timestamp_us` (local) or `obj<id>,lat,lon,alt,timestamp_us`
+   (when a GPS reference is set), to stdout and optionally UDP.
 
-1. `main.cpp` loads `AppConfig`.
-2. One `CameraWorker` thread starts per enabled camera.
-3. Each worker opens its own `V4L2Camera`.
-4. The worker converts frames to grayscale, computes frame difference, and extracts blobs.
-5. The largest blob becomes an `Observation`.
-6. `FusionEngine` keeps the most recent observation from each camera.
-7. When at least two cameras have observations inside the fusion window, the engine triangulates a 3D point from the camera rays.
-8. `event_bus.cpp` formats the fused result as a compact CSV line:
-   `object_id,timestamp_us,x,y,z,confidence,camera_ids`
-
-This keeps capture, detection, fusion, and output separated while staying light enough for the Pi.
+`pavois_core` is a static library; `pavois_detect` is the app, `pavois_selftest`
+the test suite (CTest), and `pavois_gen_scene` writes a synthetic 3-camera
+replay dataset + matching `scene.conf`.

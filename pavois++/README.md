@@ -18,6 +18,7 @@ The current C++ MVP is structured for the Raspberry Pi target:
 ```bash
 cmake -S . -B build
 cmake --build build
+ctest --test-dir build --output-on-failure   # runs pavois_selftest
 ```
 
 ## Run
@@ -26,7 +27,34 @@ cmake --build build
 ./build/pavois_detect
 ./build/pavois_detect --config pavois++.conf
 ./build/pavois_detect --config pavois++.conf --host 127.0.0.1 --port 5005
+./build/pavois_detect --config pavois++.conf --debug-dir /tmp/pavois_debug
 ```
+
+## Try it without cameras (synthetic replay)
+
+```bash
+./build/pavois_gen_scene /tmp/scene 300
+./build/pavois_detect --config /tmp/scene/scene.conf --frames 300
+```
+
+`pavois_gen_scene` renders a moving target into three virtual cameras (noise,
+lighting drift, static distractors) and writes a matching `scene.conf`. Any
+`camera.N.device` that is a directory of `.pgm` frames (optionally with a
+`fps.txt`) is replayed as a live source.
+
+## Detection pipeline
+
+Each camera runs a background-subtraction detector (running-average background,
+adaptive per-pixel threshold, morphology, blob filtering + scoring, a 2D Kalman
+filter on the centroid, and M-of-N confirmation). The fusion stage time-aligns
+observations, back-projects them with per-camera intrinsics + radial distortion +
+a compass-heading/elevation model, triangulates with parallax/residual gates and
+leave-one-out RANSAC, and runs a constant-velocity tracker. See
+`IMPROVEMENT_PLAN.md` and `ARCHITECTURE.md`.
+
+Detector and fusion behaviour is tunable per camera / globally in
+`pavois++.conf`; `--debug-dir` dumps `*_raw.pgm`, `*_mask.pgm` and
+`*_overlay.pgm` for visual tuning.
 
 ## Notes
 

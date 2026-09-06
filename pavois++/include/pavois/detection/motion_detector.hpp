@@ -49,7 +49,7 @@ private:
     };
 
     std::vector<Blob> connected_components(const std::vector<std::uint8_t>& mask,
-                                           const std::vector<float>& diff) const;
+                                           const std::vector<float>& diff);
 
     CameraConfig cfg_;
     int w_ = 0;
@@ -62,6 +62,8 @@ private:
     std::vector<float> diff_;
     std::vector<std::uint8_t> mask_;
     std::vector<std::uint8_t> fg_mask_;  // dilated, for slow background update
+    std::vector<std::uint8_t> cc_visited_;
+    std::vector<int> cc_stack_;
 
     KalmanCV centroid_kf_;
     std::uint64_t last_us_ = 0;

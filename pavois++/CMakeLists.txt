@@ -51,6 +51,15 @@ add_executable(pavois_gen_scene tools/gen_scene.cpp)
 target_link_libraries(pavois_gen_scene PRIVATE pavois_core)
 
 enable_testing()
+
 add_executable(pavois_selftest tests/selftest.cpp)
 target_link_libraries(pavois_selftest PRIVATE pavois_core)
+target_include_directories(pavois_selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 add_test(NAME pavois_selftest COMMAND pavois_selftest)
+
+add_executable(pavois_accuracy tests/accuracy.cpp)
+target_link_libraries(pavois_accuracy PRIVATE pavois_core)
+target_include_directories(pavois_accuracy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+add_test(NAME pavois_accuracy COMMAND pavois_accuracy)
+set_tests_properties(pavois_selftest PROPERTIES TIMEOUT 120)
+set_tests_properties(pavois_accuracy PROPERTIES TIMEOUT 400)

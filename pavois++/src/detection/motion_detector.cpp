@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <queue>
 
 namespace pavois {
 namespace {
@@ -19,28 +18,28 @@ MotionDetector::MotionDetector(const CameraConfig& cfg) : cfg_(cfg) {
 }
 
 std::vector<MotionDetector::Blob> MotionDetector::connected_components(
-    const std::vector<std::uint8_t>& mask, const std::vector<float>& diff) const {
+    const std::vector<std::uint8_t>& mask, const std::vector<float>& diff) {
     std::vector<Blob> blobs;
-    std::vector<std::uint8_t> visited(mask.size(), 0);
-    const int dxs[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
-    const int dys[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    cc_visited_.assign(mask.size(), 0);
+    auto& stack = cc_stack_;
 
     for (int y = 0; y < h_; ++y) {
         for (int x = 0; x < w_; ++x) {
             const std::size_t s = static_cast<std::size_t>(y) * w_ + x;
-            if (!mask[s] || visited[s]) continue;
+            if (!mask[s] || cc_visited_[s]) continue;
 
             Blob b;
             b.x0 = b.x1 = x;
             b.y0 = b.y1 = y;
-            std::queue<std::pair<int, int>> q;
-            q.push({x, y});
-            visited[s] = 1;
+            stack.clear();
+            stack.push_back(static_cast<int>(s));
+            cc_visited_[s] = 1;
             double esum = 0.0;
-            while (!q.empty()) {
-                const auto [cx, cy] = q.front();
-                q.pop();
-                const std::size_t ci = static_cast<std::size_t>(cy) * w_ + cx;
+            while (!stack.empty()) {
+                const int ci = stack.back();
+                stack.pop_back();
+                const int cx = ci % w_;
+                const int cy = ci / w_;
                 const double wgt = std::max(1.0, static_cast<double>(diff[ci]));
                 ++b.area;
                 b.wsum += wgt;
@@ -51,13 +50,15 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
                 b.x1 = std::max(b.x1, cx);
                 b.y0 = std::min(b.y0, cy);
                 b.y1 = std::max(b.y1, cy);
-                for (int k = 0; k < 8; ++k) {
-                    const int nx = cx + dxs[k], ny = cy + dys[k];
-                    if (nx < 0 || ny < 0 || nx >= w_ || ny >= h_) continue;
-                    const std::size_t ni = static_cast<std::size_t>(ny) * w_ + nx;
-                    if (!mask[ni] || visited[ni]) continue;
-                    visited[ni] = 1;
-                    q.push({nx, ny});
+                const int x0 = std::max(0, cx - 1), x1 = std::min(w_ - 1, cx + 1);
+                const int y0 = std::max(0, cy - 1), y1 = std::min(h_ - 1, cy + 1);
+                for (int ny = y0; ny <= y1; ++ny) {
+                    for (int nx = x0; nx <= x1; ++nx) {
+                        const std::size_t ni = static_cast<std::size_t>(ny) * w_ + nx;
+                        if (!mask[ni] || cc_visited_[ni]) continue;
+                        cc_visited_[ni] = 1;
+                        stack.push_back(static_cast<int>(ni));
+                    }
                 }
             }
             b.energy = esum / static_cast<double>(std::max<std::size_t>(1, b.area));

@@ -1,4 +1,5 @@
 #include "pavois/capture/camera.hpp"
+#include "pavois/capture/frame_source.hpp"
 
 #include <fcntl.h>
 #include <linux/videodev2.h>
@@ -8,9 +9,11 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 namespace pavois {
@@ -78,9 +81,13 @@ std::string V4L2Camera::shell_escape_single_quotes(const std::string& value) {
 
 bool V4L2Camera::open_network_stream() {
     const std::string url = shell_escape_single_quotes(device_);
+    const bool is_rtsp = device_.rfind("rtsp://", 0) == 0;
     std::ostringstream cmd;
     cmd << "ffmpeg -nostdin -loglevel error"
-        << " -i " << url
+        << " -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0";
+    if (is_rtsp) cmd << " -rtsp_transport tcp";
+    cmd << " -i " << url
+        << " -an -sn"
         << " -vf scale=" << requested_width_ << ':' << requested_height_ << ",format=gray"
         << " -f rawvideo -pix_fmt gray pipe:1";
 
@@ -230,26 +237,65 @@ void V4L2Camera::close_device() {
     }
 }
 
-bool V4L2Camera::read_network_frame(GrayFrame& out) {
-    if (pipe_ == nullptr) {
-        last_error_ = "network stream not open";
-        return false;
-    }
-
+bool V4L2Camera::read_one_network_frame(GrayFrame& out) {
     out.width = width_;
     out.height = height_;
     out.pixels.resize(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_));
-
     std::size_t offset = 0;
     while (offset < out.pixels.size()) {
-        const std::size_t n = std::fread(out.pixels.data() + offset, 1, out.pixels.size() - offset, pipe_);
+        const std::size_t n =
+            std::fread(out.pixels.data() + offset, 1, out.pixels.size() - offset, pipe_);
         if (n == 0) {
             last_error_ = "ffmpeg stream ended";
             return false;
         }
         offset += n;
     }
+    return true;
+}
 
+bool V4L2Camera::reconnect_network_stream() {
+    if (pipe_ != nullptr) {
+        ::pclose(pipe_);
+        pipe_ = nullptr;
+    }
+    int attempt = 0;
+    while (reconnect_max_attempts_ <= 0 || attempt < reconnect_max_attempts_) {
+        ++attempt;
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, reconnect_backoff_ms_)));
+        if (open_network_stream()) {
+            last_error_.clear();
+            return true;
+        }
+    }
+    last_error_ = "network reconnect gave up after " + std::to_string(attempt) + " attempts";
+    return false;
+}
+
+bool V4L2Camera::read_network_frame(GrayFrame& out) {
+    if (pipe_ == nullptr && !reconnect_network_stream()) {
+        return false;
+    }
+
+    if (!read_one_network_frame(out)) {
+        if (!reconnect_network_stream() || !read_one_network_frame(out)) {
+            return false;
+        }
+    }
+
+    // Drop already-buffered whole frames so we always process the freshest one.
+    const int fd = ::fileno(pipe_);
+    const std::size_t frame_bytes = out.pixels.size();
+    for (int guard = 0; guard < 8 && fd >= 0 && frame_bytes > 0; ++guard) {
+        int available = 0;
+        if (ioctl(fd, FIONREAD, &available) < 0) break;
+        if (static_cast<std::size_t>(available) < frame_bytes) break;
+        GrayFrame skip;
+        if (!read_one_network_frame(skip)) break;
+        out.pixels.swap(skip.pixels);
+    }
+
+    out.captured_us = wall_clock_us();
     last_error_.clear();
     return true;
 }
@@ -289,6 +335,7 @@ bool V4L2Camera::dequeue_frame(GrayFrame& out) {
     const auto* data = static_cast<const std::uint8_t*>(buffers_[buf.index].start);
     out.width = width_;
     out.height = height_;
+    out.captured_us = wall_clock_us();
     out.pixels.resize(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_));
     yuyv_to_gray(data, out.pixels.data(), width_, height_);
 

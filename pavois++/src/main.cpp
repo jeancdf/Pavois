@@ -22,6 +22,7 @@ void print_usage(const char* program) {
         << "  --host NAME     UDP host to send tracks to\n"
         << "  --port PORT     UDP port to send tracks to\n"
         << "  --frames N      Override global frame limit\n"
+        << "  --debug-dir DIR Dump frames/masks/overlays for tuning\n"
         << "  --help          Show this help\n";
 }
 
@@ -44,6 +45,7 @@ std::string resolve_config_path(const std::string& requested) {
 int run(int argc, char** argv) {
     std::string cli_config_path;
     std::string cli_host;
+    std::string cli_debug_dir;
     int cli_port = 0;
     bool cli_frames_set = false;
     int cli_frames = -1;
@@ -71,6 +73,10 @@ int run(int argc, char** argv) {
             cli_frames_set = true;
             continue;
         }
+        if (arg == "--debug-dir" && i + 1 < argc) {
+            cli_debug_dir = argv[++i];
+            continue;
+        }
         if (arg.rfind("--", 0) == 0) {
             std::cerr << "Unknown argument: " << arg << "\n";
             print_usage(argv[0]);
@@ -92,6 +98,9 @@ int run(int argc, char** argv) {
     }
     if (cli_port > 0) {
         config.output_port = cli_port;
+    }
+    if (!cli_debug_dir.empty()) {
+        config.debug_dir = cli_debug_dir;
     }
 
     if (config.cameras.empty()) {
@@ -121,7 +130,22 @@ int run(int argc, char** argv) {
         }
     }
 
-    FusionEngine fusion(config.fusion_window_ms);
+    FusionSettings fusion_settings;
+    fusion_settings.fusion_window_ms = config.fusion_window_ms;
+    fusion_settings.fusion_emit_interval_ms = config.fusion_emit_interval_ms;
+    fusion_settings.triangulation.min_parallax_deg = config.fusion_min_parallax_deg;
+    fusion_settings.triangulation.max_residual_m = config.fusion_max_residual_m;
+    fusion_settings.triangulation.max_range_m = config.fusion_max_range_m;
+    fusion_settings.triangulation.ransac_iterations = config.fusion_ransac_iterations;
+    fusion_settings.tracker.gate_mahalanobis = config.track_gate_mahalanobis;
+    fusion_settings.tracker.match_distance_m = config.track_match_distance_m;
+    fusion_settings.tracker.process_noise = config.track_process_noise;
+    fusion_settings.tracker.meas_noise = config.track_meas_noise;
+    fusion_settings.tracker.confirm_updates = config.track_confirm_updates;
+    fusion_settings.tracker.max_coast_ms = config.track_max_coast_ms;
+    fusion_settings.tracker.max_speed_mps = config.track_max_speed_mps;
+    FusionEngine fusion(fusion_settings);
+
     std::mutex output_mutex;
     std::vector<std::thread> threads;
     threads.reserve(config.cameras.size());
@@ -129,15 +153,12 @@ int run(int argc, char** argv) {
     for (const auto& camera : config.cameras) {
         threads.emplace_back(CameraWorker(
             camera,
+            config,
             fusion,
             std::cout,
             output_mutex,
             udp_sender,
-            enabled_cameras == 1,
-            config.reference_lat,
-            config.reference_lon,
-            config.reference_alt,
-            config.has_reference_gps));
+            enabled_cameras == 1));
     }
 
     for (auto& thread : threads) {

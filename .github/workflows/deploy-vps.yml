@@ -41,15 +41,23 @@ jobs:
 
             echo "--> Déploiement de la branche '$BRANCH' dans '$TARGET_DIR' avec $COMPOSE_FILE"
 
-            # Créer le dossier d'environnement s'il n'existe pas encore
-            if [ ! -d "$TARGET_DIR" ]; then
-              git clone "https://github.com/${{ github.repository }}.git" "$TARGET_DIR" || mkdir -p "$TARGET_DIR"
+            # S'assurer que le dossier cible est un dépôt Git valide
+            if [ ! -d "$TARGET_DIR/.git" ]; then
+              echo "--> Clonage du dépôt dans '$TARGET_DIR'..."
+              rm -rf "$TARGET_DIR"
+              git clone "git@github.com:${{ github.repository }}.git" "$TARGET_DIR" || git clone "https://github.com/${{ github.repository }}.git" "$TARGET_DIR"
             fi
 
             cd "$TARGET_DIR"
+
+            if [ ! -d ".git" ]; then
+              echo "Erreur : '$TARGET_DIR' n'est pas un dépôt Git valide." >&2
+              exit 1
+            fi
+
             git fetch --all --prune
             git checkout "$BRANCH" || git checkout -b "$BRANCH" "origin/$BRANCH"
-            git pull --ff-only origin "$BRANCH"
+            git pull origin "$BRANCH"
 
             chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh 2>/dev/null || true
             COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" ./scripts/deploy_vps.sh

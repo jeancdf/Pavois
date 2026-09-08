@@ -10,6 +10,10 @@ services:
       - "3003:3002/tcp"
     env_file:
       - ./vps/.env.staging
+    networks:
+      staging-net:
+        aliases:
+          - vps-server
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -30,6 +34,8 @@ services:
     restart: unless-stopped
     depends_on:
       - vps-server-staging
+    networks:
+      - staging-net
     environment:
       PAVOIS_API_URL: ${PAVOIS_API_URL:-}
       PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-ws://51.15.213.226:3003}
@@ -52,3 +58,7 @@ services:
       - SETUID
     mem_limit: 256m
     cpus: 0.5
+
+networks:
+  staging-net:
+    driver: bridge

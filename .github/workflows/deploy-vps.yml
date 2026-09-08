@@ -22,22 +22,34 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            BASE_APP_DIR="${{ secrets.VPS_APP_DIR }}"
             BRANCH="${{ github.ref_name }}"
 
-            mkdir -p ~/.ssh
-            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGNOvQQV1Ppdvm/1TStM5xxJ+96LeReFXZUJd3F/NnWA achrafaberwag66@gmail.com" >> ~/.ssh/authorized_keys
-            chmod 700 ~/.ssh
-            chmod 600 ~/.ssh/authorized_keys
-
-            if [ -z "$APP_DIR" ]; then
+            if [ -z "$BASE_APP_DIR" ]; then
               echo "VPS_APP_DIR secret is required" >&2
               exit 1
             fi
 
-            cd "$APP_DIR"
+            # Déterminer le dossier cible et le fichier compose selon la branche
+            if [ "$BRANCH" = "securite" ]; then
+              TARGET_DIR="${BASE_APP_DIR}-securite"
+              COMPOSE_FILE="docker-compose.securite.yml"
+            else
+              TARGET_DIR="${BASE_APP_DIR}"
+              COMPOSE_FILE="docker-compose.yml"
+            fi
+
+            echo "--> Déploiement de la branche '$BRANCH' dans '$TARGET_DIR' avec $COMPOSE_FILE"
+
+            # Créer le dossier d'environnement s'il n'existe pas encore
+            if [ ! -d "$TARGET_DIR" ]; then
+              git clone "https://github.com/${{ github.repository }}.git" "$TARGET_DIR" || mkdir -p "$TARGET_DIR"
+            fi
+
+            cd "$TARGET_DIR"
             git fetch --all --prune
-            git checkout "$BRANCH"
+            git checkout "$BRANCH" || git checkout -b "$BRANCH" "origin/$BRANCH"
             git pull --ff-only origin "$BRANCH"
-            chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh
-            APP_DIR="$APP_DIR" ./scripts/deploy_vps.sh
+
+            chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh 2>/dev/null || true
+            COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" ./scripts/deploy_vps.sh

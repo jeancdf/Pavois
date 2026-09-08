@@ -1,0 +1,97 @@
+#include "pavois/transport/udp_sender.hpp"
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+
+namespace pavois {
+namespace {
+
+void close_fd(int& fd) {
+    if (fd >= 0) {
+        ::close(fd);
+        fd = -1;
+    }
+}
+
+}  // namespace
+
+UdpSender::UdpSender() = default;
+
+UdpSender::UdpSender(std::string host, int port) {
+    open(std::move(host), port);
+}
+
+UdpSender::~UdpSender() {
+    close_fd(fd_);
+}
+
+bool UdpSender::open(std::string host, int port) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    close_fd(fd_);
+    host_ = std::move(host);
+    port_ = port;
+
+    if (host_.empty() || port_ <= 0) {
+        last_error_ = "invalid host or port";
+        return false;
+    }
+
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    addrinfo* result = nullptr;
+    const std::string port_text = std::to_string(port_);
+    const int rc = ::getaddrinfo(host_.c_str(), port_text.c_str(), &hints, &result);
+    if (rc != 0) {
+        last_error_ = gai_strerror(rc);
+        return false;
+    }
+
+    for (addrinfo* ai = result; ai != nullptr; ai = ai->ai_next) {
+        fd_ = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (fd_ < 0) {
+            continue;
+        }
+        if (::connect(fd_, ai->ai_addr, ai->ai_addrlen) == 0) {
+            ::freeaddrinfo(result);
+            last_error_.clear();
+            return true;
+        }
+        close_fd(fd_);
+    }
+
+    ::freeaddrinfo(result);
+    last_error_ = std::strerror(errno);
+    return false;
+}
+
+bool UdpSender::valid() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return fd_ >= 0;
+}
+
+void UdpSender::send_line(const std::string& line) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fd_ < 0) {
+        return;
+    }
+    std::string payload = line;
+    payload.push_back('\n');
+    const ssize_t rc = ::send(fd_, payload.data(), payload.size(), 0);
+    if (rc < 0) {
+        last_error_ = std::strerror(errno);
+    }
+}
+
+std::string UdpSender::last_error() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return last_error_;
+}
+
+}  // namespace pavois

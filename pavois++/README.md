@@ -2,6 +2,13 @@
 
 Minimal C++ migration for PAVOIS.
 
+## Raspberry Pi deployment
+
+See [DEPLOYMENT_PI.md](DEPLOYMENT_PI.md) for local CSI capture, per-Pi
+configuration, systemd installation and automatic deployment from GitHub Actions.
+Set `camera.0.device=csi:0` to capture camera 0 locally through `rpicam-vid`
+and FFmpeg; `camera.0.fps` sets its capture rate (default 20).
+
 ## Runtime
 
 The current C++ MVP is structured for the Raspberry Pi target:

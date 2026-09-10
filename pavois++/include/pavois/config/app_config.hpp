@@ -12,6 +12,7 @@ struct CameraConfig {
     std::string device = "/dev/video0";
     int width = 1280;
     int height = 720;
+    int fps = 20;  // CSI capture frame rate
     int frames = -1;
     bool enabled = true;
 

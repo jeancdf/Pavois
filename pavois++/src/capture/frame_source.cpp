@@ -1,6 +1,7 @@
 #include "pavois/capture/frame_source.hpp"
 
 #include "pavois/capture/camera.hpp"
+#include "pavois/capture/csi_camera.hpp"
 #include "pavois/capture/replay_source.hpp"
 
 #include <chrono>
@@ -19,6 +20,10 @@ std::uint64_t wall_clock_us() {
 
 std::unique_ptr<FrameSource> make_frame_source(const CameraConfig& cfg) {
     const std::string& dev = cfg.device;
+
+    if (dev.rfind("csi:", 0) == 0) {
+        return std::make_unique<CsiCamera>(cfg);
+    }
 
     if (dev.rfind("replay:", 0) == 0) {
         return std::make_unique<ReplaySource>(dev.substr(7), /*loop=*/true, /*realtime=*/true);

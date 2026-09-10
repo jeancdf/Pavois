@@ -14,6 +14,7 @@ endif()
 add_library(pavois_core STATIC
     src/config/config_loader.cpp
     src/capture/frame_source.cpp
+    src/capture/csi_camera.cpp
     src/capture/replay_source.cpp
     src/detection/image_ops.cpp
     src/detection/blob_detector.cpp
@@ -51,6 +52,11 @@ add_executable(pavois_gen_scene tools/gen_scene.cpp)
 target_link_libraries(pavois_gen_scene PRIVATE pavois_core)
 
 enable_testing()
+
+add_executable(pavois_csi_test tests/csi_capture.cpp)
+target_link_libraries(pavois_csi_test PRIVATE pavois_core)
+add_test(NAME pavois_csi_test COMMAND pavois_csi_test)
+set_tests_properties(pavois_csi_test PROPERTIES TIMEOUT 15)
 
 add_executable(pavois_selftest tests/selftest.cpp)
 target_link_libraries(pavois_selftest PRIVATE pavois_core)

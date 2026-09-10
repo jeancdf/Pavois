@@ -1,0 +1,50 @@
+name: Deploy OVH VPS (Achraf)
+
+on:
+  push:
+    branches:
+      - securite
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-ovh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Achraf OVH VPS over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
+          username: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
+          key: ${{ secrets.OVH_VPS_SSH_KEY }}
+          port: ${{ secrets.OVH_VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}"
+            BRANCH="${{ github.ref_name }}"
+
+            echo "--> Déploiement de la branche '$BRANCH' sur le VPS OVH (${{ secrets.OVH_VPS_HOST || '51.91.98.159' }})..."
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "--> Premier clonage du dépôt dans $APP_DIR..."
+              mkdir -p "$(dirname "$APP_DIR")"
+              git clone \
+                "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+                "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git remote set-url origin \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            git fetch origin
+            # Force-sync to origin. -f drops tracked local edits (the
+            # previous checkout aborted on scripts/deploy_staging.sh).
+            # Untracked files such as .env are left untouched.
+            git checkout -f -B "$BRANCH" "origin/$BRANCH"
+
+            chmod +x scripts/deploy_staging.sh scripts/deploy_vps.sh 2>/dev/null || true
+            
+            # Lancement automatique du déploiement Staging (Port 8081)
+            ./scripts/deploy_staging.sh

@@ -11,7 +11,7 @@
 
     <h1 class="login-title">Connexion requise</h1>
     <p class="login-subtitle">
-      Entrez votre token d'accès pour établir la connexion WebSocket au serveur de détection.
+      Entrez le jeton du serveur. Il est vérifié avant d'ouvrir l'interface.
     </p>
 
     <form class="login-form" (ngSubmit)="submit()">
@@ -19,10 +19,12 @@
       <input
         id="token-input"
         class="login-input"
-        type="text"
-        placeholder="ex: dev-pavois-token"
+        type="password"
+        placeholder="Jeton d'accès"
         [ngModel]="tokenInput()"
         (ngModelChange)="tokenInput.set($event)"
+        [disabled]="busy()"
+        name="token"
         autocomplete="off"
         spellcheck="false"
       />
@@ -31,12 +33,14 @@
         <p class="login-error">{{ error() }}</p>
       }
 
-      <button type="submit" class="login-btn">Se connecter</button>
+      <button type="submit" class="login-btn" [disabled]="busy()">
+        {{ busy() ? 'Vérification…' : 'Se connecter' }}
+      </button>
     </form>
 
     <p class="login-hint">
-      Le token sera stocké localement et injecté dans chaque connexion WebSocket.
-      En cas de refus du serveur (code 4001), vous serez renvoyé ici.
+      Le jeton doit correspondre à WS_AUTH_TOKEN côté VPS.
+      Un jeton invalide ou un serveur injoignable laisse cet écran affiché.
     </p>
   </div>
 </div>

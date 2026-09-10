@@ -23,6 +23,26 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('/auth/verify (GET) rejects a missing token', () => {
+    return request(app.getHttpServer()).get('/auth/verify').expect(401);
+  });
+
+  it('/auth/verify (GET) rejects an invented token', () => {
+    return request(app.getHttpServer())
+      .get('/auth/verify')
+      .set('Authorization', 'Bearer nimporte-quoi')
+      .expect(401);
+  });
+
+  it('/auth/verify (GET) accepts the configured token', () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    return request(app.getHttpServer())
+      .get('/auth/verify')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect({ ok: true });
+  });
+
   afterEach(async () => {
     await app.close();
   });

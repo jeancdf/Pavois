@@ -13,7 +13,9 @@ const runtimeEnv = browserWindow?.__PAVOIS_ENV__;
 const origin = browserWindow?.location?.origin ?? 'http://localhost:8080';
 const fallbackApiUrl = `${origin}/api`;
 const originUrl = new URL(origin);
-const fallbackWsBaseUrl = `${originUrl.protocol === 'https:' ? 'wss' : 'ws'}://${originUrl.hostname}:3002`;
+const wsScheme = originUrl.protocol === 'https:' ? 'wss' : 'ws';
+// Same host:port as the page; Nginx proxies /ws to Nest.
+const fallbackWsBaseUrl = `${wsScheme}://${originUrl.host}/ws`;
 const isLocalhost = ['localhost', '127.0.0.1'].includes(originUrl.hostname);
 const fallbackDevToken = isLocalhost ? 'dev-pavois-token' : '';
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { environment } from '../../../environments/environment';
@@ -12,16 +12,32 @@ import { environment } from '../../../environments/environment';
 export class LoginScreen {
   private readonly auth = inject(AuthService);
 
-  readonly tokenInput = signal(environment.production ? '' : (environment.devToken ?? ''));
+  readonly tokenInput = signal(
+    environment.production ? '' : (environment.devToken ?? ''),
+  );
   readonly error = signal<string | null>(null);
+  readonly submitting = signal(false);
+  readonly busy = computed(
+    () => this.submitting() || this.auth.pending(),
+  );
 
-  submit(): void {
+  async submit(): Promise<void> {
     const token = this.tokenInput().trim();
     if (!token) {
       this.error.set('Veuillez entrer un token de connexion.');
       return;
     }
+
     this.error.set(null);
-    this.auth.setToken(token);
+    this.submitting.set(true);
+    try {
+      await this.auth.login(token);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error ? error.message : 'erreur inattendue',
+      );
+    } finally {
+      this.submitting.set(false);
+    }
   }
 }

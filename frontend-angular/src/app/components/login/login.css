@@ -106,8 +106,14 @@
   transition: background 0.15s;
 }
 
-.login-btn:hover {
+.login-btn:hover:not(:disabled) {
   background: #2563eb;
+}
+
+.login-btn:disabled,
+.login-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .login-hint {

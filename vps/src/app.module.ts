@@ -7,6 +7,7 @@ import { UdpService } from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasController } from './cameras.controller';
 import { CamerasService } from './cameras.service';
+import { AuthController } from './auth.controller';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { CamerasService } from './cameras.service';
       },
     ]),
   ],
-  controllers: [AppController, CamerasController],
+  controllers: [AppController, AuthController, CamerasController],
   providers: [
     AppService,
     UdpService,

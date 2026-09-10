@@ -58,6 +58,33 @@
               alt {{ camera.alt }} m · azimut {{ camera.azimuthDeg }}° · FOV {{ camera.fovDeg }}° ·
               portée {{ camera.rangeM }} m
             </span>
+            @if (imuOf(camera.id); as imu) {
+              <span class="imu-block imu-live">
+                IMU {{ imuAge(camera.id) }} · cap {{ fmtDeg(imu.headingDeg) }}
+                · élév {{ fmtDeg(imu.elevationDeg) }}
+                · roulis {{ fmtDeg(imu.rollDeg) }}
+              </span>
+            } @else {
+              <span class="imu-block imu-missing">IMU aucune donnée</span>
+            }
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  @if (extraImuIds().length > 0) {
+    <div class="sidebar-header">IMU SANS CAMÉRA</div>
+    <ul class="camera-list">
+      @for (id of extraImuIds(); track id) {
+        <li class="camera-card">
+          <span class="camera-id">{{ id }}</span>
+          @if (imuOf(id); as imu) {
+            <span class="imu-block imu-live">
+              IMU {{ imuAge(id) }} · cap {{ fmtDeg(imu.headingDeg) }}
+              · élév {{ fmtDeg(imu.elevationDeg) }}
+              · roulis {{ fmtDeg(imu.rollDeg) }}
+            </span>
           }
         </li>
       }

@@ -64,6 +64,21 @@
   color: #64748b;
 }
 
+.imu-block {
+  margin-top: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.imu-live {
+  color: #34d399;
+}
+
+.imu-missing {
+  color: #f59e0b;
+}
+
 .camera-btn {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;

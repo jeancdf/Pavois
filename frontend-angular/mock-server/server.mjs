@@ -4,6 +4,8 @@ import { WebSocketServer } from 'ws';
 const PORT = 3000;
 const RAW_DETECTION_INTERVAL_MS = 800;
 const TRACK_INTERVAL_MS = 200;
+const IMU_INTERVAL_MS = 200;
+const DEV_TOKEN = 'dev-pavois-token';
 
 // Pistes simulées autour des caméras ci-dessous.
 const ORIGIN_LAT = 48.82603;
@@ -39,10 +41,23 @@ function broadcast(event, data) {
 
 function handleHttpRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   if (req.method === 'OPTIONS') {
     res.writeHead(204).end();
+    return;
+  }
+
+  const urlPath = req.url?.split('?')[0] ?? '';
+  if (req.method === 'GET' && urlPath === '/auth/verify') {
+    const token = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice('Bearer '.length)
+      : '';
+    if (token === DEV_TOKEN) {
+      sendJson(res, 200, { ok: true });
+    } else {
+      sendJson(res, 401, { message: 'Unauthorized' });
+    }
     return;
   }
 
@@ -121,6 +136,17 @@ function simulatedTrackUpdate() {
   return { type: 'track_update', timestamp: Date.now(), ...track };
 }
 
+function simulatedImu(cameraId, headingBase) {
+  const t = Date.now() / 1000;
+  return {
+    cameraId,
+    headingDeg: headingBase + Math.sin(t) * 8,
+    elevationDeg: Math.sin(t * 1.3) * 3,
+    rollDeg: Math.cos(t * 0.9) * 2,
+    timestamp: Date.now(),
+  };
+}
+
 wss.on('connection', (socket) => {
   console.log('Client connected');
   socket.send(JSON.stringify({ event: 'camera_positions', data: cameras }));
@@ -133,9 +159,25 @@ wss.on('connection', (socket) => {
     socket.send(JSON.stringify({ event: 'track_update', data: simulatedTrackUpdate() }));
   }, TRACK_INTERVAL_MS);
 
+  const imuInterval = setInterval(() => {
+    socket.send(JSON.stringify({
+      event: 'imu_update',
+      data: simulatedImu('cam0', cameras[0].headingDeg),
+    }));
+    socket.send(JSON.stringify({
+      event: 'imu_update',
+      data: simulatedImu('cam1', cameras[1].headingDeg),
+    }));
+    socket.send(JSON.stringify({
+      event: 'imu_update',
+      data: simulatedImu('pi-inconnu', 42),
+    }));
+  }, IMU_INTERVAL_MS);
+
   socket.on('close', () => {
     clearInterval(rawInterval);
     clearInterval(trackInterval);
+    clearInterval(imuInterval);
     console.log('Client disconnected');
   });
 });

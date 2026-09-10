@@ -18,6 +18,7 @@ The current C++ MVP is structured for the Raspberry Pi target:
 ```bash
 cmake -S . -B build
 cmake --build build
+ctest --test-dir build --output-on-failure   # pavois_selftest + pavois_accuracy
 ```
 
 ## Run
@@ -26,7 +27,60 @@ cmake --build build
 ./build/pavois_detect
 ./build/pavois_detect --config pavois++.conf
 ./build/pavois_detect --config pavois++.conf --host 127.0.0.1 --port 5005
+./build/pavois_detect --config pavois++.conf --debug-dir /tmp/pavois_debug
 ```
+
+## Try it without cameras (synthetic replay)
+
+```bash
+./build/pavois_gen_scene /tmp/scene 300
+./build/pavois_detect --config /tmp/scene/scene.conf --frames 300
+```
+
+`pavois_gen_scene` renders a moving target into three virtual cameras (noise,
+lighting drift, static distractors) and writes a matching `scene.conf`. Any
+`camera.N.device` that is a directory of `.pgm` frames (optionally with a
+`fps.txt`) is replayed as a live source.
+
+## Tests & accuracy (no camera needed)
+
+```bash
+./build/pavois_selftest      # 150+ unit/integration checks (linalg, Kalman, image
+                             # ops, geometry, triangulation, tracker, fusion, replay)
+./build/pavois_accuracy      # scorecard: 16 synthetic scenarios -> accuracy %
+```
+
+`pavois_accuracy` renders each scenario (sensor noise, low contrast, lighting
+drift, exposure steps, camera dropout, 2-camera-only, fast/hovering targets,
+heading miscalibration, lens distortion, occlusion gap, far/wide and tight
+geometry), runs the full pipeline against ground truth, and reports:
+
+- **detection** — recall, precision, and % of centroids within pixel tolerance
+- **fusion** — availability, % of updates within 2 m / 5 m, and *relative*
+  accuracy `1 - error/range` (fair across near and far targets)
+- **track continuity** — one ID per real target
+- a blended **OVERALL PIPELINE ACCURACY %**, plus a false-alarm rate on an
+  empty scene
+
+It exits non-zero (CI gate) if the overall score, any scenario, or the
+false-alarm rate crosses its threshold. Current baseline on the synthetic
+battery: **~93% overall**, detection F1 ~99%, mean 3D error ~1.7 m at ~25 m
+range, 0% false alarms. Add scenarios in `tests/scene_sim.hpp` /
+`tests/accuracy.cpp`.
+
+## Detection pipeline
+
+Each camera runs a background-subtraction detector (running-average background,
+adaptive per-pixel threshold, morphology, blob filtering + scoring, a 2D Kalman
+filter on the centroid, and M-of-N confirmation). The fusion stage time-aligns
+observations, back-projects them with per-camera intrinsics + radial distortion +
+a compass-heading/elevation model, triangulates with parallax/residual gates and
+leave-one-out RANSAC, and runs a constant-velocity tracker. See
+`IMPROVEMENT_PLAN.md` and `ARCHITECTURE.md`.
+
+Detector and fusion behaviour is tunable per camera / globally in
+`pavois++.conf`; `--debug-dir` dumps `*_raw.pgm`, `*_mask.pgm` and
+`*_overlay.pgm` for visual tuning.
 
 ## Notes
 

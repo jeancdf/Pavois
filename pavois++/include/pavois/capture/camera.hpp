@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pavois/capture/frame_source.hpp"
 #include "pavois/domain/frame.hpp"
 
 #include <cstdio>
@@ -9,20 +10,25 @@
 
 namespace pavois {
 
-class V4L2Camera {
+class V4L2Camera : public FrameSource {
 public:
     V4L2Camera(std::string device, int requested_width, int requested_height);
-    ~V4L2Camera();
+    ~V4L2Camera() override;
 
     V4L2Camera(const V4L2Camera&) = delete;
     V4L2Camera& operator=(const V4L2Camera&) = delete;
 
-    bool open();
-    bool read_frame(GrayFrame& out);
+    bool open() override;
+    bool read_frame(GrayFrame& out) override;
+    const std::string& last_error() const override;
+
+    void set_reconnect(int max_attempts, int backoff_ms) {
+        reconnect_max_attempts_ = max_attempts;
+        reconnect_backoff_ms_ = backoff_ms;
+    }
 
     int width() const;
     int height() const;
-    const std::string& last_error() const;
 
 private:
     struct Buffer {
@@ -40,6 +46,9 @@ private:
     std::vector<Buffer> buffers_;
     bool streaming_ = false;
 
+    int reconnect_max_attempts_ = 0;
+    int reconnect_backoff_ms_ = 500;
+
     int xioctl(unsigned long request, void* arg);
     bool configure_device();
     bool init_mmap();
@@ -49,6 +58,8 @@ private:
     bool dequeue_frame(GrayFrame& out);
     bool open_network_stream();
     bool read_network_frame(GrayFrame& out);
+    bool read_one_network_frame(GrayFrame& out);
+    bool reconnect_network_stream();
     static bool is_network_source(const std::string& source);
     static std::string shell_escape_single_quotes(const std::string& value);
     static void yuyv_to_gray(const std::uint8_t* src, std::uint8_t* dst, int width, int height);

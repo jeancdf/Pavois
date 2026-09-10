@@ -1,31 +1,65 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(pavois_pp VERSION 0.1.0 LANGUAGES CXX)
+project(pavois_pp VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(pavois_detect
-    src/main.cpp
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Core pipeline library (shared by the app and the self-tests).
+add_library(pavois_core STATIC
     src/config/config_loader.cpp
+    src/capture/frame_source.cpp
+    src/capture/replay_source.cpp
+    src/detection/image_ops.cpp
     src/detection/blob_detector.cpp
+    src/detection/motion_detector.cpp
     src/frame_diff.cpp
+    src/fusion/triangulation.cpp
+    src/fusion/tracker.cpp
     src/fusion/fusion_engine.cpp
     src/math/pose.cpp
     src/runtime/camera_worker.cpp
     src/transport/event_bus.cpp
     src/transport/udp_sender.cpp
+    src/util/debug_sink.cpp
     src/v4l2_camera.cpp
 )
 
-target_include_directories(pavois_detect PRIVATE
+target_include_directories(pavois_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+find_package(Threads REQUIRED)
+target_link_libraries(pavois_core PUBLIC Threads::Threads)
+
 if (MSVC)
-    target_compile_options(pavois_detect PRIVATE /W4)
+    target_compile_options(pavois_core PRIVATE /W4)
 else()
-    target_compile_options(pavois_detect PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(pavois_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+add_executable(pavois_detect src/main.cpp)
+target_link_libraries(pavois_detect PRIVATE pavois_core)
+
+add_executable(pavois_gen_scene tools/gen_scene.cpp)
+target_link_libraries(pavois_gen_scene PRIVATE pavois_core)
+
+enable_testing()
+
+add_executable(pavois_selftest tests/selftest.cpp)
+target_link_libraries(pavois_selftest PRIVATE pavois_core)
+target_include_directories(pavois_selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+add_test(NAME pavois_selftest COMMAND pavois_selftest)
+
+add_executable(pavois_accuracy tests/accuracy.cpp)
+target_link_libraries(pavois_accuracy PRIVATE pavois_core)
+target_include_directories(pavois_accuracy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+add_test(NAME pavois_accuracy COMMAND pavois_accuracy)
+set_tests_properties(pavois_selftest PROPERTIES TIMEOUT 120)
+set_tests_properties(pavois_accuracy PROPERTIES TIMEOUT 400)

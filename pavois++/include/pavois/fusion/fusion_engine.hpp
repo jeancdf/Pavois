@@ -2,40 +2,46 @@
 
 #include "pavois/domain/observation.hpp"
 #include "pavois/domain/track_update.hpp"
-#include "pavois/math/pose.hpp"
+#include "pavois/fusion/tracker.hpp"
+#include "pavois/fusion/triangulation.hpp"
 
-#include <chrono>
 #include <cstdint>
+#include <deque>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace pavois {
 
+struct FusionSettings {
+    int fusion_window_ms = 90;
+    int fusion_emit_interval_ms = 60;
+    TriangulationConfig triangulation;
+    TrackerConfig tracker;
+};
+
 class FusionEngine {
 public:
-    explicit FusionEngine(int fusion_window_ms);
+    explicit FusionEngine(const FusionSettings& settings);
 
-    std::optional<TrackUpdate> submit(const Observation& obs);
+    // Ingest one camera observation. Returns any track updates ready to emit
+    // (immediate promotions + fixed-cadence refreshes of confirmed tracks).
+    std::vector<TrackUpdate> submit(const Observation& obs);
+
+    // Diagnostics for the last fuse attempt (thread-safe snapshot).
+    std::string last_status() const;
 
 private:
-    struct TrackState {
-        std::uint32_t object_id = 0;
-        Vec3 position;
-        std::uint64_t timestamp_us = 0;
-        double confidence = 0.0;
-    };
+    std::vector<Observation> time_align_locked(std::uint64_t t_ref) const;
 
-    std::mutex mutex_;
-    std::unordered_map<std::string, Observation> latest_;
-    std::unordered_map<std::uint32_t, TrackState> tracks_;
-    std::uint32_t next_track_id_ = 1;
-    int fusion_window_ms_ = 150;
-
-    std::optional<TrackUpdate> fuse_locked();
-    std::optional<TrackUpdate> update_track_locked(const Vec3& position, std::uint64_t timestamp_us, double confidence, const std::vector<std::string>& cameras);
+    mutable std::mutex mutex_;
+    FusionSettings settings_;
+    std::unordered_map<std::string, std::deque<Observation>> history_;
+    Tracker tracker_;
+    std::uint64_t last_emit_us_ = 0;
+    std::uint64_t last_fuse_us_ = 0;
+    std::string last_status_;
 };
 
 }  // namespace pavois

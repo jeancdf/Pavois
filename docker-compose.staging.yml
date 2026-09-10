@@ -41,7 +41,10 @@ services:
       - staging-net
     environment:
       PAVOIS_API_URL: ${PAVOIS_API_URL:-}
-      PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-ws://51.91.98.159:3003}
+      # Literal empty: do not inherit PAVOIS_WS_BASE_URL=...:3002 from
+      # the root .env (that port is not published on staging).
+      # The Angular app then uses ws://<page-host>/ws via Nginx.
+      PAVOIS_WS_BASE_URL: ""
       PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
     ports:
       - "8081:80/tcp"

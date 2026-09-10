@@ -1,0 +1,46 @@
+name: Deploy Raspberry Pis
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build and test the detector
+        run: |
+          cmake -S pavois++ -B build/pi-check -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/pi-check --parallel 2
+          ctest --test-dir build/pi-check --output-on-failure
+
+  deploy:
+    needs: check
+    concurrency:
+      group: deploy-pi-${{ matrix.pi }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        pi: ${{ fromJSON(vars.PI_RUNNERS || '["pi-jean", "pi-tanel", "pi-walid"]') }}
+    # Each Pi must have its own UNIQUE label: a shared label would deploy to
+    # whichever runner is free, not to every Pi.
+    runs-on: [self-hosted, linux, ARM64, '${{ matrix.pi }}']
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile and deploy on this Pi
+        env:
+          PI_BUILD_JOBS: '2'
+        run: bash scripts/deploy_pi.sh

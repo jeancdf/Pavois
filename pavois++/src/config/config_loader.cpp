@@ -45,6 +45,7 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "device") c.device = v;
         else if (f == "width") c.width = std::stoi(v);
         else if (f == "height") c.height = std::stoi(v);
+        else if (f == "fps") c.fps = std::stoi(v);
         else if (f == "frames") c.frames = std::stoi(v);
         else if (f == "enabled") c.enabled = parse_bool(v);
         else if (f == "diff_threshold") c.diff_threshold = static_cast<std::uint8_t>(std::stoi(v));

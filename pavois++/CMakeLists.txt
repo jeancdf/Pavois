@@ -25,6 +25,7 @@ add_library(pavois_core STATIC
     src/fusion/fusion_engine.cpp
     src/math/pose.cpp
     src/runtime/camera_worker.cpp
+    src/sensors/imu.cpp
     src/transport/event_bus.cpp
     src/transport/udp_sender.cpp
     src/util/debug_sink.cpp

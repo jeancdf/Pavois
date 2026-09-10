@@ -2,12 +2,17 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
 import * as crypto from 'crypto';
 import { EventsGateway } from './events.gateway';
+import { CamerasService } from './cameras.service';
+import { parseAttitudeLine } from './udp-attitude';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
   private server: dgram.Socket | null = null;
 
-  constructor(private readonly eventsGateway: EventsGateway) { }
+  constructor(
+    private readonly eventsGateway: EventsGateway,
+    private readonly camerasService: CamerasService,
+  ) { }
 
   /**
    * Vérifie la signature HMAC-SHA256 et la fraîcheur de l'horodatage d'un paquet UDP.
@@ -79,9 +84,24 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         }
 
         const messageStr = payloadBuffer.toString('utf-8').trim();
-        console.log(`[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ${messageStr}`);
-
         const parts = messageStr.split(',');
+        if (parts[0] === 'att' && parts.length >= 6) {
+          const attitude = parseAttitudeLine(messageStr);
+          if (!attitude) return;
+          const updated = this.camerasService.updateAttitude(
+            attitude.cameraId,
+            attitude.headingDeg,
+          );
+          if (updated) {
+            this.eventsGateway.broadcast(
+              'camera_positions',
+              this.camerasService.list(),
+            );
+          }
+          return;
+        }
+
+        console.log(`[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ${messageStr}`);
         if (parts[0] === 'raw' && parts.length >= 8) {
           const detection = {
             type: 'raw_detection',

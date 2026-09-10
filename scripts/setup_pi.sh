@@ -16,7 +16,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/.." && pwd)
 
 apt-get update
-apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg
+apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg i2c-tools
 
 if ! getent group pavois >/dev/null; then
   groupadd --system pavois
@@ -25,6 +25,9 @@ if ! id pavois >/dev/null 2>&1; then
   useradd --system --gid pavois --no-create-home --home-dir /opt/pavois --shell /usr/sbin/nologin pavois
 fi
 usermod -aG video pavois
+if getent group i2c >/dev/null; then
+  usermod -aG i2c pavois
+fi
 install -d -m 0755 /opt/pavois
 install -d -o "$deploy_user" -g pavois -m 0755 /opt/pavois/bin
 install -d -o root -g pavois -m 0750 /etc/pavois
@@ -33,9 +36,29 @@ if [[ ! -e /etc/pavois/pavois.conf ]]; then
   install -o root -g pavois -m 0640 "$repo_dir/pavois++/deploy/pavois.conf.example" /etc/pavois/pavois.conf
   camera_id=$(hostname | tr -cd 'A-Za-z0-9_-')
   sed -i "s/^camera\.0\.id=CHANGE_ME$/camera.0.id=${camera_id:-pi-camera}/" /etc/pavois/pavois.conf
+elif ! grep -q '^imu.enabled=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+imu.enabled=true
+imu.kind=auto
+imu.i2c_dev=/dev/i2c-1
+imu.emit_interval_ms=200
+imu.heading_offset_deg=0.0
+imu.elevation_offset_deg=0.0
+imu.roll_offset_deg=0.0
+EOF
 fi
 
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/pavois.service" /etc/systemd/system/pavois.service
+install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/60-pavois-i2c.rules" \
+  /etc/udev/rules.d/60-pavois-i2c.rules
+if command -v udevadm >/dev/null; then
+  udevadm control --reload-rules || true
+  udevadm trigger --subsystem-match=i2c-dev || true
+fi
+if command -v raspi-config >/dev/null; then
+  raspi-config nonint do_i2c 0 || true
+fi
 
 # Only restarting this service requires elevated privileges during deployment.
 systemctl_path=$(command -v systemctl)

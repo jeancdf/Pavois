@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { headingDeltaDeg, wrapHeadingDeg } from './udp-attitude';
 
 /** Pose d'une caméra, diffusée au frontend par l'événement `camera_positions`. */
 export interface CameraConfig {
@@ -13,6 +14,8 @@ export interface CameraConfig {
 }
 
 export type CameraPosition = Pick<CameraConfig, 'lat' | 'lon' | 'alt'>;
+
+const ATTITUDE_MIN_DELTA_DEG = 0.4;
 
 // Caméras des trois Pi (le script d'installation donne à camera.0.id le nom de la Pi).
 // Positions provisoires reprises du dernier site de pavois++/pavois++.conf, à placer
@@ -56,6 +59,7 @@ export class CamerasService {
     process.env.CAMERAS_FILE || 'data/cameras.json',
   );
   private cameras = this.load();
+  private readonly imuSeen = new Set<string>();
 
   list(): CameraConfig[] {
     return this.cameras;
@@ -71,6 +75,27 @@ export class CamerasService {
     const cameras = this.cameras.map((camera) => (camera.id === id ? updated : camera));
     this.save(cameras);
     this.cameras = cameras;
+    return updated;
+  }
+
+  /**
+   * Heading from the Pi IMU. Kept in memory so GPS edits on disk stay
+   * intact; the next att packet after restart restores the live cap.
+   */
+  updateAttitude(id: string, headingDeg: number): CameraConfig | null {
+    const current = this.cameras.find((camera) => camera.id === id);
+    if (!current) return null;
+
+    const heading = wrapHeadingDeg(headingDeg);
+    const first = !this.imuSeen.has(id);
+    const delta = headingDeltaDeg(current.headingDeg, heading);
+    if (!first && delta < ATTITUDE_MIN_DELTA_DEG) return null;
+
+    this.imuSeen.add(id);
+    const updated = { ...current, headingDeg: heading };
+    this.cameras = this.cameras.map((camera) =>
+      camera.id === id ? updated : camera,
+    );
     return updated;
   }
 

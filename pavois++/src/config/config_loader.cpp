@@ -112,6 +112,28 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "output_port") cfg.output_port = std::stoi(v);
         else if (key == "debug_dir") cfg.debug_dir = v;
         else if (key == "debug_every") cfg.debug_every = std::stoi(v);
+        else if (key == "imu.enabled") cfg.imu_enabled = parse_bool(v);
+        else if (key == "imu.kind") cfg.imu_kind = v;
+        else if (key == "imu.i2c_dev") cfg.imu_i2c_dev = v;
+        else if (key == "imu.i2c_address") {
+            cfg.imu_i2c_address = static_cast<int>(std::stoul(v, nullptr, 0));
+        }
+        else if (key == "imu.file") cfg.imu_file = v;
+        else if (key == "imu.emit_interval_ms") {
+            cfg.imu_emit_interval_ms = std::stoi(v);
+        }
+        else if (key == "imu.heading_offset_deg") {
+            cfg.imu_heading_offset_deg = std::stod(v);
+        }
+        else if (key == "imu.elevation_offset_deg") {
+            cfg.imu_elevation_offset_deg = std::stod(v);
+        }
+        else if (key == "imu.roll_offset_deg") {
+            cfg.imu_roll_offset_deg = std::stod(v);
+        }
+        else if (key == "imu.elevation_sign") {
+            cfg.imu_elevation_sign = std::stod(v);
+        }
         else if (key == "reference_lat") { cfg.reference_lat = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_lon") { cfg.reference_lon = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_alt") { cfg.reference_alt = std::stod(v); cfg.has_reference_gps = true; }

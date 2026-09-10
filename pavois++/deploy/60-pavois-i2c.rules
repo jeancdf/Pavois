@@ -1,0 +1,2 @@
+# Allow the pavois service account to read the camera IMU.
+KERNEL=="i2c-[0-9]*", GROUP="pavois", MODE="0660"

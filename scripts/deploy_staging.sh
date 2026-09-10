@@ -19,9 +19,14 @@ if [ ! -f "vps/.env.staging" ] && [ -f "vps/.env.staging.example" ]; then
   echo "[STAGING] vps/.env.staging créé depuis le template."
 fi
 
+DOCKER_CMD="docker"
+if ! docker info >/dev/null 2>&1; then
+  DOCKER_CMD="sudo docker"
+fi
+
 echo "[STAGING] Lancement du déploiement de l'environnement de Test / Staging..."
-docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
-docker compose -f "$COMPOSE_FILE" ps
+$DOCKER_CMD compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
+$DOCKER_CMD compose -f "$COMPOSE_FILE" ps
 
 echo -e "\n\033[0;32m[STAGING OK] L'environnement de test est actif :\033[0m"
 echo "  • Frontend Angular (Staging) : http://51.15.213.226:8081"

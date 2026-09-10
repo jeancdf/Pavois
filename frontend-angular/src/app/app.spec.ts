@@ -4,6 +4,7 @@ import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
+    localStorage.removeItem('pavois_token');
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [provideHttpClient()],
@@ -16,10 +17,14 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the PAVOIS brand in the top bar', async () => {
+  it('should keep the login screen without a verified token', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.brand-name')?.textContent).toContain('PAVOIS');
+    expect(compiled.querySelector('.login-title')?.textContent).toContain(
+      'Connexion requise',
+    );
+    expect(compiled.querySelector('.brand-name')).toBeNull();
   });
 });

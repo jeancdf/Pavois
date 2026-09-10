@@ -21,6 +21,11 @@ if [ ! -f "vps/.env" ] && [ -f "vps/.env.example" ]; then
   echo "Created vps/.env from vps/.env.example. Update secrets before first public rollout."
 fi
 
-docker compose -f "$COMPOSE_FILE" pull --ignore-buildable || true
-docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
-docker compose -f "$COMPOSE_FILE" ps
+DOCKER_CMD="docker"
+if ! docker info >/dev/null 2>&1; then
+  DOCKER_CMD="sudo docker"
+fi
+
+$DOCKER_CMD compose -f "$COMPOSE_FILE" pull --ignore-buildable || true
+$DOCKER_CMD compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
+$DOCKER_CMD compose -f "$COMPOSE_FILE" ps

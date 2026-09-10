@@ -21,17 +21,43 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            BASE_APP_DIR="${{ secrets.VPS_APP_DIR }}"
             BRANCH="${{ github.ref_name }}"
 
-            if [ -z "$APP_DIR" ]; then
+            if [ -z "$BASE_APP_DIR" ]; then
               echo "VPS_APP_DIR secret is required" >&2
               exit 1
             fi
 
-            cd "$APP_DIR"
+            # Déterminer le dossier cible et le fichier compose selon la branche
+            if [ "$BRANCH" = "securite" ]; then
+              TARGET_DIR="${BASE_APP_DIR}-securite"
+              COMPOSE_FILE="docker-compose.securite.yml"
+            else
+              TARGET_DIR="${BASE_APP_DIR}"
+              COMPOSE_FILE="docker-compose.yml"
+            fi
+
+            echo "--> Déploiement de la branche '$BRANCH' dans '$TARGET_DIR' avec $COMPOSE_FILE"
+
+            # S'assurer que le dossier cible est un dépôt Git valide
+            if [ ! -d "$TARGET_DIR/.git" ]; then
+              echo "--> Clonage du dépôt dans '$TARGET_DIR'..."
+              rm -rf "$TARGET_DIR"
+              git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TARGET_DIR" || git clone "git@github.com:${{ github.repository }}.git" "$TARGET_DIR"
+            fi
+
+            cd "$TARGET_DIR"
+
+            if [ ! -d ".git" ]; then
+              echo "Erreur : '$TARGET_DIR' n'est pas un dépôt Git valide." >&2
+              exit 1
+            fi
+
+            git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" 2>/dev/null || true
             git fetch --all --prune
-            git checkout "$BRANCH"
-            git pull --ff-only origin "$BRANCH"
-            chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh
-            APP_DIR="$APP_DIR" ./scripts/deploy_vps.sh
+            git checkout "$BRANCH" || git checkout -b "$BRANCH" "origin/$BRANCH"
+            git pull origin "$BRANCH"
+
+            chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh 2>/dev/null || true
+            COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" ./scripts/deploy_vps.sh

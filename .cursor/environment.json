@@ -1,0 +1,20 @@
+{
+  "name": "P.A.V.O.I.S.",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "backend (NestJS WS+UDP)",
+      "command": "bash .cursor/run-backend.sh",
+      "description": "NestJS VPS server: HTTP + WebSocket on :3002, UDP detection listener on :41234."
+    },
+    {
+      "name": "frontend (Angular)",
+      "command": "bash .cursor/run-frontend.sh",
+      "description": "Angular 22 dashboard dev server on :4200 (connects to backend WebSocket)."
+    }
+  ],
+  "ports": [
+    { "name": "backend", "port": 3002 },
+    { "name": "frontend", "port": 4200 }
+  ]
+}

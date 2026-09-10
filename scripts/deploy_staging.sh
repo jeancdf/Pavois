@@ -44,4 +44,4 @@ $DOCKER_CMD compose -f "$COMPOSE_FILE" ps
 echo -e "\n\033[0;32m[STAGING OK] L'environnement de test est actif :\033[0m"
 echo "  • Frontend Angular (Staging) : http://51.91.98.159:8081"
 echo "  • WebSocket (via Nginx)      : ws://51.91.98.159:8081/ws"
-echo "  • Serveur UDP (Staging)      : Port 41235 / UDP"
+echo "  • Serveur UDP (Staging)      : Ports 41234 et 41235 / UDP"

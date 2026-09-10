@@ -8,11 +8,13 @@
 #include "pavois/util/debug_sink.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace pavois {
 namespace {
@@ -105,18 +107,27 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
     udp_sender_->send_line(line.str());
 }
 
+void CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose) {
+    ImuSample sample;
+    if (!imu || !imu->read(sample) || !sample.valid) return;
+    pose.heading_deg = sample.heading_deg;
+    pose.elevation_deg = sample.elevation_deg;
+    pose.roll_deg = sample.roll_deg;
+}
+
+void CameraWorker::stream_attitude_only(
+    ImuReader* imu, CameraPose pose) {
+    std::uint64_t last_att_us = 0;
+    const int wait_ms = std::max(50, app_.imu_emit_interval_ms);
+    while (cfg_.frames < 0) {
+        apply_imu_sample(imu, pose);
+        maybe_emit_attitude(pose, wall_clock_us(), last_att_us);
+        std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
+    }
+}
+
 void CameraWorker::operator()() {
     if (!cfg_.enabled) return;
-
-    auto source = make_frame_source(cfg_);
-    if (!source->open()) {
-        log_line("camera " + cfg_.id + " open failed: " + source->last_error());
-        return;
-    }
-
-    MotionDetector detector(cfg_);
-    DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
-    detector.set_debug(debug.active());
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
     CameraPose pose = pose_from(cfg_);
@@ -125,8 +136,20 @@ void CameraWorker::operator()() {
         log_line("camera " + cfg_.id + " IMU live");
     } else if (app_.imu_enabled && app_.imu_kind != "none") {
         log_line("camera " + cfg_.id +
-                 " IMU off, using config heading_deg");
+                 " IMU off, streaming config heading_deg");
     }
+
+    auto source = make_frame_source(cfg_);
+    if (!source->open()) {
+        log_line("camera " + cfg_.id + " open failed: " +
+                 source->last_error());
+        stream_attitude_only(imu.get(), pose);
+        return;
+    }
+
+    MotionDetector detector(cfg_);
+    DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
+    detector.set_debug(debug.active());
 
     GrayFrame frame;
     std::uint64_t frame_id = 0;
@@ -135,19 +158,16 @@ void CameraWorker::operator()() {
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         if (!source->read_frame(frame)) {
-            log_line("camera " + cfg_.id + " read failed: " + source->last_error());
+            log_line("camera " + cfg_.id + " read failed: " +
+                     source->last_error());
+            stream_attitude_only(imu.get(), pose);
             return;
         }
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
-        ImuSample imu_sample;
-        if (imu && imu->read(imu_sample) && imu_sample.valid) {
-            pose.heading_deg = imu_sample.heading_deg;
-            pose.elevation_deg = imu_sample.elevation_deg;
-            pose.roll_deg = imu_sample.roll_deg;
-            maybe_emit_attitude(pose, frame.captured_us, last_att_us);
-        }
+        apply_imu_sample(imu.get(), pose);
+        maybe_emit_attitude(pose, frame.captured_us, last_att_us);
 
         const DetectionResult det = detector.process(frame);
         if (debug.active()) debug.dump(frame, det);

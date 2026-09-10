@@ -8,6 +8,7 @@ import { EventsGateway } from './events.gateway';
 import { CamerasController } from './cameras.controller';
 import { CamerasService } from './cameras.service';
 import { AuthController } from './auth.controller';
+import { AttitudeController } from './attitude.controller';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { AuthController } from './auth.controller';
       },
     ]),
   ],
-  controllers: [AppController, AuthController, CamerasController],
+  controllers: [AppController, AuthController, CamerasController, AttitudeController],
   providers: [
     AppService,
     UdpService,

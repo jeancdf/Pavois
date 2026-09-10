@@ -41,4 +41,5 @@ sudo -n systemctl restart pavois.service
 sleep 3
 systemctl is-active --quiet pavois.service
 echo "Pavois binary deployed; pavois.service is active."
+journalctl -u pavois.service -n 20 --no-pager || true
 echo "Check camera output: sudo journalctl -u pavois.service -n 50 --no-pager"

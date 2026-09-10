@@ -43,6 +43,21 @@ describe('AppController (e2e)', () => {
       .expect({ ok: true });
   });
 
+  it('/attitude (POST) accepts a live IMU sample', () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    return request(app.getHttpServer())
+      .post('/attitude')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cameraId: 'jean',
+        headingDeg: 171.4,
+        elevationDeg: -2.5,
+        rollDeg: 1.2,
+      })
+      .expect(201)
+      .expect({ ok: true });
+  });
+
   afterEach(async () => {
     await app.close();
   });

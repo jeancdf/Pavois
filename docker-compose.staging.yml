@@ -38,7 +38,7 @@ services:
       - staging-net
     environment:
       PAVOIS_API_URL: ${PAVOIS_API_URL:-}
-      PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-ws://51.15.213.226:3003}
+      PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-ws://51.91.98.159:3003}
       PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
     ports:
       - "8081:80/tcp"

@@ -3,9 +3,11 @@
 #include "pavois/capture/frame_source.hpp"
 #include "pavois/detection/motion_detector.hpp"
 #include "pavois/domain/observation.hpp"
+#include "pavois/sensors/imu.hpp"
 #include "pavois/transport/event_bus.hpp"
 #include "pavois/util/debug_sink.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
@@ -86,6 +88,23 @@ void CameraWorker::emit(const TrackUpdate& update) {
     if (udp_sender_ && udp_sender_->valid()) udp_sender_->send_line(payload);
 }
 
+void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
+                                       std::uint64_t now_us,
+                                       std::uint64_t& last_att_us) {
+    if (!udp_sender_ || !udp_sender_->valid()) return;
+    const std::uint64_t interval_us =
+        static_cast<std::uint64_t>(
+            std::max(50, app_.imu_emit_interval_ms)) *
+        1000ULL;
+    if (last_att_us != 0 && now_us - last_att_us < interval_us) return;
+    last_att_us = now_us;
+    std::ostringstream line;
+    line << "att," << cfg_.id << ',' << now_us << ',' << std::fixed
+         << std::setprecision(2) << pose.heading_deg << ','
+         << pose.elevation_deg << ',' << pose.roll_deg;
+    udp_sender_->send_line(line.str());
+}
+
 void CameraWorker::operator()() {
     if (!cfg_.enabled) return;
 
@@ -100,11 +119,19 @@ void CameraWorker::operator()() {
     detector.set_debug(debug.active());
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
-    const CameraPose pose = pose_from(cfg_);
+    CameraPose pose = pose_from(cfg_);
+    auto imu = open_imu(app_);
+    if (imu) {
+        log_line("camera " + cfg_.id + " IMU live");
+    } else if (app_.imu_enabled && app_.imu_kind != "none") {
+        log_line("camera " + cfg_.id +
+                 " IMU off, using config heading_deg");
+    }
 
     GrayFrame frame;
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
+    std::uint64_t last_att_us = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         if (!source->read_frame(frame)) {
@@ -113,6 +140,14 @@ void CameraWorker::operator()() {
         }
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
+
+        ImuSample imu_sample;
+        if (imu && imu->read(imu_sample) && imu_sample.valid) {
+            pose.heading_deg = imu_sample.heading_deg;
+            pose.elevation_deg = imu_sample.elevation_deg;
+            pose.roll_deg = imu_sample.roll_deg;
+            maybe_emit_attitude(pose, frame.captured_us, last_att_us);
+        }
 
         const DetectionResult det = detector.process(frame);
         if (debug.active()) debug.dump(frame, det);
@@ -138,6 +173,7 @@ void CameraWorker::operator()() {
             obs.cam_y = pose.y;
             obs.cam_z = pose.z;
             obs.yaw_deg = pose.heading_deg;
+            obs.roll_deg = pose.roll_deg;
             obs.fov_deg = cfg_.fov_deg;
 
             for (const auto& update : fusion_.submit(obs)) {

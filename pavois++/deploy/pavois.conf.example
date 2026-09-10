@@ -16,10 +16,22 @@ camera.0.height=720
 camera.0.fps=10
 camera.0.fov_deg=65.0
 
-# Temporary manual orientation: the IMU is not integrated yet.
+# Temporary manual orientation when the IMU is unavailable.
+# With a BNO055 on I2C these values are overwritten every frame.
 camera.0.heading_deg=0.0
 camera.0.elevation_deg=0.0
 camera.0.roll_deg=0.0
+
+# Live IMU (BNO055 NDOF). Offsets map chip axes onto the camera.
+imu.enabled=true
+imu.kind=auto
+imu.i2c_dev=/dev/i2c-1
+imu.emit_interval_ms=200
+imu.heading_offset_deg=0.0
+imu.elevation_offset_deg=0.0
+imu.roll_offset_deg=0.0
+# imu.file=/tmp/pavois_imu.txt
+# imu.kind=file
 
 # GPS configuration from the VPS frontend is not integrated yet.
 # Uncomment and fill these values when needed; do not use example coordinates.

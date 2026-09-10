@@ -79,8 +79,14 @@ Les deux passerelles (Python et NestJS) appliquent la même logique de décodage
   }
   ```
 
-### C. Messages Génériques / JSON brut (Fallback)
-* **Format UDP** : Tout message ne respectant pas les deux formats ci-dessus.
+### C. Attitude IMU (orientation live)
+* **Format UDP (Chaîne CSV)** : `att,cameraId,timestamp,heading_deg,elevation_deg,roll_deg`
+* **Exemple** : `att,jean,1782465675417840,164.20,-1.50,0.30`
+* **Événement WS émis** : `"camera_positions"` (liste complète, `headingDeg` mis à jour)
+* Émis ~5 fois par seconde tant que le BNO055 fournit un échantillon valide.
+
+### D. Messages Génériques / JSON brut (Fallback)
+* **Format UDP** : Tout message ne respectant pas les formats ci-dessus.
 * **Événement WS émis** : `"generic_udp"`
 * **Payload JSON** : Transmet la chaîne brute dans `raw` et, si possible, le contenu parsé en JSON dans `data`.
 

@@ -20,92 +20,124 @@ std::string trim(std::string s) {
 }
 
 bool parse_bool(const std::string& value) {
-    const std::string v = value;
-    return v == "1" || v == "true" || v == "TRUE" || v == "yes" || v == "on";
+    return value == "1" || value == "true" || value == "TRUE" || value == "yes" || value == "on";
 }
 
 void gps_to_local_approx(
-    double lat_deg,
-    double lon_deg,
-    double alt_m,
-    double origin_lat_deg,
-    double origin_lon_deg,
-    double origin_alt_m,
-    double& x_m,
-    double& y_m,
-    double& z_m) {
+    double lat_deg, double lon_deg, double alt_m,
+    double origin_lat_deg, double origin_lon_deg, double origin_alt_m,
+    double& x_m, double& y_m, double& z_m) {
     constexpr double kPi = 3.14159265358979323846;
     constexpr double kEarthRadiusM = 6378137.0;
     const double lat = lat_deg * kPi / 180.0;
-    const double lon = lon_deg * kPi / 180.0;
     const double origin_lat = origin_lat_deg * kPi / 180.0;
     const double origin_lon = origin_lon_deg * kPi / 180.0;
+    const double lon = lon_deg * kPi / 180.0;
     const double mean_lat = (lat + origin_lat) * 0.5;
-
     x_m = (lon - origin_lon) * std::cos(mean_lat) * kEarthRadiusM;
     y_m = (lat - origin_lat) * kEarthRadiusM;
     z_m = alt_m - origin_alt_m;
 }
 
-void apply_camera_field(CameraConfig& camera, const std::string& field, const std::string& value) {
-    if (field == "id") camera.id = value;
-    else if (field == "device") camera.device = value;
-    else if (field == "width") camera.width = std::stoi(value);
-    else if (field == "height") camera.height = std::stoi(value);
-    else if (field == "frames") camera.frames = std::stoi(value);
-    else if (field == "diff_threshold") camera.diff_threshold = static_cast<std::uint8_t>(std::stoi(value));
-    else if (field == "min_blob_area") camera.min_blob_area = static_cast<std::size_t>(std::stoul(value));
-    else if (field == "x") camera.x = std::stod(value);
-    else if (field == "y") camera.y = std::stod(value);
-    else if (field == "z") camera.z = std::stod(value);
-    else if (field == "yaw_deg") camera.yaw_deg = std::stod(value);
-    else if (field == "pitch_deg") camera.pitch_deg = std::stod(value);
-    else if (field == "roll_deg") camera.roll_deg = std::stod(value);
-    else if (field == "fov_deg") camera.fov_deg = std::stod(value);
-    else if (field == "gps_lat") {
-        camera.gps_lat = std::stod(value);
-        camera.has_gps_pose = true;
+void apply_camera_field(CameraConfig& c, const std::string& f, const std::string& v) {
+    try {
+        if (f == "id") c.id = v;
+        else if (f == "device") c.device = v;
+        else if (f == "width") c.width = std::stoi(v);
+        else if (f == "height") c.height = std::stoi(v);
+        else if (f == "frames") c.frames = std::stoi(v);
+        else if (f == "enabled") c.enabled = parse_bool(v);
+        else if (f == "diff_threshold") c.diff_threshold = static_cast<std::uint8_t>(std::stoi(v));
+        else if (f == "bg_learn_rate") c.bg_learn_rate = std::stod(v);
+        else if (f == "bg_learn_rate_fg") c.bg_learn_rate_fg = std::stod(v);
+        else if (f == "adaptive_k") c.adaptive_k = std::stod(v);
+        else if (f == "blur_radius") c.blur_radius = std::stoi(v);
+        else if (f == "morph_open") c.morph_open = std::stoi(v);
+        else if (f == "morph_close") c.morph_close = std::stoi(v);
+        else if (f == "min_blob_area") c.min_blob_area = static_cast<std::size_t>(std::stoul(v));
+        else if (f == "max_blob_area_ratio") c.max_blob_area_ratio = std::stod(v);
+        else if (f == "min_blob_fill_ratio") c.min_blob_fill_ratio = std::stod(v);
+        else if (f == "max_blob_aspect") c.max_blob_aspect = std::stod(v);
+        else if (f == "border_ignore_px") c.border_ignore_px = std::stoi(v);
+        else if (f == "confirm_m") c.confirm_m = std::stoi(v);
+        else if (f == "confirm_n") c.confirm_n = std::stoi(v);
+        else if (f == "centroid_process_noise") c.centroid_process_noise = std::stod(v);
+        else if (f == "centroid_meas_noise") c.centroid_meas_noise = std::stod(v);
+        else if (f == "fx") c.fx = std::stod(v);
+        else if (f == "fy") c.fy = std::stod(v);
+        else if (f == "cx") c.cx = std::stod(v);
+        else if (f == "cy") c.cy = std::stod(v);
+        else if (f == "k1") c.k1 = std::stod(v);
+        else if (f == "k2") c.k2 = std::stod(v);
+        else if (f == "fov_deg") c.fov_deg = std::stod(v);
+        else if (f == "x") c.x = std::stod(v);
+        else if (f == "y") c.y = std::stod(v);
+        else if (f == "z") c.z = std::stod(v);
+        else if (f == "yaw_deg") c.yaw_deg = std::stod(v);
+        else if (f == "pitch_deg") c.pitch_deg = std::stod(v);
+        else if (f == "roll_deg") c.roll_deg = std::stod(v);
+        else if (f == "heading_deg") c.heading_deg = std::stod(v);
+        else if (f == "elevation_deg") c.elevation_deg = std::stod(v);
+        else if (f == "reconnect_max_attempts") c.reconnect_max_attempts = std::stoi(v);
+        else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
+        else if (f == "gps_lat") { c.gps_lat = std::stod(v); c.has_gps_pose = true; }
+        else if (f == "gps_lon") { c.gps_lon = std::stod(v); c.has_gps_pose = true; }
+        else if (f == "gps_alt") { c.gps_alt = std::stod(v); c.has_gps_pose = true; }
+    } catch (...) {
+        // keep default on malformed value
     }
-    else if (field == "gps_lon") {
-        camera.gps_lon = std::stod(value);
-        camera.has_gps_pose = true;
-    }
-    else if (field == "gps_alt") {
-        camera.gps_alt = std::stod(value);
-        camera.has_gps_pose = true;
-    }
-    else if (field == "heading_deg") camera.heading_deg = std::stod(value);
-    else if (field == "enabled") camera.enabled = parse_bool(value);
 }
 
-void apply_legacy_field(CameraConfig& camera, const std::string& field, const std::string& value) {
-    if (field == "device") camera.device = value;
-    else if (field == "width") camera.width = std::stoi(value);
-    else if (field == "height") camera.height = std::stoi(value);
-    else if (field == "frames") camera.frames = std::stoi(value);
-    else if (field == "diff_threshold") camera.diff_threshold = static_cast<std::uint8_t>(std::stoi(value));
-    else if (field == "min_blob_area") camera.min_blob_area = static_cast<std::size_t>(std::stoul(value));
-    else if (field == "x") camera.x = std::stod(value);
-    else if (field == "y") camera.y = std::stod(value);
-    else if (field == "z") camera.z = std::stod(value);
-    else if (field == "yaw_deg") camera.yaw_deg = std::stod(value);
-    else if (field == "pitch_deg") camera.pitch_deg = std::stod(value);
-    else if (field == "roll_deg") camera.roll_deg = std::stod(value);
-    else if (field == "fov_deg") camera.fov_deg = std::stod(value);
-    else if (field == "gps_lat") {
-        camera.gps_lat = std::stod(value);
-        camera.has_gps_pose = true;
+bool apply_global_field(AppConfig& cfg, const std::string& key, const std::string& v) {
+    try {
+        if (key == "frames") cfg.frames = std::stoi(v);
+        else if (key == "fusion_window_ms") cfg.fusion_window_ms = std::stoi(v);
+        else if (key == "fusion_emit_interval_ms") cfg.fusion_emit_interval_ms = std::stoi(v);
+        else if (key == "fusion_max_range_m") cfg.fusion_max_range_m = std::stod(v);
+        else if (key == "fusion_min_parallax_deg") cfg.fusion_min_parallax_deg = std::stod(v);
+        else if (key == "fusion_max_residual_m") cfg.fusion_max_residual_m = std::stod(v);
+        else if (key == "fusion_support_radius_m") cfg.fusion_support_radius_m = std::stod(v);
+        else if (key == "fusion_ransac_iterations") cfg.fusion_ransac_iterations = std::stoi(v);
+        else if (key == "track_match_distance_m") cfg.track_match_distance_m = std::stod(v);
+        else if (key == "track_gate_mahalanobis") cfg.track_gate_mahalanobis = std::stod(v);
+        else if (key == "track_smoothing_alpha") cfg.track_smoothing_alpha = std::stod(v);
+        else if (key == "track_process_noise") cfg.track_process_noise = std::stod(v);
+        else if (key == "track_meas_noise") cfg.track_meas_noise = std::stod(v);
+        else if (key == "track_confirm_updates") cfg.track_confirm_updates = std::stoi(v);
+        else if (key == "track_max_coast_ms") cfg.track_max_coast_ms = std::stoi(v);
+        else if (key == "track_max_speed_mps") cfg.track_max_speed_mps = std::stod(v);
+        else if (key == "config_path") cfg.config_path = v;
+        else if (key == "output_host") cfg.output_host = v;
+        else if (key == "output_port") cfg.output_port = std::stoi(v);
+        else if (key == "debug_dir") cfg.debug_dir = v;
+        else if (key == "debug_every") cfg.debug_every = std::stoi(v);
+        else if (key == "reference_lat") { cfg.reference_lat = std::stod(v); cfg.has_reference_gps = true; }
+        else if (key == "reference_lon") { cfg.reference_lon = std::stod(v); cfg.has_reference_gps = true; }
+        else if (key == "reference_alt") { cfg.reference_alt = std::stod(v); cfg.has_reference_gps = true; }
+        else return false;
+    } catch (...) {
+        return false;
     }
-    else if (field == "gps_lon") {
-        camera.gps_lon = std::stod(value);
-        camera.has_gps_pose = true;
+    return true;
+}
+
+void finalize_camera(CameraConfig& c) {
+    // Intrinsic defaults: derive a focal length from the horizontal FOV,
+    // centre the principal point, keep aspect square unless told otherwise.
+    constexpr double kPi = 3.14159265358979323846;
+    if (c.fx <= 0.0) {
+        const double half = c.fov_deg * 0.5 * kPi / 180.0;
+        c.fx = (half > 1e-6) ? (c.width * 0.5) / std::tan(half) : c.width;
     }
-    else if (field == "gps_alt") {
-        camera.gps_alt = std::stod(value);
-        camera.has_gps_pose = true;
+    if (c.fy <= 0.0) c.fy = c.fx;
+    if (c.cx <= 0.0) c.cx = c.width * 0.5;
+    if (c.cy <= 0.0) c.cy = c.height * 0.5;
+
+    // Legacy yaw/pitch mirror the compass fields so old maths still lines up.
+    if (c.heading_deg != 0.0 || c.elevation_deg != 0.0) {
+        c.yaw_deg = c.heading_deg;
     }
-    else if (field == "heading_deg") camera.heading_deg = std::stod(value);
-    else if (field == "enabled") camera.enabled = parse_bool(value);
+    c.confirm_n = std::max(c.confirm_n, c.confirm_m);
 }
 
 }  // namespace
@@ -114,145 +146,79 @@ AppConfig load_config_file(const std::string& path) {
     AppConfig config;
     std::ifstream in(path);
     if (!in) {
-        config.cameras.push_back(CameraConfig{});
+        CameraConfig def;
+        finalize_camera(def);
+        config.cameras.push_back(def);
         return config;
     }
 
-    CameraConfig legacy_camera;
-    bool saw_legacy_camera_key = false;
-    std::map<std::size_t, CameraConfig> indexed_cameras;
+    std::map<std::size_t, CameraConfig> indexed;
+    CameraConfig legacy;
+    bool saw_legacy = false;
 
     std::string line;
     while (std::getline(in, line)) {
         line = trim(line);
-        if (line.empty() || line[0] == '#' || line[0] == ';') {
-            continue;
-        }
-
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
         const auto eq = line.find('=');
-        if (eq == std::string::npos) {
-            continue;
-        }
-
+        if (eq == std::string::npos) continue;
         const std::string key = trim(line.substr(0, eq));
         const std::string value = trim(line.substr(eq + 1));
 
-        try {
-            if (key == "frames") {
-                config.frames = std::stoi(value);
-                continue;
-            }
-            if (key == "fusion_window_ms") {
-                config.fusion_window_ms = std::stoi(value);
-                continue;
-            }
-            if (key == "config_path") {
-                config.config_path = value;
-                continue;
-            }
-            if (key == "output_host") {
-                config.output_host = value;
-                continue;
-            }
-            if (key == "output_port") {
-                config.output_port = std::stoi(value);
-                continue;
-            }
-            if (key == "reference_lat") {
-                config.reference_lat = std::stod(value);
-                config.has_reference_gps = true;
-                continue;
-            }
-            if (key == "reference_lon") {
-                config.reference_lon = std::stod(value);
-                config.has_reference_gps = true;
-                continue;
-            }
-            if (key == "reference_alt") {
-                config.reference_alt = std::stod(value);
-                config.has_reference_gps = true;
-                continue;
-            }
+        if (apply_global_field(config, key, value)) continue;
 
-            if (key.rfind("camera.", 0) == 0) {
-                const std::string tail = key.substr(7);
-                const auto dot = tail.find('.');
-                if (dot == std::string::npos) {
-                    continue;
-                }
-
-                const std::string index_text = tail.substr(0, dot);
-                const std::string field = tail.substr(dot + 1);
-                const std::size_t index = static_cast<std::size_t>(std::stoul(index_text));
-                apply_camera_field(indexed_cameras[index], field, value);
-                continue;
+        if (key.rfind("camera.", 0) == 0) {
+            const std::string tail = key.substr(7);
+            const auto dot = tail.find('.');
+            if (dot == std::string::npos) continue;
+            try {
+                const std::size_t index = static_cast<std::size_t>(std::stoul(tail.substr(0, dot)));
+                apply_camera_field(indexed[index], tail.substr(dot + 1), value);
+            } catch (...) {
             }
-
-            saw_legacy_camera_key = true;
-            apply_legacy_field(legacy_camera, key, value);
-        } catch (...) {
-            // Ignore malformed values and keep defaults.
+            continue;
         }
+
+        saw_legacy = true;
+        apply_camera_field(legacy, key, value);
     }
 
-    if (!indexed_cameras.empty()) {
-        config.cameras.reserve(indexed_cameras.size());
-        for (auto& [index, camera] : indexed_cameras) {
-            (void)index;
-            if (camera.frames < 0) {
-                camera.frames = config.frames;
-            }
-            config.cameras.push_back(camera);
+    if (!indexed.empty()) {
+        for (auto& [idx, cam] : indexed) {
+            (void)idx;
+            if (cam.frames < 0) cam.frames = config.frames;
+            config.cameras.push_back(cam);
         }
     } else {
-        if (saw_legacy_camera_key) {
-            if (legacy_camera.frames < 0) {
-                legacy_camera.frames = config.frames;
-            }
-        }
-        config.cameras.push_back(legacy_camera);
+        if (saw_legacy && legacy.frames < 0) legacy.frames = config.frames;
+        config.cameras.push_back(legacy);
     }
 
+    // Resolve GPS demo poses into local ENU metres.
     bool have_origin = config.has_reference_gps;
-    double origin_lat = config.reference_lat;
-    double origin_lon = config.reference_lon;
-    double origin_alt = config.reference_alt;
-
+    double olat = config.reference_lat, olon = config.reference_lon, oalt = config.reference_alt;
     if (!have_origin) {
-        for (const auto& camera : config.cameras) {
-            if (camera.has_gps_pose) {
-                origin_lat = camera.gps_lat;
-                origin_lon = camera.gps_lon;
-                origin_alt = camera.gps_alt;
+        for (const auto& cam : config.cameras) {
+            if (cam.has_gps_pose) {
+                olat = cam.gps_lat; olon = cam.gps_lon; oalt = cam.gps_alt;
                 have_origin = true;
                 break;
             }
         }
     }
-
     if (have_origin) {
-        config.reference_lat = origin_lat;
-        config.reference_lon = origin_lon;
-        config.reference_alt = origin_alt;
+        config.reference_lat = olat;
+        config.reference_lon = olon;
+        config.reference_alt = oalt;
         config.has_reference_gps = true;
-        for (auto& camera : config.cameras) {
-            if (!camera.has_gps_pose) {
-                continue;
-            }
-            gps_to_local_approx(
-                camera.gps_lat,
-                camera.gps_lon,
-                camera.gps_alt,
-                origin_lat,
-                origin_lon,
-                origin_alt,
-                camera.x,
-                camera.y,
-                camera.z);
-            camera.yaw_deg = camera.heading_deg;
+        for (auto& cam : config.cameras) {
+            if (!cam.has_gps_pose) continue;
+            gps_to_local_approx(cam.gps_lat, cam.gps_lon, cam.gps_alt,
+                                olat, olon, oalt, cam.x, cam.y, cam.z);
         }
     }
 
+    for (auto& cam : config.cameras) finalize_camera(cam);
     return config;
 }
 

@@ -9,6 +9,8 @@ import { CamerasController } from './cameras.controller';
 import { CamerasService } from './cameras.service';
 import { AuthController } from './auth.controller';
 import { AttitudeController } from './attitude.controller';
+import { PreviewController } from './preview.controller';
+import { PreviewService } from './preview.service';
 
 @Module({
   imports: [
@@ -19,12 +21,19 @@ import { AttitudeController } from './attitude.controller';
       },
     ]),
   ],
-  controllers: [AppController, AuthController, CamerasController, AttitudeController],
+  controllers: [
+    AppController,
+    AuthController,
+    CamerasController,
+    AttitudeController,
+    PreviewController,
+  ],
   providers: [
     AppService,
     UdpService,
     EventsGateway,
     CamerasService,
+    PreviewService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

@@ -17,6 +17,13 @@ export class TopBar implements OnDestroy {
       (sample) => now - sample.receivedAt < 2000,
     ).length;
   });
+  readonly previewLiveCount = computed(() => {
+    this.uptime();
+    const now = Date.now();
+    return Object.values(this.realtime.previewByCamera()).filter(
+      (preview) => now - preview.receivedAt < 2000,
+    ).length;
+  });
 
   private uptimeTimer: ReturnType<typeof setInterval> | null = null;
 

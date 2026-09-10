@@ -6,6 +6,7 @@
 #include "pavois/sensors/imu.hpp"
 #include "pavois/transport/event_bus.hpp"
 #include "pavois/util/debug_sink.hpp"
+#include "pavois/util/jpeg_gray.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -15,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace pavois {
 namespace {
@@ -61,13 +63,16 @@ CameraPose pose_from(const CameraConfig& c) {
 
 CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app, FusionEngine& fusion,
                            std::ostream& log_out, std::mutex& log_mutex,
-                           std::shared_ptr<UdpSender> udp_sender, bool emit_raw_observations)
+                           std::shared_ptr<UdpSender> udp_sender,
+                           std::shared_ptr<HttpPoster> preview_http,
+                           bool emit_raw_observations)
     : cfg_(cfg),
       app_(app),
       fusion_(fusion),
       log_out_(log_out),
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
+      preview_http_(std::move(preview_http)),
       emit_raw_observations_(emit_raw_observations) {}
 
 void CameraWorker::log_line(const std::string& line) {
@@ -105,6 +110,27 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
          << std::setprecision(2) << pose.heading_deg << ','
          << pose.elevation_deg << ',' << pose.roll_deg;
     udp_sender_->send_line(line.str());
+}
+
+void CameraWorker::maybe_send_preview(const GrayFrame& frame,
+                                      std::uint64_t now_us,
+                                      std::uint64_t& last_preview_us) {
+    if (!app_.preview_enabled || !preview_http_ || !preview_http_->valid()) {
+        return;
+    }
+    if (frame.empty()) return;
+    const int fps = std::max(1, app_.preview_fps);
+    const std::uint64_t interval_us = 1000000ULL / static_cast<std::uint64_t>(fps);
+    if (last_preview_us != 0 && now_us - last_preview_us < interval_us) {
+        return;
+    }
+    last_preview_us = now_us;
+    const GrayFrame small = downscale_gray(frame, app_.preview_width);
+    std::vector<std::uint8_t> jpeg;
+    if (!encode_gray_jpeg(small, app_.preview_quality, jpeg)) return;
+    // Nest rejects bodies over 64 KiB; skip an oversized thumbnail.
+    if (jpeg.size() > 60000) return;
+    preview_http_->post_jpeg(cfg_.id, std::move(jpeg));
 }
 
 void CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose) {
@@ -155,6 +181,7 @@ void CameraWorker::operator()() {
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;
+    std::uint64_t last_preview_us = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         if (!source->read_frame(frame)) {
@@ -168,6 +195,7 @@ void CameraWorker::operator()() {
 
         apply_imu_sample(imu.get(), pose);
         maybe_emit_attitude(pose, frame.captured_us, last_att_us);
+        maybe_send_preview(frame, frame.captured_us, last_preview_us);
 
         const DetectionResult det = detector.process(frame);
         if (debug.active()) debug.dump(frame, det);

@@ -67,6 +67,16 @@
             } @else {
               <span class="imu-block imu-missing">IMU aucune donnée</span>
             }
+            @if (previewOf(camera.id); as preview) {
+              <img
+                class="camera-preview"
+                [src]="preview.src"
+                [alt]="'preview ' + camera.id"
+              />
+              <span class="imu-block imu-live">preview {{ previewAge(camera.id) }}</span>
+            } @else {
+              <span class="imu-block imu-missing">preview hors ligne</span>
+            }
           }
         </li>
       }
@@ -85,6 +95,33 @@
               · élév {{ fmtDeg(imu.elevationDeg) }}
               · roulis {{ fmtDeg(imu.rollDeg) }}
             </span>
+          }
+          @if (previewOf(id); as preview) {
+            <img
+              class="camera-preview"
+              [src]="preview.src"
+              [alt]="'preview ' + id"
+            />
+            <span class="imu-block imu-live">preview {{ previewAge(id) }}</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  @if (extraPreviewIds().length > 0) {
+    <div class="sidebar-header">PREVIEW SANS CAMÉRA</div>
+    <ul class="camera-list">
+      @for (id of extraPreviewIds(); track id) {
+        <li class="camera-card">
+          <span class="camera-id">{{ id }}</span>
+          @if (previewOf(id); as preview) {
+            <img
+              class="camera-preview"
+              [src]="preview.src"
+              [alt]="'preview ' + id"
+            />
+            <span class="imu-block imu-live">preview {{ previewAge(id) }}</span>
           }
         </li>
       }

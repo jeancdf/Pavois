@@ -1,11 +1,9 @@
-import { Injectable, OnDestroy, effect, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { RawDetection } from '../models/raw-detection.model';
-import { CameraPosition } from '../models/world-position.model';
 import { TrackUpdate } from '../models/track-update.model';
-import { CAMERAS_GPS_CONFIG, FALLBACK_RANGE_M } from '../config/cameras.config';
-import { llaToLocalEnu } from '../utils/geo';
+import { CameraGpsConfig, buildCameraPositions } from '../config/cameras.config';
 import { AuthService } from './auth.service';
 
 const RECONNECT_DELAY_MS = 2000;
@@ -14,7 +12,9 @@ const RECONNECT_DELAY_MS = 2000;
 export class RealtimeService implements OnDestroy {
   readonly connected = signal(false);
   readonly connectedSince = signal<number | null>(null);
-  readonly cameras = signal<CameraPosition[]>(this.buildCamerasFromGpsConfig());
+  // Positions stockées par le backend : envoyées à la connexion puis à chaque modification
+  readonly cameraConfigs = signal<CameraGpsConfig[]>([]);
+  readonly cameras = computed(() => buildCameraPositions(this.cameraConfigs()));
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
 
@@ -68,7 +68,7 @@ export class RealtimeService implements OnDestroy {
             break;
           }
           case 'camera_positions':
-            this.cameras.set(payload.data as CameraPosition[]);
+            this.cameraConfigs.set(payload.data as CameraGpsConfig[]);
             break;
           case 'track_update': {
             const track = payload.data as TrackUpdate;
@@ -108,25 +108,5 @@ export class RealtimeService implements OnDestroy {
     this.destroyed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.ws?.close();
-  }
-
-  private buildCamerasFromGpsConfig(): CameraPosition[] {
-    const cameras = CAMERAS_GPS_CONFIG.map((cam) => ({
-      id: cam.id,
-      lat: cam.lat,
-      lon: cam.lon,
-      azimuthDeg: cam.headingDeg,
-      fovDeg: cam.fovDeg,
-      rangeM: FALLBACK_RANGE_M,
-    }));
-
-    if (CAMERAS_GPS_CONFIG.length >= 2) {
-      const [a, b] = CAMERAS_GPS_CONFIG;
-      const { x, y } = llaToLocalEnu(b.lat, b.lon, b.alt, { lat: a.lat, lng: a.lon, alt: a.alt });
-      const baselineM = Math.hypot(x, y);
-      cameras.forEach((cam) => (cam.rangeM = baselineM));
-    }
-
-    return cameras;
   }
 }

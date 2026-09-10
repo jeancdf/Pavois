@@ -10,6 +10,9 @@ services:
       - "3002:3002/tcp"
     env_file:
       - ./vps/.env
+    volumes:
+      # Positions des caméras modifiées depuis le frontend (CAMERAS_FILE)
+      - pavois-data:/app/data
 
   frontend-angular:
     build:
@@ -25,3 +28,6 @@ services:
       PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
     ports:
       - "8080:80/tcp"
+
+volumes:
+  pavois-data:

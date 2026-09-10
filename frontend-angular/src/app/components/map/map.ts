@@ -1,8 +1,10 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, effect, inject, viewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy, effect, inject, signal, viewChild } from '@angular/core';
 import * as L from 'leaflet';
 import { Subscription } from 'rxjs';
 import { RealtimeService } from '../../services/realtime.service';
 import { TrackSelectionService } from '../../services/track-selection.service';
+import { CameraConfigService } from '../../services/camera-config.service';
+import { NotificationService } from '../../services/notification.service';
 import { CameraPosition } from '../../models/world-position.model';
 import { ObjectClassification, TrackUpdate } from '../../models/track-update.model';
 
@@ -11,6 +13,9 @@ const TRAIL_LENGTH = 30;
 const TILE_MAX_NATIVE_ZOOM = 19;
 const MAX_ZOOM = 23;
 const DEFAULT_ZOOM = 21;
+const DEFAULT_CENTER: L.LatLngExpression = [48.8566, 2.3522];
+// 7 décimales ≈ 1 cm : suffisant pour une position posée à la souris
+const COORD_DECIMALS = 7;
 const TRACK_COLORS = ['#f59e0b', '#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fb7185'];
 
 const CLASSIFICATION_ICONS: Record<ObjectClassification, { emoji: string; color: string }> = {
@@ -37,6 +42,25 @@ function buildTrackIcon(track: TrackUpdate, borderColor: string): L.DivIcon {
   return L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14], tooltipAnchor: [14, 0] });
 }
 
+function buildCameraIcon(draggable: boolean): L.DivIcon {
+  const size = draggable ? 18 : 12;
+  const html = `<div style="
+    width: ${size}px; height: ${size}px; border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid ${draggable ? '#f59e0b' : '#e2e8f0'};
+    box-shadow: 0 0 6px #3b82f699;
+    cursor: ${draggable ? 'grab' : 'default'};
+  "></div>`;
+
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    tooltipAnchor: [size / 2, 0],
+  });
+}
+
 /** Déplace un point GPS d'une distance (m) dans une direction (cap en degrés). */
 function projectLatLng(lat: number, lon: number, bearingDeg: number, distanceM: number): L.LatLngExpression {
   const bearingRad = (bearingDeg * Math.PI) / 180;
@@ -57,8 +81,8 @@ function buildFovLatLngs(camera: CameraPosition, segments = 24): L.LatLngExpress
   return points;
 }
 
-function behindCameraPoint(camera: CameraPosition, distanceM = 1.5): L.LatLngExpression {
-  return projectLatLng(camera.lat, camera.lon, camera.azimuthDeg + 180, distanceM);
+function roundCoord(value: number): number {
+  return Number(value.toFixed(COORD_DECIMALS));
 }
 
 interface TrackLayers {
@@ -76,8 +100,14 @@ export class MapView implements AfterViewInit, OnDestroy {
   private readonly mapElRef = viewChild.required<ElementRef<HTMLDivElement>>('mapEl');
   private readonly realtime = inject(RealtimeService);
   private readonly trackSelection = inject(TrackSelectionService);
+  private readonly cameraConfig = inject(CameraConfigService);
+  private readonly notifications = inject(NotificationService);
+
+  // Désactivé par défaut : naviguer sur la carte ne doit pas déplacer une caméra
+  readonly cameraDragEnabled = signal(false);
 
   private map: L.Map | null = null;
+  private centeredOnCameras = false;
   private cameraLayers: L.Layer[] = [];
   private readonly trackLayers = new Map<string, TrackLayers>();
   private readonly trailsByTrackId = new Map<string, L.LatLngExpression[]>();
@@ -88,15 +118,17 @@ export class MapView implements AfterViewInit, OnDestroy {
   constructor() {
     effect(() => {
       const cameras = this.realtime.cameras();
-      if (this.map) this.renderCameras(cameras);
+      const draggable = this.cameraDragEnabled();
+      if (this.map) this.renderCameras(cameras, draggable);
     });
   }
 
   ngAfterViewInit(): void {
-    const cameras = this.realtime.cameras();
-    const center: L.LatLngExpression = cameras.length ? [cameras[0].lat, cameras[0].lon] : [48.8566, 2.3522];
-
-    this.map = L.map(this.mapElRef().nativeElement, { center, zoom: DEFAULT_ZOOM, maxZoom: MAX_ZOOM });
+    this.map = L.map(this.mapElRef().nativeElement, {
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
+      maxZoom: MAX_ZOOM,
+    });
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
@@ -104,7 +136,7 @@ export class MapView implements AfterViewInit, OnDestroy {
       maxNativeZoom: TILE_MAX_NATIVE_ZOOM,
     }).addTo(this.map);
 
-    this.renderCameras(cameras);
+    this.renderCameras(this.realtime.cameras(), this.cameraDragEnabled());
 
     this.subscription = this.realtime.trackUpdates$.subscribe((track) => this.renderTrackUpdate(track));
 
@@ -129,8 +161,18 @@ export class MapView implements AfterViewInit, OnDestroy {
     }
   }
 
-  private renderCameras(cameras: CameraPosition[]): void {
+  toggleCameraDrag(): void {
+    this.cameraDragEnabled.update((enabled) => !enabled);
+  }
+
+  private renderCameras(cameras: CameraPosition[], draggable: boolean): void {
     if (!this.map) return;
+    // Les positions arrivent du backend après la connexion : centrer une seule fois
+    if (!this.centeredOnCameras && cameras.length) {
+      this.map.setView([cameras[0].lat, cameras[0].lon], DEFAULT_ZOOM);
+      this.centeredOnCameras = true;
+    }
+
     this.cameraLayers.forEach((layer) => layer.remove());
     this.cameraLayers = cameras.flatMap((camera) => {
       const cone = L.polygon(buildFovLatLngs(camera), {
@@ -140,17 +182,36 @@ export class MapView implements AfterViewInit, OnDestroy {
         fillOpacity: 0.25,
       }).addTo(this.map!);
 
-      const label = L.circleMarker(behindCameraPoint(camera), {
-        radius: 4,
-        color: '#3b82f6',
-        fillColor: '#3b82f6',
-        fillOpacity: 1,
+      const marker = L.marker([camera.lat, camera.lon], {
+        icon: buildCameraIcon(draggable),
+        draggable,
       })
         .addTo(this.map!)
-        .bindTooltip(camera.id, { permanent: true, direction: 'center' });
+        .bindTooltip(camera.id, { permanent: true, direction: 'right' });
 
-      return [cone, label];
+      marker.on('drag', () => {
+        const { lat, lng } = marker.getLatLng();
+        cone.setLatLngs(buildFovLatLngs({ ...camera, lat, lon: lng }));
+      });
+      marker.on('dragend', () => {
+        const { lat, lng } = marker.getLatLng();
+        void this.saveDraggedCamera(camera, roundCoord(lat), roundCoord(lng));
+      });
+
+      return [cone, marker];
     });
+  }
+
+  private async saveDraggedCamera(camera: CameraPosition, lat: number, lon: number): Promise<void> {
+    try {
+      await this.cameraConfig.updatePosition(camera.id, { lat, lon, alt: camera.alt });
+      this.notifications.push('info', `${camera.id} déplacée en ${lat}, ${lon}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.notifications.push('alert', `Position de ${camera.id} non enregistrée : ${reason}`);
+      // La liste n'a pas changé : redessiner remet la caméra à sa dernière position enregistrée
+      this.renderCameras(this.realtime.cameras(), this.cameraDragEnabled());
+    }
   }
 
   private renderTrackUpdate(track: TrackUpdate): void {

@@ -2,9 +2,10 @@
 
 Le programme capture la caméra CSI **locale**, détecte les mouvements et envoie
 les observations au VPS en UDP. Le frontend reste sur le VPS. Une Pi avec une
-caméra émet actuellement des détections 2D `raw` ; la fusion 3D entre plusieurs Pi,
-la lecture de l'IMU par le C++ et le réglage GPS depuis le frontend restent des
-développements séparés.
+caméra émet actuellement des détections 2D `raw` ; la fusion 3D entre plusieurs Pi
+et la lecture de l'IMU par le C++ restent des développements séparés. Les positions
+GPS réglées depuis le frontend sont stockées sur le VPS ; elles ne sont pas encore
+recopiées dans la configuration des Pi.
 
 ## Machines inspectées
 

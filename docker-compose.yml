@@ -10,6 +10,18 @@ services:
       - "3002:3002/tcp"
     env_file:
       - ./vps/.env
+    # SÉCURITÉ NIVEAU 2 : Isolation et Confinement Docker
+    security_opt:
+      - no-new-privileges:true # Empêche l'escalade de privilèges (setuid)
+    read_only: true            # Système de fichiers hôte du conteneur en LECTURE SEULE
+    tmpfs:
+      - /tmp:exec,mode=1777    # Espace temporaire en RAM uniquement
+    cap_drop:
+      - ALL                    # Supprime TOUTES les capacités noyau Linux
+    cap_add:
+      - NET_BIND_SERVICE       # Autorise uniquement le binding de ports si nécessaire
+    mem_limit: 512m            # Limite mémoire pour éviter crash DoS sur le VPS
+    cpus: 1.0
 
   frontend-angular:
     build:
@@ -25,3 +37,19 @@ services:
       PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
     ports:
       - "8080:80/tcp"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777
+      - /var/cache/nginx:exec,mode=1777
+      - /var/run:exec,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    mem_limit: 256m
+    cpus: 0.5

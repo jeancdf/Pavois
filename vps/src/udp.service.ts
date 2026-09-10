@@ -1,29 +1,86 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
+import * as crypto from 'crypto';
 import { EventsGateway } from './events.gateway';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
   private server: dgram.Socket | null = null;
 
-  constructor(private readonly eventsGateway: EventsGateway) {}
+  constructor(private readonly eventsGateway: EventsGateway) { }
+
+  /**
+   * Vérifie la signature HMAC-SHA256 et la fraîcheur de l'horodatage d'un paquet UDP.
+   * Format attendu du buffer binaire (minimum 40 octets) :
+   * [Timestamp Unix BigEndian 8 octets] [HMAC-SHA256 32 octets] [Payload Télémesure CSV/JSON]
+   */
+  private verifyUdpPacket(buffer: Buffer, secretKey: string): { valid: boolean; payload?: Buffer; reason?: string } {
+    if (buffer.length < 40) {
+      return { valid: false, reason: 'Paquet trop court pour contenir la signature HMAC (minimum 40 octets)' };
+    }
+
+    try {
+      const timestampMs = buffer.readBigInt64BE(0);
+      const receivedHmac = buffer.subarray(8, 40);
+      const payload = buffer.subarray(40);
+
+      // 1. Protection Anti-Replay : rejeter si le paquet a plus de 2000 ms de retard ou 1000 ms dans le futur
+      const nowMs = BigInt(Date.now());
+      const diffMs = nowMs - timestampMs;
+      if (diffMs > 2000n || timestampMs > nowMs + 1000n) {
+        return { valid: false, reason: `Rejet Anti-Replay : horodatage hors fenêtre d'acceptation (écart: ${diffMs}ms)` };
+      }
+
+      // 2. Calcul et comparaison à temps constant de la signature HMAC-SHA256
+      const hmac = crypto.createHmac('sha256', secretKey);
+      hmac.update(buffer.subarray(0, 8));
+      hmac.update(payload);
+      const expectedHmac = hmac.digest();
+
+      if (crypto.timingSafeEqual(receivedHmac, expectedHmac)) {
+        return { valid: true, payload };
+      } else {
+        return { valid: false, reason: 'Signature HMAC invalide (usurpation potentielle)' };
+      }
+    } catch (err) {
+      return { valid: false, reason: `Erreur lors du décodage HMAC: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
 
   onModuleInit() {
     const port = parseInt(process.env.UDP_PORT || '41234', 10);
     const host = process.env.UDP_HOST || '0.0.0.0';
+    const hmacSecret = process.env.UDP_HMAC_SECRET || process.env.UDP_SECRET_KEY || '';
+    const requireHmac = process.env.UDP_REQUIRE_HMAC === 'true';
 
     this.server = dgram.createSocket('udp4');
 
     this.server.on('listening', () => {
       const address = this.server?.address();
-      console.log(`[UDP] Serveur à l'écoute sur ${address?.address}:${address?.port}`);
+      console.log(`[UDP] Serveur à l'écoute sur ${address?.address}:${address?.port} (HMAC: ${requireHmac ? 'Strict' : hmacSecret ? 'Optionnel' : 'Désactivé'})`);
     });
 
     this.server.on('message', (msg, rinfo) => {
       try {
-        const messageStr = msg.toString().trim();
+        let payloadBuffer: Buffer = msg;
+
+        if (hmacSecret) {
+          const verification = this.verifyUdpPacket(msg, hmacSecret);
+          if (verification.valid && verification.payload) {
+            payloadBuffer = Buffer.from(verification.payload);
+            console.log(`[UDP] [HMAC OK] Paquet signé et authentifié avec succès de ${rinfo.address}:${rinfo.port}`);
+          } else if (requireHmac) {
+            console.warn(`[UDP] [HMAC REJET] Paquet rejeté de ${rinfo.address}:${rinfo.port} — ${verification.reason}`);
+            return;
+          }
+        } else if (requireHmac) {
+          console.warn(`[UDP] [HMAC REJET] Clé secrète UDP_HMAC_SECRET non configurée alors que UDP_REQUIRE_HMAC=true`);
+          return;
+        }
+
+        const messageStr = payloadBuffer.toString('utf-8').trim();
         console.log(`[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ${messageStr}`);
-        
+
         const parts = messageStr.split(',');
         if (parts[0] === 'raw' && parts.length >= 8) {
           const detection = {
@@ -60,7 +117,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           } catch (e) {
             // Pas du JSON valide
           }
-          
+
           const genericPayload = {
             type: 'generic_udp',
             raw: messageStr,

@@ -29,6 +29,6 @@ $DOCKER_CMD compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 $DOCKER_CMD compose -f "$COMPOSE_FILE" ps
 
 echo -e "\n\033[0;32m[STAGING OK] L'environnement de test est actif :\033[0m"
-echo "  • Frontend Angular (Staging) : http://51.15.213.226:8081"
-echo "  • Backend API / WS (Staging) : ws://51.15.213.226:3003"
+echo "  • Frontend Angular (Staging) : http://51.91.98.159:8081"
+echo "  • Backend API / WS (Staging) : ws://51.91.98.159:3003"
 echo "  • Serveur UDP (Staging)      : Port 41235 / UDP"

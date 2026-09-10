@@ -2,10 +2,10 @@
 
 Le programme capture la caméra CSI **locale**, détecte les mouvements et envoie
 les observations au VPS en UDP. Le frontend reste sur le VPS. Une Pi avec une
-caméra émet actuellement des détections 2D `raw` ; la fusion 3D entre plusieurs Pi
-et la lecture de l'IMU par le C++ restent des développements séparés. Les positions
-GPS réglées depuis le frontend sont stockées sur le VPS ; elles ne sont pas encore
-recopiées dans la configuration des Pi.
+caméra émet des détections 2D `raw` et, si un BNO055 est présent, l'orientation
+live (`att`) pour les cônes de la carte. Les positions GPS réglées depuis le
+frontend sont stockées sur le VPS ; elles ne sont pas encore recopiées dans la
+configuration des Pi.
 
 ## Machines inspectées
 
@@ -45,8 +45,14 @@ de 10 évite de demander plus d'images que le détecteur ne peut en traiter.
 
 Le script installe les dépendances, le compte de service `pavois` et le service
 systemd. Il autorise le compte de déploiement à remplacer le binaire et à
-redémarrer uniquement ce service via sudo. Les valeurs GPS et l'orientation
-restent pour l'instant configurables manuellement dans ce fichier.
+redémarrer uniquement ce service via sudo. L'orientation vient de l'IMU
+(BNO055 en I2C) lorsqu'elle est détectée ; sinon `heading_deg` du fichier
+reste la valeur de repli. Caler le cap avec `imu.heading_offset_deg` dans
+`/etc/pavois/pavois.conf`.
+
+Après une mise à jour qui ajoute l'IMU, relancer une fois
+`sudo bash scripts/setup_pi.sh "$(id -un)"` pour installer la règle udev I2C
+et activer le bus.
 
 L'ancien `pavois-camstream.service`, s'il existe, est désactivé au démarrage et
 sera arrêté lorsque le détecteur démarre : les deux utilisent la même caméra.

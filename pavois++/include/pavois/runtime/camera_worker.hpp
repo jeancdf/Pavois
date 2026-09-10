@@ -1,10 +1,12 @@
 #pragma once
 
 #include "pavois/config/app_config.hpp"
+#include "pavois/domain/observation.hpp"
 #include "pavois/domain/track_update.hpp"
 #include "pavois/fusion/fusion_engine.hpp"
 #include "pavois/transport/udp_sender.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -27,6 +29,9 @@ public:
 private:
     void log_line(const std::string& line);
     void emit(const TrackUpdate& update);
+    void maybe_emit_attitude(const CameraPose& pose,
+                             std::uint64_t now_us,
+                             std::uint64_t& last_att_us);
 
     CameraConfig cfg_;
     const AppConfig& app_;

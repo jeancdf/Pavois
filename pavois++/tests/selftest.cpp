@@ -16,11 +16,14 @@
 #include "pavois/math/kalman_cv.hpp"
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
+#include "pavois/sensors/imu.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -696,6 +699,47 @@ void test_replay() {
     std::filesystem::remove_all(dir, ec);
 }
 
+void test_imu() {
+    group("imu");
+    check_near(wrap_heading_deg(370.0), 10.0, 1e-9, "wrap 370");
+    check_near(wrap_heading_deg(-20.0), 340.0, 1e-9, "wrap -20");
+
+    std::uint8_t bytes[6] = {0xA0, 0x05, 0, 0, 0x20, 0x00};
+    ImuSample parsed{};
+    check(bno055_euler_from_bytes(bytes, parsed), "bno parse");
+    check_near(parsed.heading_deg, 90.0, 1e-9, "bno heading 90");
+    check_near(parsed.elevation_deg, 2.0, 1e-9, "bno pitch 2");
+
+    AppConfig cfg;
+    cfg.imu_heading_offset_deg = 20.0;
+    const ImuSample out = apply_imu_offsets({350.0, 5.0, 1.0, true}, cfg);
+    check_near(out.heading_deg, 10.0, 1e-9, "offset wrap");
+    check_near(out.elevation_deg, 5.0, 1e-9, "elevation passthrough");
+
+    AppConfig off;
+    off.imu_enabled = false;
+    check(!open_imu(off), "disabled imu");
+
+    std::error_code ec;
+    const auto dir = std::filesystem::temp_directory_path() / "pavois_imu_ut";
+    std::filesystem::create_directories(dir, ec);
+    const auto path = dir / "imu.txt";
+    {
+        std::ofstream file(path);
+        file << "221.25 -3.5 0.5\n";
+    }
+    AppConfig file_cfg;
+    file_cfg.imu_kind = "file";
+    file_cfg.imu_file = path.string();
+    auto reader = open_imu(file_cfg);
+    check(static_cast<bool>(reader), "file imu opens");
+    ImuSample live{};
+    check(reader && reader->read(live) && live.valid, "file imu read");
+    check_near(live.heading_deg, 221.25, 1e-4, "file heading");
+    check_near(live.elevation_deg, -3.5, 1e-4, "file elevation");
+    std::filesystem::remove_all(dir, ec);
+}
+
 }  // namespace
 
 int main() {
@@ -709,6 +753,7 @@ int main() {
     test_detector();
     test_pipeline();
     test_replay();
+    test_imu();
 
     std::printf("\n%d/%d checks passed\n", g_checks - g_failures, g_checks);
     if (g_failures) {

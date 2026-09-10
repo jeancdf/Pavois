@@ -93,6 +93,19 @@ struct AppConfig {
     std::string debug_dir;
     int debug_every = 15;
 
+    // Live IMU (BNO055 on I2C, or a file for tests). Offsets map chip
+    // axes onto the camera optical frame.
+    bool imu_enabled = true;
+    std::string imu_kind = "auto";
+    std::string imu_i2c_dev = "/dev/i2c-1";
+    int imu_i2c_address = 0;
+    std::string imu_file;
+    int imu_emit_interval_ms = 200;
+    double imu_heading_offset_deg = 0.0;
+    double imu_elevation_offset_deg = 0.0;
+    double imu_roll_offset_deg = 0.0;
+    double imu_elevation_sign = 1.0;
+
     double reference_lat = 0.0;
     double reference_lon = 0.0;
     double reference_alt = 0.0;

@@ -7,11 +7,58 @@
     <ul class="camera-list">
       @for (camera of cameras(); track camera.id) {
         <li class="camera-card">
-          <span class="camera-id">{{ camera.id }}</span>
-          <span class="camera-coords">{{ camera.lat.toFixed(6) }}, {{ camera.lon.toFixed(6) }}</span>
-          <span class="camera-meta">
-            azimut {{ camera.azimuthDeg }}° · FOV {{ camera.fovDeg }}° · portée {{ camera.rangeM }} m
-          </span>
+          <div class="camera-card-header">
+            <span class="camera-id">{{ camera.id }}</span>
+            @if (editingId() !== camera.id) {
+              <button type="button" class="camera-btn" (click)="startEditing(camera)">
+                modifier
+              </button>
+            }
+          </div>
+
+          @if (editingId() === camera.id) {
+            <form
+              class="camera-form"
+              [formGroup]="positionForm"
+              (ngSubmit)="savePosition(camera.id)"
+            >
+              <label for="cam-lat">lat</label>
+              <input id="cam-lat" type="number" step="any" formControlName="lat" />
+              <label for="cam-lon">lon</label>
+              <input id="cam-lon" type="number" step="any" formControlName="lon" />
+              <label for="cam-alt">alt (m)</label>
+              <input id="cam-alt" type="number" step="any" formControlName="alt" />
+
+              @if (positionForm.invalid && positionForm.touched) {
+                <span class="camera-form-error">
+                  lat entre -90 et 90, lon entre -180 et 180, altitude requise
+                </span>
+              }
+              @if (saveError(); as error) {
+                <span class="camera-form-error">Échec : {{ error }}</span>
+              }
+
+              <div class="camera-form-actions">
+                <button
+                  type="button"
+                  class="camera-btn"
+                  [disabled]="saving()"
+                  (click)="cancelEditing()"
+                >
+                  annuler
+                </button>
+                <button type="submit" class="camera-btn primary" [disabled]="saving()">
+                  {{ saving() ? 'enregistrement…' : 'enregistrer' }}
+                </button>
+              </div>
+            </form>
+          } @else {
+            <span class="camera-coords">{{ camera.lat.toFixed(6) }}, {{ camera.lon.toFixed(6) }}</span>
+            <span class="camera-meta">
+              alt {{ camera.alt }} m · azimut {{ camera.azimuthDeg }}° · FOV {{ camera.fovDeg }}° ·
+              portée {{ camera.rangeM }} m
+            </span>
+          }
         </li>
       }
     </ul>

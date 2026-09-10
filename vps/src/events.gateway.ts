@@ -6,6 +6,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
+import { getClientIp, isIpAllowed, isValidAuthToken } from './access-control';
+import { CamerasService } from './cameras.service';
 
 // Suivi des connexions et limitations par IP
 const ipConnections = new Map<string, number>();
@@ -27,28 +29,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
-  private getClientIp(request: IncomingMessage): string {
-    const forwarded = request.headers['x-forwarded-for'];
-    if (forwarded) {
-      const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-      return ip.trim();
-    }
-    return request.socket.remoteAddress || 'unknown';
-  }
+  constructor(private readonly camerasService: CamerasService) {}
 
   handleConnection(client: WebSocket, request: IncomingMessage) {
-    const ip = this.getClientIp(request);
+    const ip = getClientIp(request);
     console.log(`[WS] Nouvelle tentative de connexion depuis IP: ${ip}`);
 
     // 0. Vérification de l'adresse IP (Whitelist)
-    const allowedIpsStr = process.env.ALLOWED_IPS;
-    if (allowedIpsStr) {
-      const allowedIps = allowedIpsStr.split(',').map((allowed) => allowed.trim());
-      if (!allowedIps.includes(ip)) {
-        console.warn(`[WS] Connexion refusée : IP non autorisée (${ip})`);
-        client.close(4403, 'Forbidden IP');
-        return;
-      }
+    if (!isIpAllowed(ip)) {
+      console.warn(`[WS] Connexion refusée : IP non autorisée (${ip})`);
+      client.close(4403, 'Forbidden IP');
+      return;
     }
 
     // 1. Vérification de l'Origine (Origin header)
@@ -90,9 +81,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const token = queryToken || cookieToken;
-    const expectedToken = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
 
-    if (!token || token !== expectedToken) {
+    if (!isValidAuthToken(token)) {
       console.warn(`[WS] Connexion refusée : Authentification invalide pour IP ${ip}`);
       client.close(4001, 'Unauthorized');
 
@@ -114,6 +104,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       messageCount: 0,
       lastReset: Date.now(),
     });
+
+    // Positions actuelles des caméras ; chaque modification est ensuite diffusée à tous
+    client.send(JSON.stringify({ event: 'camera_positions', data: this.camerasService.list() }));
 
     // 4. Validation des messages entrants & limitation de débit
     client.on('message', (message) => {

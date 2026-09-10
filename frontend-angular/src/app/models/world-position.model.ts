@@ -3,6 +3,7 @@ export interface CameraPosition {
   id: string;
   lat: number;
   lon: number;
+  alt: number;
   azimuthDeg: number;
   fovDeg: number;
   rangeM: number;

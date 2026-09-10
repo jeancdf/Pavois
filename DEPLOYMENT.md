@@ -45,6 +45,11 @@ Your gateway should send UDP packets to:
 
 - `YOUR_VPS_IP:41234`
 
+Camera positions edited from the frontend (sidebar form or drag and drop on the map) are
+saved by `vps` through `PUT /api/cameras/:id/position` (same `WS_AUTH_TOKEN`, sent as
+`Authorization: Bearer`). They are stored in the `pavois-data` Docker volume
+(`/app/data/cameras.json`); `docker compose down -v` deletes them.
+
 6. Start the stack:
 
 ```bash

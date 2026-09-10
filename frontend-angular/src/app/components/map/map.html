@@ -2,7 +2,21 @@
   <header class="map-header">
     <span class="map-title">CARTE</span>
     <span class="map-badge">OpenStreetMap — coordonnées GPS directes</span>
-    <button type="button" class="reset-btn" (click)="resetView()">réinitialiser la vue</button>
+    <div class="map-actions">
+      @if (cameraDragEnabled()) {
+        <span class="map-hint">glisser une caméra pour enregistrer sa position</span>
+      }
+      <button
+        type="button"
+        class="map-btn"
+        [class.active]="cameraDragEnabled()"
+        [attr.aria-pressed]="cameraDragEnabled()"
+        (click)="toggleCameraDrag()"
+      >
+        {{ cameraDragEnabled() ? 'terminer le déplacement' : 'déplacer les caméras' }}
+      </button>
+      <button type="button" class="map-btn" (click)="resetView()">réinitialiser la vue</button>
+    </div>
   </header>
 
   <div #mapEl class="map-container"></div>

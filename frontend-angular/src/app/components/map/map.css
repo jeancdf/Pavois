@@ -6,6 +6,7 @@
 
 .map-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding-bottom: 10px;
@@ -30,8 +31,20 @@
   border-radius: 4px;
 }
 
-.reset-btn {
+.map-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #f59e0b;
+}
+
+.map-btn {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
   color: #93c5fd;
@@ -42,8 +55,14 @@
   cursor: pointer;
 }
 
-.reset-btn:hover {
+.map-btn:hover {
   background: #1e293b;
+}
+
+.map-btn.active {
+  color: #0b1220;
+  background: #f59e0b;
+  border-color: #f59e0b;
 }
 
 .map-container {

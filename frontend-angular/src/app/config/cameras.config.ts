@@ -1,6 +1,9 @@
+import { CameraPosition } from '../models/world-position.model';
+import { llaToLocalEnu } from '../utils/geo';
+
 /**
- * Configuration physique réelle des caméras, communiquée par l'équipe backend
- * (pas encore exposée via un événement WebSocket dédié, donc en dur ici).
+ * Configuration physique d'une caméra. La liste est stockée par le backend
+ * (`PUT /cameras/:id/position`) et reçue par l'événement WebSocket `camera_positions`.
  */
 export interface CameraGpsConfig {
   id: string;
@@ -11,27 +14,25 @@ export interface CameraGpsConfig {
   fovDeg: number;
 }
 
-// Altitude convertie de pieds en mètres (192.0 ft × 0.3048).
-export const CAMERAS_GPS_CONFIG: CameraGpsConfig[] = [
-  {
-    id: 'cam0',
-    lat: 48.82608,
-    lon: 2.36590,
-    alt: 58.524,
-    headingDeg: 249.0,
-    fovDeg: 69.0,
-  },
-  {
-    id: 'cam1',
-    lat: 48.8260968,
-    lon: 2.3658928,
-    alt: 58.524,
-    headingDeg: 249.0,
-    fovDeg: 69.0,
-  },
-];
-
 // Portée non communiquée par le backend : valeur de repli si jamais une seule
-// caméra est configurée (sinon la portée est calculée dynamiquement, voir
-// realtime.service.ts).
+// caméra est configurée (sinon la portée est la distance entre les deux premières).
 export const FALLBACK_RANGE_M = 30;
+
+export function buildCameraPositions(configs: CameraGpsConfig[]): CameraPosition[] {
+  let rangeM = FALLBACK_RANGE_M;
+  if (configs.length >= 2) {
+    const [a, b] = configs;
+    const { x, y } = llaToLocalEnu(b.lat, b.lon, b.alt, { lat: a.lat, lng: a.lon, alt: a.alt });
+    rangeM = Math.hypot(x, y);
+  }
+
+  return configs.map((cam) => ({
+    id: cam.id,
+    lat: cam.lat,
+    lon: cam.lon,
+    alt: cam.alt,
+    azimuthDeg: cam.headingDeg,
+    fovDeg: cam.fovDeg,
+    rangeM,
+  }));
+}

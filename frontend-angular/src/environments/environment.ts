@@ -29,7 +29,7 @@ export const environment = {
   // Token de dev pré-rempli automatiquement en local pour éviter de saisir à
   // chaque démarrage. Ne jamais mettre de valeur ici en production.
   devToken: resolveRuntimeValue(runtimeEnv?.devToken, fallbackDevToken),
-  // Origine du repère local ENU : position GPS réelle de cam0 (cf.
-  // app/config/cameras.config.ts). cam0 se retrouve donc exactement à (0,0).
+  // Origine du repère local ENU : ancienne position GPS de cam0. Les positions des
+  // caméras viennent désormais du backend (événement `camera_positions`).
   geoOrigin: { lat: 48.82608, lng: 2.3659, alt: 58.52 },
 };

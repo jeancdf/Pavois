@@ -1,0 +1,70 @@
+services:
+  vps-server-staging:
+    build:
+      context: ./vps
+      dockerfile: Dockerfile
+    container_name: pavois-vps-staging
+    restart: unless-stopped
+    ports:
+      - "41235:41234/udp"
+      - "3003:3002/tcp"
+    env_file:
+      - ./vps/.env.staging
+    volumes:
+      # Positions des caméras (CAMERAS_FILE), seul dossier inscriptible avec read_only
+      - pavois-staging-data:/app/data
+    networks:
+      staging-net:
+        aliases:
+          - vps-server
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    mem_limit: 512m
+    cpus: 1.0
+
+  frontend-angular-staging:
+    build:
+      context: ./frontend-angular
+      dockerfile: Dockerfile
+    container_name: pavois-frontend-staging
+    restart: unless-stopped
+    depends_on:
+      - vps-server-staging
+    networks:
+      - staging-net
+    environment:
+      PAVOIS_API_URL: ${PAVOIS_API_URL:-}
+      PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-ws://51.91.98.159:3003}
+      PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
+    ports:
+      - "8081:80/tcp"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777
+      - /var/cache/nginx:exec,mode=1777
+      - /var/run:exec,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  staging-net:
+    driver: bridge
+
+volumes:
+  pavois-staging-data:

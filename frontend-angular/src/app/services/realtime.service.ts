@@ -5,6 +5,7 @@ import { RawDetection } from '../models/raw-detection.model';
 import { TrackUpdate } from '../models/track-update.model';
 import { CameraGpsConfig, buildCameraPositions } from '../config/cameras.config';
 import { AuthService } from './auth.service';
+import { ImuSample } from '../models/imu-sample.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -15,6 +16,7 @@ export class RealtimeService implements OnDestroy {
   // Positions stockées par le backend : envoyées à la connexion puis à chaque modification
   readonly cameraConfigs = signal<CameraGpsConfig[]>([]);
   readonly cameras = computed(() => buildCameraPositions(this.cameraConfigs()));
+  readonly imuByCamera = signal<Record<string, ImuSample>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
 
@@ -70,6 +72,9 @@ export class RealtimeService implements OnDestroy {
           case 'camera_positions':
             this.cameraConfigs.set(payload.data as CameraGpsConfig[]);
             break;
+          case 'imu_update':
+            this.storeImuSample(payload.data as Omit<ImuSample, 'receivedAt'>);
+            break;
           case 'track_update': {
             const track = payload.data as TrackUpdate;
             this.trackUpdates$.next(track);
@@ -102,6 +107,28 @@ export class RealtimeService implements OnDestroy {
     };
 
     ws.onerror = () => ws.close();
+  }
+
+  imuOf(cameraId: string): ImuSample | undefined {
+    return this.imuByCamera()[cameraId];
+  }
+
+  private storeImuSample(
+    sample: Omit<ImuSample, 'receivedAt'>,
+  ): void {
+    if (!sample?.cameraId) return;
+    const stored: ImuSample = {
+      cameraId: sample.cameraId,
+      headingDeg: sample.headingDeg,
+      elevationDeg: sample.elevationDeg,
+      rollDeg: sample.rollDeg,
+      timestamp: sample.timestamp,
+      receivedAt: Date.now(),
+    };
+    this.imuByCamera.update((current) => ({
+      ...current,
+      [stored.cameraId]: stored,
+    }));
   }
 
   ngOnDestroy(): void {

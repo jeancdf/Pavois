@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { RealtimeService } from '../../services/realtime.service';
 
 @Component({
@@ -10,6 +10,13 @@ import { RealtimeService } from '../../services/realtime.service';
 export class TopBar implements OnDestroy {
   readonly realtime = inject(RealtimeService);
   readonly uptime = signal(0);
+  readonly imuLiveCount = computed(() => {
+    this.uptime();
+    const now = Date.now();
+    return Object.values(this.realtime.imuByCamera()).filter(
+      (sample) => now - sample.receivedAt < 2000,
+    ).length;
+  });
 
   private uptimeTimer: ReturnType<typeof setInterval> | null = null;
 

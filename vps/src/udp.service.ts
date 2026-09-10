@@ -88,6 +88,13 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         if (parts[0] === 'att' && parts.length >= 6) {
           const attitude = parseAttitudeLine(messageStr);
           if (!attitude) return;
+          this.eventsGateway.broadcast('imu_update', {
+            cameraId: attitude.cameraId,
+            headingDeg: attitude.headingDeg,
+            elevationDeg: attitude.elevationDeg,
+            rollDeg: attitude.rollDeg,
+            timestamp: attitude.timestamp,
+          });
           const updated = this.camerasService.updateAttitude(
             attitude.cameraId,
             attitude.headingDeg,

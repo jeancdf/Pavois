@@ -1,6 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CameraPosition } from '../../models/world-position.model';
+import { ImuSample } from '../../models/imu-sample.model';
 import { CameraConfigService } from '../../services/camera-config.service';
 import { NotificationService } from '../../services/notification.service';
 import { RealtimeService } from '../../services/realtime.service';
@@ -11,11 +18,19 @@ import { RealtimeService } from '../../services/realtime.service';
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.css',
 })
-export class Sidebar {
-  private readonly realtime = inject(RealtimeService);
+export class Sidebar implements OnDestroy {
+  readonly realtime = inject(RealtimeService);
   private readonly cameraConfig = inject(CameraConfigService);
   private readonly notifications = inject(NotificationService);
   readonly cameras = this.realtime.cameras;
+  readonly now = signal(Date.now());
+
+  readonly extraImuIds = computed(() => {
+    const known = new Set(this.cameras().map((camera) => camera.id));
+    return Object.keys(this.realtime.imuByCamera()).filter(
+      (id) => !known.has(id),
+    );
+  });
 
   readonly editingId = signal<string | null>(null);
   readonly saving = signal(false);
@@ -34,8 +49,35 @@ export class Sidebar {
     alt: new FormControl<number | null>(null, Validators.required),
   });
 
+  private tick: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    this.tick = setInterval(() => this.now.set(Date.now()), 250);
+  }
+
+  imuOf(id: string): ImuSample | undefined {
+    this.now();
+    return this.realtime.imuOf(id);
+  }
+
+  imuAge(id: string): string {
+    const sample = this.imuOf(id);
+    if (!sample) return 'aucune donnée';
+    const ageMs = Math.max(0, this.now() - sample.receivedAt);
+    if (ageMs < 800) return 'live';
+    return `${(ageMs / 1000).toFixed(1)} s`;
+  }
+
+  fmtDeg(value: number): string {
+    return `${value.toFixed(1)}°`;
+  }
+
   startEditing(camera: CameraPosition): void {
-    this.positionForm.reset({ lat: camera.lat, lon: camera.lon, alt: camera.alt });
+    this.positionForm.reset({
+      lat: camera.lat,
+      lon: camera.lon,
+      alt: camera.alt,
+    });
     this.saveError.set(null);
     this.editingId.set(camera.id);
   }
@@ -58,9 +100,15 @@ export class Sidebar {
       this.editingId.set(null);
       this.notifications.push('info', `Position de ${cameraId} enregistrée`);
     } catch (error) {
-      this.saveError.set(error instanceof Error ? error.message : String(error));
+      this.saveError.set(
+        error instanceof Error ? error.message : String(error),
+      );
     } finally {
       this.saving.set(false);
     }
+  }
+
+  ngOnDestroy(): void {
+    if (this.tick) clearInterval(this.tick);
   }
 }

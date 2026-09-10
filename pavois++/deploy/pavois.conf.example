@@ -3,6 +3,7 @@
 frames=-1
 
 # VPS destination (required to send observations).
+# Staging OVH: 41234 (et 41235). Prod: 41234.
 output_host=YOUR_VPS_IP_OR_HOSTNAME
 output_port=41234
 

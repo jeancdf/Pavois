@@ -34,7 +34,8 @@ sudo bash scripts/setup_pi.sh "$(id -un)"
 sudo nano /etc/pavois/pavois.conf
 ```
 
-Renseigner `output_host` avec l'adresse réelle du VPS et `output_port=41234`.
+Renseigner `output_host` avec l'adresse réelle du VPS et `output_port=41234`
+(staging OVH écoute 41234 et 41235).
 Le script attribue le nom de la Pi à `camera.0.id` : garder des identifiants
 différents sur chaque Pi. La caméra est sélectionnée par `camera.0.device=csi:0`,
 à comparer avec `rpicam-hello --list-cameras`. Le modèle de configuration propose

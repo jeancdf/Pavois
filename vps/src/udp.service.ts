@@ -88,6 +88,8 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         if (parts[0] === 'att' && parts.length >= 6) {
           const attitude = parseAttitudeLine(messageStr);
           if (!attitude) return;
+          // IMU brute : le front l'affiche même si l'id n'est
+          // pas dans camera_positions (diagnostic d'id mismatch).
           this.eventsGateway.broadcast('imu_update', {
             cameraId: attitude.cameraId,
             headingDeg: attitude.headingDeg,

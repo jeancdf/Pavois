@@ -134,6 +134,13 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "imu.elevation_sign") {
             cfg.imu_elevation_sign = std::stod(v);
         }
+        else if (key == "preview.enabled") cfg.preview_enabled = parse_bool(v);
+        else if (key == "preview.fps") cfg.preview_fps = std::stoi(v);
+        else if (key == "preview.width") cfg.preview_width = std::stoi(v);
+        else if (key == "preview.quality") cfg.preview_quality = std::stoi(v);
+        else if (key == "preview.host") cfg.preview_host = v;
+        else if (key == "preview.http_port") cfg.preview_http_port = std::stoi(v);
+        else if (key == "preview.http_path") cfg.preview_http_path = v;
         else if (key == "reference_lat") { cfg.reference_lat = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_lon") { cfg.reference_lon = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_alt") { cfg.reference_alt = std::stod(v); cfg.has_reference_gps = true; }

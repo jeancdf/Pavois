@@ -34,6 +34,15 @@ imu.roll_offset_deg=0.0
 # imu.file=/tmp/pavois_imu.txt
 # imu.kind=file
 
+# Live grayscale preview (2 fps) posted to the VPS via nginx /api/preview.
+# Staging OVH: port 8081. Production: 8080.
+preview.enabled=true
+preview.fps=2
+preview.width=320
+preview.quality=55
+preview.http_port=8081
+preview.http_path=/api/preview
+
 # GPS configuration from the VPS frontend is not integrated yet.
 # Uncomment and fill these values when needed; do not use example coordinates.
 # camera.0.gps_lat=...

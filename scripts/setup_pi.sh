@@ -49,6 +49,18 @@ imu.roll_offset_deg=0.0
 EOF
 fi
 
+if [[ -f /etc/pavois/pavois.conf ]] && ! grep -q '^preview.enabled=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+preview.enabled=true
+preview.fps=2
+preview.width=320
+preview.quality=55
+preview.http_port=8081
+preview.http_path=/api/preview
+EOF
+fi
+
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/pavois.service" /etc/systemd/system/pavois.service
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/60-pavois-i2c.rules" \
   /etc/udev/rules.d/60-pavois-i2c.rules

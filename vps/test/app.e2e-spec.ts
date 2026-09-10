@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { applyBodyParsers } from './../src/http-body';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -12,7 +13,8 @@ describe('AppController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication({ bodyParser: false });
+    applyBodyParsers(app);
     await app.init();
   });
 
@@ -56,6 +58,34 @@ describe('AppController (e2e)', () => {
       })
       .expect(201)
       .expect({ ok: true });
+  });
+
+  it('/preview (POST) accepts a jpeg thumbnail', () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
+    return request(app.getHttpServer())
+      .post('/preview?cameraId=jean')
+      .set('Content-Type', 'image/jpeg')
+      .send(jpeg)
+      .expect(201)
+      .expect({ ok: true });
+  });
+
+  it('/api/preview (POST) accepts the nginx path', () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
+    return request(app.getHttpServer())
+      .post('/api/preview?cameraId=jean')
+      .set('Content-Type', 'image/jpeg')
+      .send(jpeg)
+      .expect(201)
+      .expect({ ok: true });
+  });
+
+  it('/preview (POST) rejects a non-jpeg body', () => {
+    return request(app.getHttpServer())
+      .post('/preview?cameraId=jean')
+      .set('Content-Type', 'image/jpeg')
+      .send(Buffer.from('not-a-jpeg-body!!'))
+      .expect(400);
   });
 
   afterEach(async () => {

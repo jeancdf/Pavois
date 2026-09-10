@@ -79,6 +79,17 @@
   color: #f59e0b;
 }
 
+.camera-preview {
+  width: 100%;
+  margin-top: 6px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  image-rendering: auto;
+}
+
 .camera-btn {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;

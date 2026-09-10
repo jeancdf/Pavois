@@ -74,6 +74,9 @@ jobs:
   dast-owasp-zap:
     name: DAST — OWASP ZAP Live Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     if: always()
     steps:
       - name: Checkout repository

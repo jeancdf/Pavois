@@ -1,0 +1,76 @@
+name: DevSecOps — SAST & DAST Security Analysis
+
+on:
+  push:
+    branches:
+      - securite
+      - main
+  pull_request:
+    branches:
+      - securite
+      - main
+  schedule:
+    # Lancement hebdomadaire le lundi à 4h00 du matin
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  # ============================================================================
+  # 1. SAST — STATIC APPLICATION SECURITY TESTING (Analyse statique du code)
+  # ============================================================================
+  sast-codeql:
+    name: SAST — CodeQL & Static Code Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  sast-trivy-dependencies:
+    name: SAST — Trivy Vulnerability & Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner in repo
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+  # ============================================================================
+  # 2. DAST — DYNAMIC APPLICATION SECURITY TESTING (Analyse dynamique Staging)
+  # ============================================================================
+  dast-owasp-zap:
+    name: DAST — OWASP ZAP Live Security Scan
+    runs-on: ubuntu-latest
+    needs: [sast-codeql, sast-trivy-dependencies]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: OWASP ZAP Baseline Scan on Staging Environment
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: 'http://51.91.98.159:8081'
+          cmd_options: '-a'
+          issue_title: 'DAST Security Alert — OWASP ZAP Scan'
+          fail_action: false

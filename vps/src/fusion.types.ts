@@ -48,6 +48,16 @@ export interface FusionLastFuse {
   point: { x: number; y: number; z: number } | null;
 }
 
+export interface FusionTrack {
+  objectId: number;
+  timestampUs: number;
+  x: number;
+  y: number;
+  z: number;
+  confidence: number;
+  cameras: string[];
+}
+
 export interface FusionSnapshot {
   activeCameras: number;
   cameraCount: number;
@@ -55,4 +65,5 @@ export interface FusionSnapshot {
   staleAfterMs: number;
   cameras: FusionCameraState[];
   lastFuse: FusionLastFuse | null;
+  tracks: FusionTrack[];
 }

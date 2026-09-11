@@ -26,14 +26,15 @@ function observation(
   };
 }
 
-function posedObservation(
+function posedAt(
   cameraId: string,
   eye: Vec3,
+  target: Vec3,
   extra: Partial<FusionObservation> = {},
 ): FusionObservation {
-  const pose = lookAt(eye, TARGET);
+  const pose = lookAt(eye, target);
   const intr = makeIntrinsics(1280, 720, 70);
-  const pix = projectWorldToPixel(intr, pose, TARGET);
+  const pix = projectWorldToPixel(intr, pose, target);
   if (!pix) {
     throw new Error(`no projection for ${cameraId}`);
   }
@@ -58,6 +59,31 @@ function posedObservation(
   });
 }
 
+function posedObservation(
+  cameraId: string,
+  eye: Vec3,
+  extra: Partial<FusionObservation> = {},
+): FusionObservation {
+  return posedAt(cameraId, eye, TARGET, extra);
+}
+
+const EYES: Record<string, Vec3> = {
+  jean: { x: -12, y: -2, z: 2 },
+  tanel: { x: 11, y: 1, z: 2 },
+  walid: { x: 0, y: -14, z: 3 },
+};
+
+function ingestTriplet(
+  service: FusionService,
+  target: Vec3,
+  timestampUs: number,
+  receivedAtMs: number,
+): void {
+  for (const [id, eye] of Object.entries(EYES)) {
+    service.ingest(posedAt(id, eye, target, { timestampUs, receivedAtMs }));
+  }
+}
+
 describe('FusionService', () => {
   let service: FusionService;
 
@@ -74,6 +100,7 @@ describe('FusionService', () => {
     const snap = service.snapshot(nowMs);
     expect(snap.activeCameras).toBe(3);
     expect(snap.cameraCount).toBe(3);
+    expect(snap.tracks).toEqual([]);
   });
 
   it('reports age ~0 right after ingest', () => {
@@ -164,12 +191,14 @@ describe('FusionService', () => {
     service.ingest(posedObservation('tanel', { x: 11, y: 1, z: 2 }, extra));
     service.ingest(posedObservation('walid', { x: 0, y: -14, z: 3 }, extra));
 
-    const fuse = service.snapshot(nowMs).lastFuse;
+    const snap = service.snapshot(nowMs);
+    const fuse = snap.lastFuse;
     expect(fuse?.ok).toBe(true);
     expect(fuse?.point).toBeTruthy();
     const p = fuse!.point!;
     const err = Math.hypot(p.x - TARGET.x, p.y - TARGET.y, p.z - TARGET.z);
     expect(err).toBeLessThan(1);
+    expect(snap.tracks).toEqual([]);
   });
 
   it('rejects two nearly collinear cameras', () => {
@@ -181,5 +210,64 @@ describe('FusionService', () => {
     const fuse = service.snapshot(nowMs).lastFuse;
     expect(fuse?.ok).toBe(false);
     expect(fuse?.rejectReason).toBe('no subset passed parallax/residual gates');
+  });
+
+  it('confirms a track after several fuse windows', () => {
+    const nowMs = Date.now();
+    let objectId: number | undefined;
+    for (let i = 0; i < 6; i++) {
+      const target = { x: 2 + i * 0.4, y: 30, z: 12 };
+      ingestTriplet(service, target, 1_000_000 + i * 100_000, nowMs);
+      const snap = service.snapshot(nowMs);
+      if (snap.tracks.length > 0) {
+        if (objectId === undefined) {
+          objectId = snap.tracks[0].objectId;
+        } else {
+          expect(snap.tracks[0].objectId).toBe(objectId);
+        }
+      }
+    }
+    const snap = service.snapshot(nowMs);
+    expect(snap.tracks).toHaveLength(1);
+    expect(objectId).toBeDefined();
+    expect(snap.tracks[0].objectId).toBe(objectId);
+    const p = snap.tracks[0];
+    const truth = { x: 2 + 5 * 0.4, y: 30, z: 12 };
+    const err = Math.hypot(p.x - truth.x, p.y - truth.y, p.z - truth.z);
+    expect(err).toBeLessThan(2);
+  });
+
+  it('smooths a noisy trajectory and keeps identity', () => {
+    const nowMs = Date.now();
+    const fuseErr: number[] = [];
+    const trackErr: number[] = [];
+    let objectId: number | undefined;
+    for (let i = 0; i < 12; i++) {
+      const truth = { x: 2 + i * 0.35, y: 30, z: 12 };
+      const noisy = {
+        x: truth.x + ((i % 3) - 1) * 0.8,
+        y: truth.y + ((i % 2) - 0.5) * 0.6,
+        z: truth.z,
+      };
+      ingestTriplet(service, noisy, 1_000_000 + i * 100_000, nowMs);
+      const snap = service.snapshot(nowMs);
+      if (snap.lastFuse?.ok && snap.lastFuse.point) {
+        const q = snap.lastFuse.point;
+        fuseErr.push(Math.hypot(q.x - truth.x, q.y - truth.y, q.z - truth.z));
+      }
+      if (snap.tracks.length > 0) {
+        if (objectId === undefined) {
+          objectId = snap.tracks[0].objectId;
+        } else {
+          expect(snap.tracks[0].objectId).toBe(objectId);
+        }
+        const q = snap.tracks[0];
+        trackErr.push(Math.hypot(q.x - truth.x, q.y - truth.y, q.z - truth.z));
+      }
+    }
+    expect(objectId).toBeDefined();
+    expect(trackErr.length).toBeGreaterThan(3);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(mean(trackErr)).toBeLessThan(mean(fuseErr) + 0.5);
   });
 });

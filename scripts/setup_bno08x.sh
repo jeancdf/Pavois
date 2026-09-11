@@ -10,6 +10,7 @@ raspi-config nonint do_i2c 0
 python3 -m venv /opt/pavois/imu-venv
 /opt/pavois/imu-venv/bin/pip install adafruit-circuitpython-bno08x==1.3.3 adafruit-extended-bus==1.0.2
 install -m 0644 "$repo_dir/scripts/bno08x_bridge.py" /opt/pavois/bno08x_bridge.py
+install -m 0755 "$repo_dir/scripts/pavois_imu_calib.py" /opt/pavois/pavois_imu_calib.py
 install -m 0644 "$repo_dir/pavois++/deploy/pavois-imu.service" /etc/systemd/system/pavois-imu.service
 cp -a /etc/pavois/pavois.conf "/etc/pavois/pavois.conf.before-bno08x-$(date +%s)"
 sed -i '/^imu.enabled=/d; /^imu.kind=/d; /^imu.file=/d' /etc/pavois/pavois.conf

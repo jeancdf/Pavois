@@ -34,6 +34,28 @@ imu.roll_offset_deg=0.0
 # imu.file=/tmp/pavois_imu.txt
 # imu.kind=file
 
+# Chip mounting orientation. heading/elevation/roll offsets above are scalar
+# and CANNOT correct a swapped physical axis (chip mounted flat vs. on edge):
+# if one Pi's BNO055 lies flat and another's stands on its edge, one Pi's
+# roll is the other's pitch, and no offset fixes that -- only a hardware
+# axis remap does. imu.axis_map/imu.axis_sign are written to the BNO055's
+# AXIS_MAP_CONFIG (0x41) / AXIS_MAP_SIGN (0x42) registers on every init.
+#
+# Defaults below (0x24 / 0x00) are the chip's power-on-reset values (Bosch
+# datasheet position "P1", effectively the identity mapping) -- leave them
+# unless you have PHYSICALLY VERIFIED this Pi's actual mounting.
+#
+# AXIS_MAP_CONFIG bit layout (2 bits per reported axis, 00=chip-X 01=chip-Y
+# 10=chip-Z): bits[1:0]=new X source, bits[3:2]=new Y source, bits[5:4]=new
+# Z source. AXIS_MAP_SIGN bit layout: bit0=Z sign, bit1=Y sign, bit2=X sign
+# (0=positive, 1=inverted). Derive the value for this Pi's enclosure from
+# the BNO055 datasheet Sec. 3.4 "Axis Remap" (positions P0-P7), or by
+# rotating the mounted chip through each axis and checking that a live
+# `imu.file` capture (imu.kind=file) reports heading/roll/elevation moving
+# on the axis you actually rotated.
+imu.axis_map=0x24
+imu.axis_sign=0x00
+
 # Live grayscale preview (2 fps) posted to the VPS via nginx /api/preview.
 # Staging OVH: port 8081. Production: 8080.
 preview.enabled=true

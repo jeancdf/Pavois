@@ -106,6 +106,15 @@ struct AppConfig {
     double imu_roll_offset_deg = 0.0;
     double imu_elevation_sign = 1.0;
 
+    // AXIS_MAP_CONFIG (0x41) / AXIS_MAP_SIGN (0x42): correct a physical axis swap
+    // (chip flat vs. on edge) that scalar offsets/sign above cannot express.
+    // Defaults are the BNO055 power-on-reset values (P1, identity mapping) so a
+    // Pi without an explicit override keeps its current behaviour.
+    // See BNO055 datasheet Sec. 3.4 "Axis Remap" for how to derive these from
+    // the sensor's physical mounting.
+    int imu_axis_map = 0x24;
+    int imu_axis_sign = 0x00;
+
     bool preview_enabled = true;
     int preview_fps = 2;
     int preview_width = 320;

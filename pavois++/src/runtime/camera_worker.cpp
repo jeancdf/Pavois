@@ -244,11 +244,20 @@ void CameraWorker::operator()() {
             }
 
             if (emit_raw_observations_ && udp_sender_ && udp_sender_->valid()) {
+                // Pose of THIS frame (att is on its own cadence) plus the
+                // pinhole fields the VPS parser already expects:
+                // raw,...,quality,heading,elev,roll,fx,fy,cx,cy,fov
                 std::ostringstream line;
-                line << "raw," << obs.camera_id << ',' << obs.frame_id << ',' << obs.captured_us
-                     << ',' << std::fixed << std::setprecision(2) << obs.centroid_x << ','
-                     << obs.centroid_y << ',' << obs.blob_area << ',' << std::setprecision(3)
-                     << obs.quality;
+                line << "raw," << obs.camera_id << ',' << obs.frame_id << ','
+                     << obs.captured_us << ',' << std::fixed
+                     << std::setprecision(2) << obs.centroid_x << ','
+                     << obs.centroid_y << ',' << obs.blob_area << ','
+                     << std::setprecision(3) << obs.quality << ','
+                     << std::setprecision(2) << obs.pose.heading_deg << ','
+                     << obs.pose.elevation_deg << ',' << obs.pose.roll_deg
+                     << ',' << std::setprecision(3) << obs.intrinsics.fx << ','
+                     << obs.intrinsics.fy << ',' << obs.intrinsics.cx << ','
+                     << obs.intrinsics.cy << ',' << obs.intrinsics.fov_deg;
                 udp_sender_->send_line(line.str());
             }
         }

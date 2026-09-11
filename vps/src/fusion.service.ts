@@ -1,0 +1,361 @@
+import { Injectable } from '@nestjs/common';
+import { timeAlign } from './fusion-align';
+import {
+  gpsToEnu,
+  makeIntrinsics,
+  type CameraIntrinsics,
+  type CameraPose,
+  type Vec3,
+} from './fusion-geo';
+import {
+  triangulate,
+  type TriangulateObservation,
+  type TriangulationResult,
+} from './fusion-triangulate';
+import {
+  FusionCameraState,
+  FusionLastFuse,
+  FusionObservation,
+  FusionSnapshot,
+} from './fusion.types';
+
+interface CameraLastSeen {
+  timestampUs: number;
+  receivedAtMs: number;
+  x: number;
+  y: number;
+  confidence: number;
+  hasPose: boolean;
+}
+
+interface GpsOrigin {
+  lat: number;
+  lon: number;
+  alt: number;
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw === '') {
+    return fallback;
+  }
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw === '') {
+    return fallback;
+  }
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function latestTimestampUs(deque: FusionObservation[]): number {
+  let latest = deque[0].timestampUs;
+  for (const obs of deque) {
+    if (obs.timestampUs > latest) {
+      latest = obs.timestampUs;
+    }
+  }
+  return latest;
+}
+
+function needTwoFuse(): FusionLastFuse {
+  return {
+    ok: false,
+    rejectReason: 'need >= 2 observations',
+    residualM: null,
+    parallaxDeg: null,
+    confidence: null,
+    cameras: [],
+    point: null,
+  };
+}
+
+function toLastFuse(result: TriangulationResult): FusionLastFuse {
+  if (!result.ok) {
+    return {
+      ok: false,
+      rejectReason: result.rejectReason || null,
+      residualM: null,
+      parallaxDeg: null,
+      confidence: null,
+      cameras: result.cameras.slice(),
+      point: null,
+    };
+  }
+  const p = result.point;
+  return {
+    ok: true,
+    rejectReason: null,
+    residualM: result.residualM,
+    parallaxDeg: result.parallaxDeg,
+    confidence: result.confidence,
+    cameras: result.cameras.slice(),
+    point: p ? { x: p.x, y: p.y, z: p.z } : null,
+  };
+}
+
+@Injectable()
+export class FusionService {
+  private readonly historyWindowMs = envInt('FUSION_HISTORY_MS', 2000);
+  private readonly staleAfterMs = envInt('FUSION_STALE_MS', 2000);
+  private readonly maxPerCamera = envInt('FUSION_MAX_PER_CAMERA', 256);
+  private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 90);
+  private readonly minParallaxDeg = envNumber('FUSION_MIN_PARALLAX_DEG', 2);
+  private readonly maxResidualM = envNumber('FUSION_MAX_RESIDUAL_M', 3);
+  private readonly maxRangeM = envNumber('FUSION_MAX_RANGE_M', 60);
+  private readonly deques = new Map<string, FusionObservation[]>();
+  // Survivant à la purge du deque : âge / active restent lisibles.
+  private readonly lastSeen = new Map<string, CameraLastSeen>();
+  private lastFuse: FusionLastFuse | null = null;
+  // 0 = jamais fusionné (sentinelle C++ last_fuse_us_).
+  private lastFuseUs = 0;
+  // Origine ENU figée à la première obs GPS.
+  private origin: GpsOrigin | null = null;
+
+  ingest(obs: FusionObservation): void {
+    if (!obs.cameraId) {
+      return;
+    }
+    this.captureOrigin(obs);
+    const deque = this.deques.get(obs.cameraId) ?? [];
+    deque.push(obs);
+    this.deques.set(obs.cameraId, deque);
+    this.remember(obs);
+    const nowMs = Date.now();
+    for (const cameraId of [...this.deques.keys()]) {
+      this.prune(cameraId, nowMs);
+    }
+    this.tryFuse(obs.timestampUs);
+  }
+
+  snapshot(nowMs = Date.now()): FusionSnapshot {
+    const cameras: FusionCameraState[] = [];
+    for (const [cameraId, seen] of this.lastSeen) {
+      const state = this.cameraState(cameraId, seen, nowMs);
+      if (!state) {
+        continue;
+      }
+      cameras.push(state);
+    }
+    cameras.sort((a, b) => a.cameraId.localeCompare(b.cameraId));
+    let activeCameras = 0;
+    for (const camera of cameras) {
+      if (camera.active) {
+        activeCameras += 1;
+      }
+    }
+    return {
+      activeCameras,
+      cameraCount: cameras.length,
+      historyWindowMs: this.historyWindowMs,
+      staleAfterMs: this.staleAfterMs,
+      cameras,
+      lastFuse: this.lastFuse,
+    };
+  }
+
+  history(cameraId: string): readonly FusionObservation[] {
+    const deque = this.deques.get(cameraId);
+    if (!deque) {
+      return [];
+    }
+    return deque.slice();
+  }
+
+  private tryFuse(tRefUs: number): void {
+    const intervalUs = this.fusionWindowMs * 1000;
+    if (this.lastFuseUs !== 0 && tRefUs < this.lastFuseUs + intervalUs) {
+      return;
+    }
+    const aligned = timeAlign(this.deques, tRefUs, this.fusionWindowMs);
+    if (aligned.length < 2) {
+      this.lastFuse = needTwoFuse();
+      return;
+    }
+    const triObs: TriangulateObservation[] = [];
+    for (const item of aligned) {
+      const mapped = this.toTriObs(item);
+      if (mapped) {
+        triObs.push(mapped);
+      }
+    }
+    if (triObs.length < 2) {
+      this.lastFuse = needTwoFuse();
+      return;
+    }
+    this.lastFuseUs = tRefUs;
+    this.lastFuse = toLastFuse(
+      triangulate(triObs, {
+        minParallaxDeg: this.minParallaxDeg,
+        maxResidualM: this.maxResidualM,
+        maxRangeM: this.maxRangeM,
+      }),
+    );
+  }
+
+  private captureOrigin(obs: FusionObservation): void {
+    if (this.origin) {
+      return;
+    }
+    if (
+      isFiniteNumber(obs.lat) &&
+      isFiniteNumber(obs.lon) &&
+      isFiniteNumber(obs.alt)
+    ) {
+      this.origin = { lat: obs.lat, lon: obs.lon, alt: obs.alt };
+    }
+  }
+
+  private enuOf(obs: FusionObservation): Vec3 | null {
+    if (
+      isFiniteNumber(obs.camX) &&
+      isFiniteNumber(obs.camY) &&
+      isFiniteNumber(obs.camZ)
+    ) {
+      return { x: obs.camX, y: obs.camY, z: obs.camZ };
+    }
+    if (
+      !this.origin ||
+      !isFiniteNumber(obs.lat) ||
+      !isFiniteNumber(obs.lon) ||
+      !isFiniteNumber(obs.alt)
+    ) {
+      return null;
+    }
+    return gpsToEnu(
+      obs.lat,
+      obs.lon,
+      obs.alt,
+      this.origin.lat,
+      this.origin.lon,
+      this.origin.alt,
+    );
+  }
+
+  private toTriObs(obs: FusionObservation): TriangulateObservation | null {
+    const enu = this.enuOf(obs);
+    if (!enu) {
+      return null;
+    }
+    const pose: CameraPose = {
+      x: enu.x,
+      y: enu.y,
+      z: enu.z,
+      headingDeg: isFiniteNumber(obs.headingDeg) ? obs.headingDeg : 0,
+      elevationDeg: isFiniteNumber(obs.elevationDeg) ? obs.elevationDeg : 0,
+      rollDeg: isFiniteNumber(obs.rollDeg) ? obs.rollDeg : 0,
+    };
+    const width =
+      isFiniteNumber(obs.imageWidth) && obs.imageWidth > 0
+        ? obs.imageWidth
+        : 1280;
+    const height =
+      isFiniteNumber(obs.imageHeight) && obs.imageHeight > 0
+        ? obs.imageHeight
+        : 720;
+    const fov = isFiniteNumber(obs.fovDeg) && obs.fovDeg > 0 ? obs.fovDeg : 65;
+    const intrinsics: CameraIntrinsics = makeIntrinsics(width, height, fov);
+    if (isFiniteNumber(obs.fx) && obs.fx > 0) {
+      intrinsics.fx = obs.fx;
+    }
+    if (isFiniteNumber(obs.fy) && obs.fy > 0) {
+      intrinsics.fy = obs.fy;
+    }
+    if (isFiniteNumber(obs.cx) && obs.cx > 0) {
+      intrinsics.cx = obs.cx;
+    }
+    if (isFiniteNumber(obs.cy) && obs.cy > 0) {
+      intrinsics.cy = obs.cy;
+    }
+    return {
+      cameraId: obs.cameraId,
+      pixelX: obs.x,
+      pixelY: obs.y,
+      quality: obs.confidence,
+      pose,
+      intrinsics,
+    };
+  }
+
+  private remember(obs: FusionObservation): void {
+    const prev = this.lastSeen.get(obs.cameraId);
+    if (prev && obs.receivedAtMs < prev.receivedAtMs) {
+      return;
+    }
+    this.lastSeen.set(obs.cameraId, {
+      timestampUs: obs.timestampUs,
+      receivedAtMs: obs.receivedAtMs,
+      x: obs.x,
+      y: obs.y,
+      confidence: obs.confidence,
+      hasPose: isFiniteNumber(obs.headingDeg),
+    });
+  }
+
+  private prune(cameraId: string, nowMs: number): void {
+    const deque = this.deques.get(cameraId);
+    if (!deque || deque.length === 0) {
+      this.deques.delete(cameraId);
+      return;
+    }
+
+    // Relatif au plus récent de CETTE caméra (unix-us ou compteur boot).
+    const keepUs = this.historyWindowMs * 1000;
+    const minUs = latestTimestampUs(deque) - keepUs;
+    const minRecv = nowMs - this.historyWindowMs;
+    const kept: FusionObservation[] = [];
+    for (const item of deque) {
+      if (item.timestampUs >= minUs && item.receivedAtMs >= minRecv) {
+        kept.push(item);
+      }
+    }
+    while (kept.length > this.maxPerCamera) {
+      kept.shift();
+    }
+    if (kept.length === 0) {
+      this.deques.delete(cameraId);
+    } else {
+      this.deques.set(cameraId, kept);
+    }
+  }
+
+  private cameraState(
+    cameraId: string,
+    seen: CameraLastSeen,
+    nowMs: number,
+  ): FusionCameraState | null {
+    const deque = this.deques.get(cameraId);
+    const detectionCount = deque ? deque.length : 0;
+    const ageMs = nowMs - seen.receivedAtMs;
+    const active = ageMs <= this.staleAfterMs;
+    if (detectionCount === 0 && !active) {
+      return null;
+    }
+    return {
+      cameraId,
+      detectionCount,
+      lastTimestampUs: seen.timestampUs,
+      lastReceivedAtMs: seen.receivedAtMs,
+      ageMs,
+      active,
+      hasPose: seen.hasPose,
+      lastX: seen.x,
+      lastY: seen.y,
+      lastConfidence: seen.confidence,
+    };
+  }
+}

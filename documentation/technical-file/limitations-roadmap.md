@@ -1,7 +1,7 @@
 # Limites et feuille de route
 
-Dernière vérification dans le code : **11 septembre 2026** (`main` après
-fusion Kalman, IMU partagée, classification transport, tests UDP).
+Dernière vérification dans le code : **11 septembre 2026** (scorecard
+cinématique SCRUM-70, fusion Kalman, IMU partagée, transport CSV/WS).
 
 Chaque limite ci-dessous doit rester vérifiable dans le dépôt. Les phrases
 périmées (frontend sur `pavoisSim.ts`, « pas de flux backend », « pas de
@@ -38,10 +38,23 @@ Kalman ») ont été retirées.
   production VPS** (`FusionService`, confirm=3, coast=1,2 s).
 - Les identifiants de piste (`objN`) viennent du tracker, plus d’une
   simulation frontend.
-- **Classification drone / oiseau / avion non implémentée.** Le 6ᵉ champ
-  CSV et le WS portent `classification`, toujours `"other"` (SCRUM-69).
-  L’alerte « DRONE confirmé » de l’Angular ne part donc pas. Les branches
-  `feature/pattern-matching-*` ne sont pas fusionnées (SCRUM-70).
+- **Classification = heuristique cinématique, pas un réseau de neurones.**
+  Décision SCRUM-70 : ne **pas** fusionner `feature/pattern-matching-*`
+  (elles patchaient l’ancien `UdpService` et le store React). Le scorecard
+  v2 (vitesse, accélération, altitude GPS, taux de cap) est porté dans
+  `vps/src/fusion-classify.ts` et appliqué aux pistes Kalman. Première
+  mesure → `"other"`. Une classe CSV explicite (6ᵉ champ `obj*`) gagne
+  encore sur le chemin UDP local. Les seuils ne sont **pas calibrés** ;
+  l’alerte Angular « DRONE confirmé » peut partir sur un faux positif.
+
+### Décision SCRUM-70 (branches pattern-matching)
+
+- **Ne pas merger** `feature/pattern-matching-classification` (v1) ni
+  `feature/pattern-matching-v2` telles quelles.
+- **Porter** le scorecard v2 dans le tracker Kalman actuel
+  (`fusion-classify.ts`), avec l’altitude GPS = origine ENU + z.
+- **Supprimer** les deux branches distantes une fois le port sur origin
+  (cette feuille de route + le code VPS sont la copie utile).
 
 ### Intégration frontend
 
@@ -78,13 +91,15 @@ Kalman ») ont été retirées.
 
 - Fusion 3D sur le VPS, pas sur la Pi (SCRUM-56 / 57 / 58).
 - Kalman et `track_update` GPS (SCRUM-59 / 60).
+- Scorecard cinématique drone / avion / oiseau / other (SCRUM-70).
 - Pose caméra collée au `raw` (SCRUM-55).
 - Rayons bruts et cônes à portée 60 m (SCRUM-64 / 65).
 - Job CI `check` (tests VPS + Angular) avant deploy.
 
 ### Encore ouvert
 
-1. **Classifieur** — trancher les branches pattern-matching (SCRUM-70).
+1. **Calibrer le classifieur** — seuils du scorecard sur scènes réelles
+   (l’algo est en production VPS, pas validé).
 2. **Géométrie du parc** — recaler jean / tanel / walid, baseline utile.
 3. **Santé opérateur** — montrer `lastFuse` et un heartbeat par Pi.
 4. **HMAC aligné** — même secret Pi / VPS, doc et `UDP_REQUIRE_HMAC`.
@@ -106,6 +121,7 @@ Formulation prudente actuelle :
 ```text
 PAVOIS détecte du mouvement sur trois Pi, fusionne les détections 2D sur
 le VPS (triangulation + Kalman) et les affiche sur l’interface Angular.
-La classification n’est pas implémentée ; une caméra seule ne donne pas
-de position 3D. L’erreur métrique n’est pas encore mesurée sur le terrain.
+La classification est une heuristique de cinématique, non validée terrain.
+Une caméra seule ne donne pas de position 3D. L’erreur métrique n’est pas
+encore mesurée.
 ```

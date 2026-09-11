@@ -273,6 +273,7 @@ export class FusionService {
       isFiniteNumber(obs.alt)
     ) {
       this.origin = { lat: obs.lat, lon: obs.lon, alt: obs.alt };
+      this.tracker.setOriginAlt(this.origin.alt);
     }
   }
 

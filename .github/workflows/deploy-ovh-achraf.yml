@@ -40,41 +40,82 @@ jobs:
   deploy-ovh:
     needs: check
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
       - name: Deploy to Achraf OVH VPS over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
-          username: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
-          key: ${{ secrets.OVH_VPS_SSH_KEY }}
-          port: ${{ secrets.OVH_VPS_PORT || 22 }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            APP_DIR="${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}"
-            BRANCH="${{ github.ref_name }}"
+        env:
+          OVH_KEY: ${{ secrets.OVH_VPS_SSH_KEY }}
+          HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
+          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
+          PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
+          APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os
+          import sys
 
-            echo "--> Déploiement de la branche '$BRANCH' sur le VPS OVH (${{ secrets.OVH_VPS_HOST || '51.91.98.159' }})..."
+          raw = os.environ.get("OVH_KEY") or ""
+          if not raw.strip():
+              sys.stderr.write(
+                  "Secret OVH_VPS_SSH_KEY vide.\n"
+                  "Settings → Secrets and variables → Actions :\n"
+                  "coller la clé privée (BEGIN OPENSSH/RSA PRIVATE KEY).\n"
+              )
+              sys.exit(1)
+          text = raw.replace("\r\n", "\n").replace("\r", "\n")
+          if "\n" not in text.strip():
+              text = text.replace("\\n", "\n")
+          if "BEGIN" not in text or "PRIVATE KEY" not in text:
+              sys.stderr.write(
+                  "OVH_VPS_SSH_KEY n'est pas une clé privée PEM/OpenSSH.\n"
+              )
+              sys.exit(1)
+          if not text.endswith("\n"):
+              text += "\n"
+          os.makedirs(os.path.expanduser("~/.ssh"), mode=0o700, exist_ok=True)
+          path = os.path.expanduser("~/.ssh/ovh_deploy")
+          with open(path, "w", encoding="utf-8") as handle:
+              handle.write(text)
+          os.chmod(path, 0o600)
+          print(f"OVH_VPS_SSH_KEY ok ({len(text)} bytes)")
+          PY
+          ssh -i "${HOME}/.ssh/ovh_deploy" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -p "${PORT}" \
+            "${SSH_USER}@${HOST}" \
+            env \
+              APP_DIR="${APP_DIR}" \
+              BRANCH="${BRANCH}" \
+              GH_TOKEN="${GH_TOKEN}" \
+              REPO="${REPO}" \
+              bash -s <<'REMOTE'
+          set -euo pipefail
+          echo "--> Déploiement de la branche '$BRANCH' sur le VPS OVH..."
 
-            if [ ! -d "$APP_DIR/.git" ]; then
-              echo "--> Premier clonage du dépôt dans $APP_DIR..."
-              mkdir -p "$(dirname "$APP_DIR")"
-              git clone \
-                "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
-                "$APP_DIR"
-            fi
+          if [ ! -d "$APP_DIR/.git" ]; then
+            echo "--> Premier clonage du dépôt dans $APP_DIR..."
+            mkdir -p "$(dirname "$APP_DIR")"
+            git clone \
+              "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" \
+              "$APP_DIR"
+          fi
 
-            cd "$APP_DIR"
-            git remote set-url origin \
-              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            git fetch origin
-            # Force-sync to origin. -f drops tracked local edits (the
-            # previous checkout aborted on scripts/deploy_staging.sh).
-            # Untracked files such as .env are left untouched.
-            git checkout -f -B "$BRANCH" "origin/$BRANCH"
+          cd "$APP_DIR"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git fetch origin
+          # Force-sync to origin. -f drops tracked local edits.
+          # Untracked files such as .env are left untouched.
+          git checkout -f -B "$BRANCH" "origin/$BRANCH"
 
-            chmod +x scripts/deploy_staging.sh scripts/deploy_vps.sh 2>/dev/null || true
-            
-            # Lancement automatique du déploiement Staging (Port 8081)
-            ./scripts/deploy_staging.sh
+          chmod +x scripts/deploy_staging.sh scripts/deploy_vps.sh \
+            2>/dev/null || true
+
+          ./scripts/deploy_staging.sh
+          REMOTE

@@ -7,8 +7,16 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { applyBodyParsers } from './http-body';
+import { assertAuthTokenConfigured } from './access-control';
 
 async function bootstrap() {
+  try {
+    assertAuthTokenConfigured();
+  } catch (error) {
+    console.error(`[BOOT] ${(error as Error).message}`);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   applyBodyParsers(app);
 

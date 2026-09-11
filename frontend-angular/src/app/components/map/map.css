@@ -77,3 +77,10 @@
 .map-container :global(.leaflet-interactive) {
   cursor: pointer;
 }
+
+/* Rayon de détection brute : fondu progressif avant suppression (voir
+   MapView.renderRawDetection). Leaflet fait varier stroke-opacity pour une
+   polyline ; on couvre aussi opacity au cas où. */
+.map-container :global(.raw-ray) {
+  transition: opacity 1s linear, stroke-opacity 1s linear;
+}

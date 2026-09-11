@@ -1,4 +1,5 @@
 import {
+  enuToGps,
   lookAt,
   makeIntrinsics,
   projectWorldToPixel,
@@ -8,6 +9,7 @@ import { FusionService } from './fusion.service';
 import { FusionObservation } from './fusion.types';
 
 const TARGET: Vec3 = { x: 2, y: 30, z: 12 };
+const GPS_ORIGIN = { lat: 48.82608, lon: 2.3659, alt: 58.52 };
 
 function observation(
   cameraId: string,
@@ -80,7 +82,15 @@ function ingestTriplet(
   receivedAtMs: number,
 ): void {
   for (const [id, eye] of Object.entries(EYES)) {
-    service.ingest(posedAt(id, eye, target, { timestampUs, receivedAtMs }));
+    service.ingest(
+      posedAt(id, eye, target, {
+        timestampUs,
+        receivedAtMs,
+        lat: GPS_ORIGIN.lat,
+        lon: GPS_ORIGIN.lon,
+        alt: GPS_ORIGIN.alt,
+      }),
+    );
   }
 }
 
@@ -269,5 +279,41 @@ describe('FusionService', () => {
     expect(trackErr.length).toBeGreaterThan(3);
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     expect(mean(trackErr)).toBeLessThan(mean(fuseErr) + 0.5);
+  });
+
+  it('pulls GPS track_update payloads after confirmation', () => {
+    const nowMs = Date.now();
+    for (let i = 0; i < 6; i++) {
+      const target = { x: 2 + i * 0.4, y: 30, z: 12 };
+      ingestTriplet(service, target, 1_000_000 + i * 100_000, nowMs);
+    }
+    const updates = service.pullTrackUpdates();
+    expect(updates).toHaveLength(1);
+    expect(updates[0].type).toBe('track_update');
+    expect(updates[0].trackId).toBe('obj1');
+    const truth = { x: 2 + 5 * 0.4, y: 30, z: 12 };
+    const gps = enuToGps(truth, GPS_ORIGIN);
+    expect(updates[0].lat).toBeCloseTo(gps.lat, 4);
+    expect(updates[0].lng).toBeCloseTo(gps.lng, 4);
+    expect(updates[0].alt).toBeCloseTo(gps.alt, 1);
+    expect(updates[0].classification).toBe('other');
+    expect(service.pullTrackUpdates()).toEqual([]);
+  });
+
+  it('does not emit GPS tracks without an origin', () => {
+    const nowMs = Date.now();
+    service.ingest(
+      posedObservation('jean', EYES.jean, {
+        timestampUs: 1_000_000,
+        receivedAtMs: nowMs,
+      }),
+    );
+    service.ingest(
+      posedObservation('tanel', EYES.tanel, {
+        timestampUs: 1_000_000,
+        receivedAtMs: nowMs,
+      }),
+    );
+    expect(service.pullTrackUpdates()).toEqual([]);
   });
 });

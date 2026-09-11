@@ -14,6 +14,7 @@ struct TrackUpdate {
     double z = 0.0;
     double confidence = 0.0;
     std::vector<std::string> cameras;
+    std::string classification = "other";
 };
 
 }  // namespace pavois

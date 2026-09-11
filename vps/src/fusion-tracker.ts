@@ -35,6 +35,7 @@ interface Track {
   confirmed: boolean;
   confidence: number;
   cameras: string[];
+  classification: string;
 }
 
 function clamp(x: number, lo: number, hi: number): number {
@@ -125,6 +126,7 @@ export class Tracker {
       confirmed: false,
       confidence: measConf * 0.5,
       cameras: cameras.slice(),
+      classification: 'other',
     };
     t.kf.init(3, zv, this.cfg.processNoise, this.cfg.measNoise);
     this.tracks.push(t);
@@ -195,6 +197,7 @@ export class Tracker {
       z: p[2],
       confidence: t.confidence,
       cameras: t.cameras.slice(),
+      classification: t.classification || 'other',
     };
   }
 
@@ -209,6 +212,7 @@ export class Tracker {
       confirmed: t.confirmed,
       confidence: t.confidence,
       cameras: t.cameras.slice(),
+      classification: t.classification,
     };
   }
 }

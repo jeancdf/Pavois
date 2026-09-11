@@ -28,6 +28,7 @@ TrackUpdate Tracker::make_update(const Track& t) const {
     u.z = p[2];
     u.confidence = t.confidence;
     u.cameras = t.cameras;
+    u.classification = t.classification;
     return u;
 }
 

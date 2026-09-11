@@ -7,6 +7,7 @@ import { CameraConfigService } from '../../services/camera-config.service';
 import { NotificationService } from '../../services/notification.service';
 import { CameraPosition } from '../../models/world-position.model';
 import { ObjectClassification, TrackUpdate } from '../../models/track-update.model';
+import { RawDetection } from '../../models/raw-detection.model';
 
 const EARTH_RADIUS_M = 6371000;
 const TRAIL_LENGTH = 30;
@@ -17,6 +18,13 @@ const DEFAULT_CENTER: L.LatLngExpression = [48.8566, 2.3522];
 // 7 décimales ≈ 1 cm : suffisant pour une position posée à la souris
 const COORD_DECIMALS = 7;
 const TRACK_COLORS = ['#f59e0b', '#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fb7185'];
+
+// raw_detection ne transporte pas la largeur d'image ; toutes les caméras du
+// parc tournent avec camstream.sh en --width 1280, donc c'est la référence
+// utilisée pour convertir un pixel en angle dans le FOV.
+const DETECTION_FRAME_WIDTH = 1280;
+const RAW_RAY_COLOR = '#fbbf24';
+const RAW_RAY_FADE_MS = 1000;
 
 const CLASSIFICATION_ICONS: Record<ObjectClassification, { emoji: string; color: string }> = {
   drone:    { emoji: '🚁', color: '#ef4444' },
@@ -105,10 +113,12 @@ export class MapView implements AfterViewInit, OnDestroy {
 
   // Désactivé par défaut : naviguer sur la carte ne doit pas déplacer une caméra
   readonly cameraDragEnabled = signal(false);
+  readonly showRawRays = signal(true);
 
   private map: L.Map | null = null;
   private centeredOnCameras = false;
   private cameraLayers: L.Layer[] = [];
+  private rawRayLayers: L.Polyline[] = [];
   private readonly trackLayers = new Map<string, TrackLayers>();
   private readonly trailsByTrackId = new Map<string, L.LatLngExpression[]>();
   private readonly colorByTrackId = new Map<string, string>();
@@ -139,6 +149,9 @@ export class MapView implements AfterViewInit, OnDestroy {
     this.renderCameras(this.realtime.cameras(), this.cameraDragEnabled());
 
     this.subscription = this.realtime.trackUpdates$.subscribe((track) => this.renderTrackUpdate(track));
+    this.subscription.add(
+      this.realtime.rawDetections$.subscribe((det) => this.renderRawDetection(det)),
+    );
 
     const mapEl = this.mapElRef().nativeElement;
     requestAnimationFrame(() => this.map?.invalidateSize());
@@ -151,6 +164,7 @@ export class MapView implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.subscription?.unsubscribe();
+    this.clearRawRays();
     this.map?.remove();
   }
 
@@ -163,6 +177,53 @@ export class MapView implements AfterViewInit, OnDestroy {
 
   toggleCameraDrag(): void {
     this.cameraDragEnabled.update((enabled) => !enabled);
+  }
+
+  toggleRawRays(): void {
+    this.showRawRays.update((enabled) => !enabled);
+    if (!this.showRawRays()) this.clearRawRays();
+  }
+
+  private clearRawRays(): void {
+    this.rawRayLayers.forEach((layer) => layer.remove());
+    this.rawRayLayers = [];
+  }
+
+  /**
+   * Convertit le centroïde pixel d'une détection brute en rayon GPS parti de
+   * la caméra, et l'affiche brièvement avec un fondu — sert de retour visuel
+   * immédiat et de vérification de calibration (rayons convergents = cible
+   * probable, divergents = cap de caméra mal réglé), avant même que la
+   * fusion multi-caméra ne soit disponible.
+   */
+  private renderRawDetection(det: RawDetection): void {
+    if (!this.map || !this.showRawRays()) return;
+    const camera = this.realtime.cameras().find((c) => c.id === det.cameraId);
+    if (!camera) return;
+
+    const offsetFraction = det.x / DETECTION_FRAME_WIDTH - 0.5;
+    const bearingDeg = camera.azimuthDeg + offsetFraction * camera.fovDeg;
+    const endpoint = projectLatLng(camera.lat, camera.lon, bearingDeg, camera.rangeM);
+
+    const ray = L.polyline([[camera.lat, camera.lon], endpoint], {
+      color: RAW_RAY_COLOR,
+      weight: 2,
+      opacity: 0.75,
+      className: 'raw-ray',
+    }).addTo(this.map);
+    this.rawRayLayers.push(ray);
+
+    // Léger délai pour laisser le premier paint se faire avant de déclencher
+    // la transition CSS de fondu (sinon le navigateur peut fusionner les deux
+    // changements de style et sauter directement à l'état final).
+    setTimeout(() => {
+      if (!this.map) return;
+      ray.setStyle({ opacity: 0 });
+    }, 50);
+    setTimeout(() => {
+      ray.remove();
+      this.rawRayLayers = this.rawRayLayers.filter((l) => l !== ray);
+    }, RAW_RAY_FADE_MS);
   }
 
   private renderCameras(cameras: CameraPosition[], draggable: boolean): void {

@@ -72,6 +72,7 @@ struct I2cFailWatchdog {
 class ImuReader {
 public:
     virtual ~ImuReader() = default;
+    // Thread-safe: CameraWorkers share one reader per process.
     virtual bool read(ImuSample& sample) = 0;
     virtual const std::string& last_error() const = 0;
 };

@@ -61,10 +61,12 @@ CameraPose pose_from(const CameraConfig& c) {
 
 }  // namespace
 
-CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app, FusionEngine& fusion,
+CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
+                           FusionEngine& fusion,
                            std::ostream& log_out, std::mutex& log_mutex,
                            std::shared_ptr<UdpSender> udp_sender,
                            std::shared_ptr<HttpPoster> preview_http,
+                           std::shared_ptr<ImuReader> imu,
                            bool emit_raw_observations)
     : cfg_(cfg),
       app_(app),
@@ -73,6 +75,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app, Fusion
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
       preview_http_(std::move(preview_http)),
+      imu_(std::move(imu)),
       emit_raw_observations_(emit_raw_observations) {}
 
 void CameraWorker::log_line(const std::string& line) {
@@ -169,8 +172,9 @@ void CameraWorker::operator()() {
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
     CameraPose pose = pose_from(cfg_);
-    auto imu = open_imu(app_);
-    if (imu) {
+    // Use the process-wide IMU from main. Do not call open_imu() here:
+    // each BNO055 init would CONFIG→NDOF and reset fusion on other threads.
+    if (imu_) {
         log_line("camera " + cfg_.id + " IMU live");
     } else if (app_.imu_enabled && app_.imu_kind != "none") {
         log_line("camera " + cfg_.id +
@@ -181,7 +185,7 @@ void CameraWorker::operator()() {
     if (!source->open()) {
         log_line("camera " + cfg_.id + " open failed: " +
                  source->last_error());
-        stream_attitude_only(imu.get(), pose);
+        stream_attitude_only(imu_.get(), pose);
         return;
     }
 
@@ -199,14 +203,14 @@ void CameraWorker::operator()() {
         if (!source->read_frame(frame)) {
             log_line("camera " + cfg_.id + " read failed: " +
                      source->last_error());
-            stream_attitude_only(imu.get(), pose);
+            stream_attitude_only(imu_.get(), pose);
             return;
         }
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
         std::string calib_token;
-        const bool imu_valid = apply_imu_sample(imu.get(), pose, calib_token);
+        const bool imu_valid = apply_imu_sample(imu_.get(), pose, calib_token);
         maybe_emit_attitude(pose, calib_token, imu_valid, frame.captured_us,
                             last_att_us);
         maybe_send_preview(frame, frame.captured_us, last_preview_us);

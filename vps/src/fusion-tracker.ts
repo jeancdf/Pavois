@@ -2,6 +2,13 @@
 import { KalmanCV } from './fusion-kalman';
 import type { Vec3 } from './fusion-geo';
 import type { FusionTrack } from './fusion.types';
+import {
+  classifyKinematics,
+  headingDegEnu,
+  headingDeltaDeg,
+  isClassifiableDt,
+  smoothSpeedAccel,
+} from './fusion-classify';
 
 export interface TrackerConfig {
   matchDistanceM: number;
@@ -36,6 +43,10 @@ interface Track {
   confidence: number;
   cameras: string[];
   classification: string;
+  lastKineUs: number;
+  lastSpeed?: number;
+  lastHeading?: number;
+  lastAccel: number;
 }
 
 function clamp(x: number, lo: number, hi: number): number {
@@ -46,9 +57,15 @@ export class Tracker {
   private readonly cfg: TrackerConfig;
   private readonly tracks: Track[] = [];
   private nextId = 1;
+  // GPS MSL of the ENU origin; z is relative so alt = origin + z.
+  private originAltM = 0;
 
   constructor(cfg: Partial<TrackerConfig> = {}) {
     this.cfg = { ...DEFAULT_TRACKER_CONFIG, ...cfg };
+  }
+
+  setOriginAlt(altM: number): void {
+    this.originAltM = altM;
   }
 
   update(
@@ -127,6 +144,8 @@ export class Tracker {
       confidence: measConf * 0.5,
       cameras: cameras.slice(),
       classification: 'other',
+      lastKineUs: tsUs,
+      lastAccel: 0,
     };
     t.kf.init(3, zv, this.cfg.processNoise, this.cfg.measNoise);
     this.tracks.push(t);
@@ -142,6 +161,7 @@ export class Tracker {
     best.hits = Math.max(best.hits, this.cfg.confirmUpdates);
     best.cameras = cameras.slice();
     best.confidence = clamp(0.5 * best.confidence + 0.3 * measConf, 0, 0.9);
+    this.resetKine(best);
     return best.confirmed ? this.makeUpdate(best) : null;
   }
 
@@ -166,6 +186,7 @@ export class Tracker {
     ) {
       best.confirmed = true;
     }
+    this.applyKineClass(best);
     return best.confirmed ? this.makeUpdate(best) : null;
   }
 
@@ -213,6 +234,55 @@ export class Tracker {
       confidence: t.confidence,
       cameras: t.cameras.slice(),
       classification: t.classification,
+      lastKineUs: t.lastKineUs,
+      lastSpeed: t.lastSpeed,
+      lastHeading: t.lastHeading,
+      lastAccel: t.lastAccel,
     };
+  }
+
+  private resetKine(t: Track): void {
+    t.classification = 'other';
+    t.lastKineUs = t.lastUpdateUs;
+    t.lastSpeed = undefined;
+    t.lastHeading = undefined;
+    t.lastAccel = 0;
+  }
+
+  // Scorecard v2 on Kalman speed / accel / heading, GPS alt = origin + z.
+  private applyKineClass(t: Track): void {
+    const dtS = (t.lastUpdateUs - t.lastKineUs) / 1e6;
+    t.lastKineUs = t.lastUpdateUs;
+    if (!isClassifiableDt(dtS)) {
+      return;
+    }
+    const vel = t.kf.velocity();
+    const rawSpeed = t.kf.speed();
+    const heading = headingDegEnu(vel[0], vel[1]);
+    const filtered = smoothSpeedAccel(
+      { speed: t.lastSpeed, accel: t.lastAccel },
+      rawSpeed,
+      dtS,
+    );
+    const speed = filtered.speed ?? rawSpeed;
+    const accel = filtered.accel;
+    let headingRate = 0;
+    if (t.lastHeading !== undefined && speed >= 0.5) {
+      headingRate = headingDeltaDeg(t.lastHeading, heading) / dtS;
+    }
+    const pos = t.kf.position();
+    const scored = classifyKinematics({
+      speedMps: speed,
+      accelMps2: accel,
+      altM: this.originAltM + pos[2],
+      headingChangeDegPerS: headingRate,
+      priorAccelMps2: t.lastAccel,
+    });
+    t.classification = scored.classification;
+    t.lastSpeed = speed;
+    t.lastAccel = accel;
+    if (speed >= 0.5) {
+      t.lastHeading = heading;
+    }
   }
 }

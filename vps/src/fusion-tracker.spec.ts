@@ -28,6 +28,7 @@ describe('Tracker', () => {
     expect(emits).toBeGreaterThanOrEqual(1);
     const tracks = tr.tick(t);
     expect(tracks).toHaveLength(1);
+    // Kalman speed still < 5 m/s, so the scorecard stays other.
     expect(tracks[0].classification).toBe('other');
   });
 
@@ -77,6 +78,38 @@ describe('Tracker', () => {
     expect(err).toBeLessThan(6.0);
     t += 2_000_000;
     expect(tr.tick(t)).toHaveLength(0);
+  });
+
+  it('classes a fast high track as airplane once speed settles', () => {
+    const tr = new Tracker({
+      ...cfg,
+      maxSpeedMps: 200,
+      matchDistanceM: 12,
+    });
+    let t = 0;
+    const p = { x: 0, y: 0, z: 150 };
+    for (let i = 0; i < 40; i++) {
+      t += 50_000;
+      p.x += 4.5;
+      tr.update(p, t, 0.8, ['c0', 'c1']);
+    }
+    const tracks = tr.tick(t);
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].classification).toBe('airplane');
+  });
+
+  it('classes a moderate low track as bird once speed settles', () => {
+    const tr = new Tracker(cfg);
+    let t = 0;
+    const p = { x: 0, y: 0, z: 40 };
+    for (let i = 0; i < 25; i++) {
+      t += 50_000;
+      p.x += 0.75;
+      tr.update(p, t, 0.8, ['c0', 'c1']);
+    }
+    const tracks = tr.tick(t);
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].classification).toBe('bird');
   });
 
   it('does not confirm a hyper-fast track', () => {

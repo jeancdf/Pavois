@@ -13,6 +13,8 @@
 
 #if defined(__linux__)
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <ctime>
 #include <linux/i2c-dev.h>
 #include <linux/i2c.h>
 #include <sys/ioctl.h>
@@ -178,6 +180,14 @@ public:
         : path_(std::move(path)), cfg_(cfg) {}
 
     bool read(ImuSample& sample) override {
+#if defined(__linux__)
+        struct stat info{};
+        if (::stat(path_.c_str(), &info) != 0 || std::time(nullptr) - info.st_mtime > 2) {
+            err_ = "IMU file missing or stale";
+            sample.valid = false;
+            return false;
+        }
+#endif
         std::ifstream in(path_);
         if (!in) {
             err_ = "cannot read " + path_;
@@ -207,8 +217,7 @@ private:
 std::unique_ptr<ImuReader> open_file_imu(const AppConfig& cfg) {
     if (cfg.imu_file.empty()) return nullptr;
     auto reader = std::make_unique<FileImuReader>(cfg.imu_file, cfg);
-    ImuSample sample;
-    if (!reader->read(sample)) return nullptr;
+    // Keep the reader while the bridge starts or reconnects; read() checks freshness.
     return reader;
 }
 

@@ -59,8 +59,9 @@
               portée {{ camera.rangeM }} m
             </span>
             @if (imuOf(camera.id); as imu) {
-              <span class="imu-block imu-live">
-                IMU {{ imuAge(camera.id) }} · cap {{ fmtDeg(imu.headingDeg) }}
+              <span class="imu-block imu-{{ qualityOf(imu) }}">
+                IMU {{ qualityLabel(imu) }} · {{ calibText(imu) }} · {{ imuAge(camera.id) }}
+                · cap {{ fmtDeg(imu.headingDeg) }}
                 · élév {{ fmtDeg(imu.elevationDeg) }}
                 · roulis {{ fmtDeg(imu.rollDeg) }}
               </span>
@@ -90,8 +91,9 @@
         <li class="camera-card">
           <span class="camera-id">{{ id }}</span>
           @if (imuOf(id); as imu) {
-            <span class="imu-block imu-live">
-              IMU {{ imuAge(id) }} · cap {{ fmtDeg(imu.headingDeg) }}
+            <span class="imu-block imu-{{ qualityOf(imu) }}">
+              IMU {{ qualityLabel(imu) }} · {{ calibText(imu) }} · {{ imuAge(id) }}
+              · cap {{ fmtDeg(imu.headingDeg) }}
               · élév {{ fmtDeg(imu.elevationDeg) }}
               · roulis {{ fmtDeg(imu.rollDeg) }}
             </span>

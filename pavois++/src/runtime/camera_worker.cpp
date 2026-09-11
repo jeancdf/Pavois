@@ -96,6 +96,8 @@ void CameraWorker::emit(const TrackUpdate& update) {
 }
 
 void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
+                                       const std::string& calib_token,
+                                       bool imu_valid,
                                        std::uint64_t now_us,
                                        std::uint64_t& last_att_us) {
     if (!udp_sender_ || !udp_sender_->valid()) return;
@@ -108,7 +110,8 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
     std::ostringstream line;
     line << "att," << cfg_.id << ',' << now_us << ',' << std::fixed
          << std::setprecision(2) << pose.heading_deg << ','
-         << pose.elevation_deg << ',' << pose.roll_deg;
+         << pose.elevation_deg << ',' << pose.roll_deg << ',' << calib_token
+         << ',' << (imu_valid ? '1' : '0');
     udp_sender_->send_line(line.str());
 }
 
@@ -133,12 +136,19 @@ void CameraWorker::maybe_send_preview(const GrayFrame& frame,
     preview_http_->post_jpeg(cfg_.id, std::move(jpeg));
 }
 
-void CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose) {
+// No reader: the config pose is authoritative and streams as valid.
+// A failed read keeps the last pose and reports false (frozen heading).
+bool CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose,
+                                    std::string& calib_token) {
+    calib_token = "-";
+    if (!imu) return true;
     ImuSample sample;
-    if (!imu || !imu->read(sample) || !sample.valid) return;
+    if (!imu->read(sample) || !sample.valid) return false;
     pose.heading_deg = sample.heading_deg;
     pose.elevation_deg = sample.elevation_deg;
     pose.roll_deg = sample.roll_deg;
+    calib_token = format_calib_token(sample);
+    return true;
 }
 
 void CameraWorker::stream_attitude_only(
@@ -146,8 +156,10 @@ void CameraWorker::stream_attitude_only(
     std::uint64_t last_att_us = 0;
     const int wait_ms = std::max(50, app_.imu_emit_interval_ms);
     while (cfg_.frames < 0) {
-        apply_imu_sample(imu, pose);
-        maybe_emit_attitude(pose, wall_clock_us(), last_att_us);
+        std::string calib_token;
+        const bool imu_valid = apply_imu_sample(imu, pose, calib_token);
+        maybe_emit_attitude(pose, calib_token, imu_valid, wall_clock_us(),
+                            last_att_us);
         std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
     }
 }
@@ -193,8 +205,10 @@ void CameraWorker::operator()() {
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
-        apply_imu_sample(imu.get(), pose);
-        maybe_emit_attitude(pose, frame.captured_us, last_att_us);
+        std::string calib_token;
+        const bool imu_valid = apply_imu_sample(imu.get(), pose, calib_token);
+        maybe_emit_attitude(pose, calib_token, imu_valid, frame.captured_us,
+                            last_att_us);
         maybe_send_preview(frame, frame.captured_us, last_preview_us);
 
         const DetectionResult det = detector.process(frame);

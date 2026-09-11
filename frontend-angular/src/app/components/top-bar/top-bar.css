@@ -67,6 +67,10 @@
   color: #f59e0b;
 }
 
+.kpi-warn {
+  color: #f59e0b;
+}
+
 /* Connexion */
 .conn-indicator {
   display: flex;

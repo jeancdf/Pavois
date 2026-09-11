@@ -34,9 +34,12 @@ private:
     void log_line(const std::string& line);
     void emit(const TrackUpdate& update);
     void maybe_emit_attitude(const CameraPose& pose,
+                             const std::string& calib_token,
+                             bool imu_valid,
                              std::uint64_t now_us,
                              std::uint64_t& last_att_us);
-    void apply_imu_sample(ImuReader* imu, CameraPose& pose);
+    bool apply_imu_sample(ImuReader* imu, CameraPose& pose,
+                          std::string& calib_token);
     void stream_attitude_only(ImuReader* imu, CameraPose pose);
     void maybe_send_preview(const GrayFrame& frame, std::uint64_t now_us,
                             std::uint64_t& last_preview_us);

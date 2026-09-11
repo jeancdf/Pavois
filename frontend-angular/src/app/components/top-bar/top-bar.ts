@@ -1,5 +1,6 @@
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { RealtimeService } from '../../services/realtime.service';
+import { imuQuality } from '../../utils/imu-quality';
 
 @Component({
   selector: 'app-top-bar',
@@ -10,16 +11,22 @@ import { RealtimeService } from '../../services/realtime.service';
 export class TopBar implements OnDestroy {
   readonly realtime = inject(RealtimeService);
   readonly uptime = signal(0);
-  readonly imuLiveCount = computed(() => {
-    this.uptime();
-    const now = Date.now();
-    return Object.values(this.realtime.imuByCamera()).filter(
-      (sample) => now - sample.receivedAt < 2000,
-    ).length;
+  // Horloge propre : uptime reste à 0 hors connexion et ne rafraîchirait plus.
+  private readonly now = signal(Date.now());
+  private readonly imuQualities = computed(() => {
+    const now = this.now();
+    return Object.values(this.realtime.imuByCamera()).map((sample) =>
+      imuQuality(sample, now),
+    );
   });
+  readonly imuLiveCount = computed(
+    () => this.imuQualities().filter((quality) => quality !== 'silencieuse').length,
+  );
+  readonly imuTrustedCount = computed(
+    () => this.imuQualities().filter((quality) => quality === 'ok').length,
+  );
   readonly previewLiveCount = computed(() => {
-    this.uptime();
-    const now = Date.now();
+    const now = this.now();
     return Object.values(this.realtime.previewByCamera()).filter(
       (preview) => now - preview.receivedAt < 2000,
     ).length;
@@ -29,6 +36,7 @@ export class TopBar implements OnDestroy {
 
   constructor() {
     this.uptimeTimer = setInterval(() => {
+      this.now.set(Date.now());
       const since = this.realtime.connectedSince();
       this.uptime.set(since ? Math.floor((Date.now() - since) / 1000) : 0);
     }, 1000);

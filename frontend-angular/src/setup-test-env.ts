@@ -1,51 +1,39 @@
-import 'zone.js';
-import 'zone.js/testing';
-import { TestBed } from '@angular/core/testing';
-import {
-  BrowserDynamicTestingModule,
-  platformBrowserDynamicTesting,
-} from '@angular/platform-browser-dynamic/testing';
+import '@angular/compiler';
+import '@analogjs/vitest-angular/setup-snapshots';
+import '@analogjs/vitest-angular/setup-serializers';
+import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
 
-// Initialize Angular TestBed environment
-try {
-  TestBed.initTestEnvironment(
-    BrowserDynamicTestingModule,
-    platformBrowserDynamicTesting(),
-  );
-} catch {
-  // Prevent re-initialization error if called multiple times
-}
+// Resets TestBed after each test so a second configureTestingModule
+// in the same file (and parallel files on CI) does not throw.
+setupTestBed();
 
-// Polyfill Window / Document / LocalStorage for Vitest Node & JSDOM test runner
-if (typeof globalThis.window === 'undefined') {
-  (globalThis as any).window = globalThis;
-}
-
-function initLocalStorageMock() {
-  if (typeof globalThis.localStorage === 'undefined' || !globalThis.localStorage) {
-    const storageMap = new Map<string, string>();
-    const mockStorage: Storage = {
-      getItem: (key: string) => storageMap.get(key) ?? null,
-      setItem: (key: string, value: string) => { storageMap.set(key, String(value)); },
-      removeItem: (key: string) => { storageMap.delete(key); },
-      clear: () => { storageMap.clear(); },
-      key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
-      get length() { return storageMap.size; }
-    };
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: mockStorage,
-      writable: true,
-      configurable: true
-    });
-    if ((globalThis as any).window) {
-      try {
-        (globalThis as any).window.localStorage = mockStorage;
-      } catch (e) {}
-    }
+function initLocalStorageMock(): void {
+  const existing = globalThis.localStorage;
+  if (existing && typeof existing.getItem === 'function') {
+    return;
   }
+  const storageMap = new Map<string, string>();
+  const mockStorage: Storage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  };
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: mockStorage,
+    writable: true,
+    configurable: true,
+  });
 }
 
 initLocalStorageMock();
-
-export { initLocalStorageMock };
-

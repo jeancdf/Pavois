@@ -16,8 +16,8 @@ const ORIGIN_ALT = 35.0;
 
 // Équivalent de la configuration stockée par le backend (PUT /cameras/:id/position).
 const cameras = [
-  { id: 'cam0', lat: 48.82608, lon: 2.3659, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0 },
-  { id: 'cam1', lat: 48.8260968, lon: 2.3658928, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0 },
+  { id: 'cam0', lat: 48.82608, lon: 2.3659, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0, rangeM: 60 },
+  { id: 'cam1', lat: 48.8260968, lon: 2.3658928, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0, rangeM: 60 },
 ];
 
 const server = createServer(handleHttpRequest);

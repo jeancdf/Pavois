@@ -21,7 +21,11 @@
     <div class="kpi-sep"></div>
     <div class="kpi">
       <span class="kpi-label">IMU</span>
-      <span class="kpi-value">{{ imuLiveCount() }}</span>
+      <span
+        class="kpi-value"
+        [class.kpi-warn]="imuTrustedCount() < imuLiveCount()"
+        title="IMU calibrées / IMU actives"
+      >{{ imuTrustedCount() }}/{{ imuLiveCount() }}</span>
     </div>
     <div class="kpi-sep"></div>
     <div class="kpi">

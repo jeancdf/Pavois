@@ -71,8 +71,21 @@
   line-height: 1.4;
 }
 
-.imu-live {
+.imu-ok {
   color: #34d399;
+}
+
+.imu-partielle {
+  color: #f59e0b;
+}
+
+.imu-inconnue {
+  color: #94a3b8;
+}
+
+.imu-figee,
+.imu-silencieuse {
+  color: #f87171;
 }
 
 .imu-missing {

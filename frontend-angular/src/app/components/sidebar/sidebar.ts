@@ -11,6 +11,12 @@ import { ImuSample } from '../../models/imu-sample.model';
 import { CameraConfigService } from '../../services/camera-config.service';
 import { NotificationService } from '../../services/notification.service';
 import { RealtimeService } from '../../services/realtime.service';
+import {
+  IMU_QUALITY_LABELS,
+  ImuQuality,
+  formatCalibration,
+  imuQuality,
+} from '../../utils/imu-quality';
 
 @Component({
   selector: 'app-sidebar',
@@ -66,6 +72,18 @@ export class Sidebar implements OnDestroy {
     const ageMs = Math.max(0, this.now() - sample.receivedAt);
     if (ageMs < 800) return 'live';
     return `${(ageMs / 1000).toFixed(1)} s`;
+  }
+
+  qualityOf(sample: ImuSample): ImuQuality {
+    return imuQuality(sample, this.now());
+  }
+
+  qualityLabel(sample: ImuSample): string {
+    return IMU_QUALITY_LABELS[this.qualityOf(sample)];
+  }
+
+  calibText(sample: ImuSample): string {
+    return formatCalibration(sample.calibration);
   }
 
   fmtDeg(value: number): string {

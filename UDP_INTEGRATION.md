@@ -80,10 +80,15 @@ Les deux passerelles (Python et NestJS) appliquent la même logique de décodage
   ```
 
 ### C. Attitude IMU (orientation live)
-* **Format UDP (Chaîne CSV)** : `att,cameraId,timestamp,heading_deg,elevation_deg,roll_deg`
-* **Exemple** : `att,jean,1782465675417840,164.20,-1.50,0.30`
-* **Événement WS émis** : `"camera_positions"` (liste complète, `headingDeg` mis à jour)
-* Émis ~5 fois par seconde tant que le BNO055 fournit un échantillon valide.
+* **Format UDP (Chaîne CSV)** : `att,cameraId,timestamp,heading_deg,elevation_deg,roll_deg,calib,valid`
+* **Exemple** : `att,jean,1782465675417840,164.20,-1.50,0.30,3313,1`
+* **`calib`** : 4 chiffres `SGAM` (sys, gyro, accel, mag), niveaux 0–3 lus dans CALIB_STAT (0x35) du BNO055 ; `-` si inconnu (lecteur fichier sans calibration, lecture ratée, trame invalide).
+* **`valid`** : `1` = lecture IMU réussie ; `0` = lecture ratée, les angles sont la dernière pose connue (cap figé).
+* **Rétro-compatibilité** : l'ancienne trame à 6 champs reste acceptée (calibration inconnue, `valid` = 1). Un `calib` ou `valid` malformé fait rejeter la trame.
+* **Événements WS émis** :
+  * `"imu_update"` : `{ cameraId, headingDeg, elevationDeg, rollDeg, timestamp, calibration: { sys, gyro, accel, mag } | null, valid }`
+  * `"camera_positions"` (liste complète, `headingDeg` mis à jour) — uniquement si `valid` = 1.
+* Émis ~5 fois par seconde tant qu'une IMU est ouverte, y compris quand la lecture échoue (`valid` = 0).
 
 ### D. Messages Génériques / JSON brut (Fallback)
 * **Format UDP** : Tout message ne respectant pas les formats ci-dessus.

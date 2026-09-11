@@ -30,6 +30,8 @@ private:
     void log_line(const std::string& line);
     void emit(const TrackUpdate& update);
     void maybe_emit_attitude(const CameraPose& pose,
+                             const std::string& calib_token,
+                             bool imu_valid,
                              std::uint64_t now_us,
                              std::uint64_t& last_att_us);
 

@@ -139,6 +139,7 @@ describe('AppController (e2e)', () => {
         expect(res.body.cameraCount).toBe(0);
         expect(Array.isArray(res.body.cameras)).toBe(true);
         expect(res.body.lastFuse).toBeNull();
+        expect(res.body.tracks).toEqual([]);
       });
   });
 

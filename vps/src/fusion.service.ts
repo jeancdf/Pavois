@@ -12,11 +12,13 @@ import {
   type TriangulateObservation,
   type TriangulationResult,
 } from './fusion-triangulate';
+import { Tracker, type TrackerConfig } from './fusion-tracker';
 import {
   FusionCameraState,
   FusionLastFuse,
   FusionObservation,
   FusionSnapshot,
+  FusionTrack,
 } from './fusion.types';
 
 interface CameraLastSeen {
@@ -72,6 +74,17 @@ function latestTimestampUs(deque: FusionObservation[]): number {
   return latest;
 }
 
+function trackerConfigFromEnv(): TrackerConfig {
+  return {
+    matchDistanceM: envNumber('FUSION_TRACK_MATCH_M', 6),
+    processNoise: envNumber('FUSION_TRACK_PROCESS_NOISE', 200),
+    measNoise: envNumber('FUSION_TRACK_MEAS_NOISE', 2.5),
+    confirmUpdates: envInt('FUSION_TRACK_CONFIRM', 3),
+    maxCoastMs: envInt('FUSION_TRACK_MAX_COAST_MS', 1200),
+    maxSpeedMps: envNumber('FUSION_TRACK_MAX_SPEED_MPS', 120),
+  };
+}
+
 function needTwoFuse(): FusionLastFuse {
   return {
     ok: false,
@@ -123,6 +136,8 @@ export class FusionService {
   private lastFuse: FusionLastFuse | null = null;
   // 0 = jamais fusionné (sentinelle C++ last_fuse_us_).
   private lastFuseUs = 0;
+  private readonly tracker = new Tracker(trackerConfigFromEnv());
+  private tracks: FusionTrack[] = [];
   // Origine ENU figée à la première obs GPS.
   private origin: GpsOrigin | null = null;
 
@@ -165,6 +180,7 @@ export class FusionService {
       staleAfterMs: this.staleAfterMs,
       cameras,
       lastFuse: this.lastFuse,
+      tracks: this.tracks.slice(),
     };
   }
 
@@ -198,13 +214,25 @@ export class FusionService {
       return;
     }
     this.lastFuseUs = tRefUs;
-    this.lastFuse = toLastFuse(
-      triangulate(triObs, {
-        minParallaxDeg: this.minParallaxDeg,
-        maxResidualM: this.maxResidualM,
-        maxRangeM: this.maxRangeM,
-      }),
-    );
+    const result = triangulate(triObs, {
+      minParallaxDeg: this.minParallaxDeg,
+      maxResidualM: this.maxResidualM,
+      maxRangeM: this.maxRangeM,
+    });
+    this.lastFuse = toLastFuse(result);
+    this.advanceTracker(result, tRefUs);
+  }
+
+  private advanceTracker(result: TriangulationResult, tRefUs: number): void {
+    if (result.ok && result.point) {
+      this.tracker.update(
+        result.point,
+        tRefUs,
+        result.confidence,
+        result.cameras,
+      );
+    }
+    this.tracks = this.tracker.tick(tRefUs);
   }
 
   private captureOrigin(obs: FusionObservation): void {

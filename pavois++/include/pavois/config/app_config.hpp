@@ -99,6 +99,9 @@ struct AppConfig {
     std::string imu_kind = "auto";
     std::string imu_i2c_dev = "/dev/i2c-1";
     int imu_i2c_address = 0;
+    int imu_i2c_fail_threshold = 5;   // consecutive I2C errors before reopen
+    int imu_i2c_retry_min_ms = 200;   // first backoff
+    int imu_i2c_retry_max_ms = 5000;  // backoff cap
     std::string imu_file;
     // 22-byte BNO055 offset profile (registers 0x55-0x6A). Empty disables I/O.
     std::string imu_calib_file = "/var/lib/pavois/imu_calib.bin";

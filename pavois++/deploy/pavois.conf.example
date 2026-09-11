@@ -27,6 +27,8 @@ camera.0.roll_deg=0.0
 imu.enabled=true
 imu.kind=auto
 imu.i2c_dev=/dev/i2c-1
+# Survives systemctl restart and a full Pi reboot. Absent on first boot.
+imu.calib_file=/var/lib/pavois/imu_calib.bin
 imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
 imu.elevation_offset_deg=0.0

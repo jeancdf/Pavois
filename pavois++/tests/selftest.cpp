@@ -16,6 +16,7 @@
 #include "pavois/math/kalman_cv.hpp"
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
+#include "pavois/config/app_config.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/util/jpeg_gray.hpp"
 
@@ -800,6 +801,53 @@ void test_imu() {
     check(mag_only.calib_sys == -1 && mag_only.calib_mag == 2,
           "file mag-only levels");
     check(format_calib_token(mag_only) == "---2", "file mag-only token");
+
+    AppConfig def_cfg;
+    check(def_cfg.imu_calib_file == "/var/lib/pavois/imu_calib.bin",
+          "default calib path");
+    std::uint8_t discarded[kBnoCalibOffsetBytes]{};
+    check(!load_imu_calib_offsets("", discarded), "empty path load");
+    check(!save_imu_calib_offsets("", discarded), "empty path save");
+
+    const auto calib_path = dir / "imu_calib.bin";
+    std::uint8_t missing[kBnoCalibOffsetBytes]{};
+    check(!load_imu_calib_offsets(calib_path.string(), missing),
+          "missing calib file");
+    std::uint8_t src[kBnoCalibOffsetBytes];
+    for (std::size_t i = 0; i < kBnoCalibOffsetBytes; ++i) {
+        src[i] = static_cast<std::uint8_t>(i * 3 + 1);
+    }
+    check(save_imu_calib_offsets(calib_path.string(), src), "save calib");
+    std::uint8_t dst[kBnoCalibOffsetBytes]{};
+    check(load_imu_calib_offsets(calib_path.string(), dst), "load calib");
+    bool same = true;
+    for (std::size_t i = 0; i < kBnoCalibOffsetBytes; ++i) {
+        if (src[i] != dst[i]) same = false;
+    }
+    check(same, "calib roundtrip");
+    {
+        std::ofstream file(calib_path, std::ios::binary | std::ios::trunc);
+        file.write("short", 5);
+    }
+    check(!load_imu_calib_offsets(calib_path.string(), dst),
+          "reject short calib file");
+    {
+        std::ofstream file(calib_path, std::ios::binary | std::ios::trunc);
+        char long_buf[kBnoCalibOffsetBytes + 1]{};
+        file.write(long_buf, sizeof(long_buf));
+    }
+    check(!load_imu_calib_offsets(calib_path.string(), dst),
+          "reject long calib file");
+
+    const auto conf_path = dir / "imu_calib.conf";
+    {
+        std::ofstream file(conf_path);
+        file << "imu.calib_file=/tmp/custom_imu.bin\n";
+    }
+    const AppConfig loaded = load_config_file(conf_path.string());
+    check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
+          "config calib_file");
+
     std::filesystem::remove_all(dir, ec);
 }
 

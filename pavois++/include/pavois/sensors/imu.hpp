@@ -2,6 +2,7 @@
 
 #include "pavois/config/app_config.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -43,6 +44,15 @@ struct ImuCalibStatus {
 };
 
 ImuCalibStatus bno055_calib_from_byte(std::uint8_t byte);
+
+// BNO055 ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB (0x55..0x6A).
+constexpr std::size_t kBnoCalibOffsetBytes = 22;
+
+// Binary 22-byte profile. Missing, short, or long files return false.
+bool load_imu_calib_offsets(const std::string& path,
+                            std::uint8_t out[kBnoCalibOffsetBytes]);
+bool save_imu_calib_offsets(const std::string& path,
+                            const std::uint8_t data[kBnoCalibOffsetBytes]);
 
 class ImuReader {
 public:

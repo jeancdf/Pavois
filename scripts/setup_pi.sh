@@ -31,6 +31,8 @@ fi
 install -d -m 0755 /opt/pavois
 install -d -o "$deploy_user" -g pavois -m 0755 /opt/pavois/bin
 install -d -o root -g pavois -m 0750 /etc/pavois
+# BNO055 offset profile (imu.calib_file). The detector runs as pavois.
+install -d -o pavois -g pavois -m 0755 /var/lib/pavois
 
 if [[ ! -e /etc/pavois/pavois.conf ]]; then
   install -o root -g pavois -m 0640 "$repo_dir/pavois++/deploy/pavois.conf.example" /etc/pavois/pavois.conf
@@ -42,6 +44,7 @@ elif ! grep -q '^imu.enabled=' /etc/pavois/pavois.conf; then
 imu.enabled=true
 imu.kind=auto
 imu.i2c_dev=/dev/i2c-1
+imu.calib_file=/var/lib/pavois/imu_calib.bin
 imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
 imu.elevation_offset_deg=0.0
@@ -58,6 +61,14 @@ preview.width=320
 preview.quality=55
 preview.http_port=8081
 preview.http_path=/api/preview
+EOF
+fi
+
+if [[ -f /etc/pavois/pavois.conf ]] && ! grep -q '^imu.calib_file=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+# 22-byte BNO055 offsets. Restored in CONFIG mode on every init.
+imu.calib_file=/var/lib/pavois/imu_calib.bin
 EOF
 fi
 

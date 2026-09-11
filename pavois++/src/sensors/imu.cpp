@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -39,6 +40,8 @@ constexpr std::uint8_t kBnoUnitSel = 0x3B;
 constexpr std::uint8_t kBnoUnitSelDegrees = 0x00;
 constexpr std::uint8_t kBnoAxisMapConfig = 0x41;
 constexpr std::uint8_t kBnoAxisMapSign = 0x42;
+// ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB. Writable only in CONFIG mode.
+constexpr std::uint8_t kBnoOffsetLsb = 0x55;
 constexpr int kBnoAddrA = 0x28;
 constexpr int kBnoAddrB = 0x29;
 // NDOF fusion heading is unreliable until the magnetometer reaches this level (0-3).
@@ -146,6 +149,7 @@ public:
         bus_.write_reg(addr_, kBnoAxisMapSign,
                        static_cast<std::uint8_t>(cfg_.imu_axis_sign));
         bus_.write_reg(addr_, kBnoUnitSel, kBnoUnitSelDegrees);
+        restore_saved_offsets();
         if (!bus_.write_reg(addr_, kBnoOprMode, kBnoNdof)) {
             err_ = "BNO055 mode switch failed: " + bus_.error();
             return false;
@@ -169,6 +173,7 @@ public:
         }
         const ImuCalibStatus calib = bno055_calib_from_byte(calib_byte);
         log_calib_if_changed(calib);
+        persist_offsets_if_calibrated(calib.sys);
         if (calib.mag < kBnoMinMagCalib) {
             err_ = "magnetometer not calibrated (mag=" + std::to_string(calib.mag) + ")";
             sample.valid = false;
@@ -212,6 +217,49 @@ private:
                    << " mag=" << calib.mag << '\n';
     }
 
+    bool write_offset_bytes(const std::uint8_t* data) {
+        for (std::size_t i = 0; i < kBnoCalibOffsetBytes; ++i) {
+            const auto reg = static_cast<std::uint8_t>(kBnoOffsetLsb + i);
+            if (!bus_.write_reg(addr_, reg, data[i])) return false;
+        }
+        return true;
+    }
+
+    void restore_saved_offsets() {
+        std::uint8_t buf[kBnoCalibOffsetBytes];
+        if (!load_imu_calib_offsets(cfg_.imu_calib_file, buf)) return;
+        if (!write_offset_bytes(buf)) {
+            std::cerr << "[IMU] failed to write saved BNO055 offsets\n";
+            return;
+        }
+        std::memcpy(last_saved_, buf, kBnoCalibOffsetBytes);
+        have_saved_ = true;
+        std::cerr << "[IMU] restored BNO055 offsets from "
+                  << cfg_.imu_calib_file << '\n';
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    void persist_offsets_if_calibrated(int sys) {
+        if (sys != 3 || cfg_.imu_calib_file.empty()) return;
+        std::uint8_t buf[kBnoCalibOffsetBytes];
+        if (!bus_.read_reg(addr_, kBnoOffsetLsb, buf, kBnoCalibOffsetBytes)) {
+            return;
+        }
+        if (have_saved_ &&
+            std::memcmp(last_saved_, buf, kBnoCalibOffsetBytes) == 0) {
+            return;
+        }
+        if (!save_imu_calib_offsets(cfg_.imu_calib_file, buf)) {
+            std::cerr << "[IMU] failed to save BNO055 offsets to "
+                      << cfg_.imu_calib_file << '\n';
+            return;
+        }
+        std::memcpy(last_saved_, buf, kBnoCalibOffsetBytes);
+        have_saved_ = true;
+        std::cerr << "[IMU] saved BNO055 offsets to "
+                  << cfg_.imu_calib_file << '\n';
+    }
+
     std::string dev_;
     int addr_ = 0;
     AppConfig cfg_;
@@ -219,6 +267,8 @@ private:
     std::string err_;
     ImuCalibStatus last_calib_;
     bool calib_logged_ = false;
+    std::uint8_t last_saved_[kBnoCalibOffsetBytes]{};
+    bool have_saved_ = false;
 };
 
 #endif
@@ -294,6 +344,38 @@ std::unique_ptr<ImuReader> open_bno(const AppConfig& cfg, int addr) {
 }  // namespace
 
 double wrap_heading_deg(double deg) { return wrap360(deg); }
+
+bool load_imu_calib_offsets(const std::string& path,
+                            std::uint8_t out[kBnoCalibOffsetBytes]) {
+    if (path.empty() || out == nullptr) return false;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    in.read(reinterpret_cast<char*>(out),
+            static_cast<std::streamsize>(kBnoCalibOffsetBytes));
+    if (in.gcount() !=
+        static_cast<std::streamsize>(kBnoCalibOffsetBytes)) {
+        return false;
+    }
+    char extra = 0;
+    if (in.read(&extra, 1)) return false;
+    return true;
+}
+
+bool save_imu_calib_offsets(const std::string& path,
+                            const std::uint8_t data[kBnoCalibOffsetBytes]) {
+    if (path.empty() || data == nullptr) return false;
+    const auto parent = std::filesystem::path(path).parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) return false;
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out.write(reinterpret_cast<const char*>(data),
+              static_cast<std::streamsize>(kBnoCalibOffsetBytes));
+    return static_cast<bool>(out);
+}
 
 ImuSample apply_imu_offsets(const ImuSample& raw, const AppConfig& cfg) {
     ImuSample out = raw;

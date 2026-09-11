@@ -134,6 +134,12 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "imu.elevation_sign") {
             cfg.imu_elevation_sign = std::stod(v);
         }
+        else if (key == "imu.axis_map") {
+            cfg.imu_axis_map = static_cast<int>(std::stoul(v, nullptr, 0));
+        }
+        else if (key == "imu.axis_sign") {
+            cfg.imu_axis_sign = static_cast<int>(std::stoul(v, nullptr, 0));
+        }
         else if (key == "preview.enabled") cfg.preview_enabled = parse_bool(v);
         else if (key == "preview.fps") cfg.preview_fps = std::stoi(v);
         else if (key == "preview.width") cfg.preview_width = std::stoi(v);

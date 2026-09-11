@@ -234,7 +234,14 @@ void CameraWorker::operator()() {
                 line << "raw," << obs.camera_id << ',' << obs.frame_id << ',' << obs.captured_us
                      << ',' << std::fixed << std::setprecision(2) << obs.centroid_x << ','
                      << obs.centroid_y << ',' << obs.blob_area << ',' << std::setprecision(3)
-                     << obs.quality;
+                     << obs.quality << ','
+                     // Pose at this exact frame (att arrives on its own cadence, so it
+                     // can't be safely re-attached downstream) plus the intrinsics
+                     // needed to turn (centroid_x, centroid_y) into a bearing.
+                     << std::setprecision(2) << obs.pose.heading_deg << ','
+                     << obs.pose.elevation_deg << ',' << obs.pose.roll_deg << ','
+                     << obs.intrinsics.fov_deg << ',' << obs.intrinsics.image_width << ','
+                     << obs.intrinsics.image_height;
                 udp_sender_->send_line(line.str());
             }
         }

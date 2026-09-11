@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import { parseAttitudeLine, wrapHeadingDeg, AttitudePacket } from './udp-attitude';
+import { parseRawDetectionLine } from './udp-detection';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -94,16 +95,9 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
 
         console.log(`[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ${messageStr}`);
         if (parts[0] === 'raw' && parts.length >= 8) {
-          const detection = {
-            type: 'raw_detection',
-            cameraId: parts[1],
-            frameIndex: parseInt(parts[2], 10),
-            timestamp: parseFloat(parts[3]),
-            x: parseFloat(parts[4]),
-            y: parseFloat(parts[5]),
-            size: parseFloat(parts[6]),
-            confidence: parseFloat(parts[7]),
-          };
+          const raw = parseRawDetectionLine(messageStr);
+          if (!raw) return;
+          const detection = { type: 'raw_detection', ...raw };
           console.log('[UDP] Détection 2D brute parsée et diffusée :', detection);
           this.eventsGateway.broadcast('raw_detection', detection);
         } else if (parts[0].startsWith('obj') && parts.length >= 5) {

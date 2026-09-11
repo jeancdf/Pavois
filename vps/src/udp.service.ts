@@ -5,22 +5,12 @@ import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
 import { FusionService } from './fusion.service';
-import type { FusionObservation } from './fusion.types';
+import type { FusionObservation, FusionTrackUpdate } from './fusion.types';
 import { parseAttitudeLine, wrapHeadingDeg, AttitudePacket } from './udp-attitude';
 import {
   parseRawDetectionLine,
   type RawDetection,
 } from './udp-raw';
-
-interface TrackUpdatePayload {
-  type: 'track_update';
-  trackId: string;
-  lat: number;
-  lng: number;
-  alt: number;
-  timestamp: number;
-  classification?: string;
-}
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -119,7 +109,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           );
           this.ingestRawDetection(rawDetection);
         } else if (parts[0].startsWith('obj') && parts.length >= 5) {
-          const trackUpdate: TrackUpdatePayload = {
+          const trackUpdate: FusionTrackUpdate = {
             type: 'track_update',
             trackId: parts[0],
             lat: parseFloat(parts[1]),
@@ -174,8 +164,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Stocke la détection dans l'historique de fusion, puis la rediffuse.
-   * La triangulation n'est pas faite ici (SCRUM-58).
+   * Stocke la détection, fusionne, et pousse les pistes GPS confirmées.
    */
   ingestRawDetection(detection: RawDetection): void {
     const camera = this.camerasService
@@ -185,6 +174,9 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       toFusionObservation(detection, camera, Date.now()),
     );
     this.eventsGateway.broadcast('raw_detection', detection);
+    for (const update of this.fusion.pullTrackUpdates()) {
+      this.eventsGateway.broadcast('track_update', update);
+    }
   }
 
   /** IMU from UDP or HTTP: always broadcast, even if cameraId is unknown. */

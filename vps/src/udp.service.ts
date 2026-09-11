@@ -12,6 +12,16 @@ import {
   type RawDetection,
 } from './udp-raw';
 
+interface TrackUpdatePayload {
+  type: 'track_update';
+  trackId: string;
+  lat: number;
+  lng: number;
+  alt: number;
+  timestamp: number;
+  classification?: string;
+}
+
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
   private server: dgram.Socket | null = null;
@@ -109,7 +119,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           );
           this.ingestRawDetection(rawDetection);
         } else if (parts[0].startsWith('obj') && parts.length >= 5) {
-          const trackUpdate: any = {
+          const trackUpdate: TrackUpdatePayload = {
             type: 'track_update',
             trackId: parts[0],
             lat: parseFloat(parts[1]),
@@ -124,10 +134,10 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           this.eventsGateway.broadcast('track_update', trackUpdate);
         } else {
           // Message générique ou JSON brut
-          let parsedJson: any = null;
+          let parsedJson: unknown = null;
           try {
             parsedJson = JSON.parse(messageStr);
-          } catch (e) {
+          } catch {
             // Pas du JSON valide
           }
 

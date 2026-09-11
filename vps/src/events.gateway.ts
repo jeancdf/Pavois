@@ -128,8 +128,18 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Validation stricte du JSON
       try {
-        const parsed = JSON.parse(message.toString());
-        if (parsed.event && typeof parsed.event !== 'string') {
+        const raw = Array.isArray(message)
+          ? Buffer.concat(message).toString()
+          : Buffer.isBuffer(message)
+            ? message.toString()
+            : Buffer.from(message).toString();
+        const parsed: unknown = JSON.parse(raw);
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'event' in parsed &&
+          typeof parsed.event !== 'string'
+        ) {
           throw new Error('Le champ "event" doit être une chaîne de caractères.');
         }
       } catch (err) {
@@ -158,7 +168,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     console.log(`[WS] Client déconnecté (IP: ${ip || 'inconnue'})`);
   }
 
-  broadcast(event: string, data: any) {
+  broadcast(event: string, data: unknown) {
     if (this.server && this.server.clients) {
       const payload = JSON.stringify({
         event,

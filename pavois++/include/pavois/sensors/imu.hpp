@@ -19,6 +19,22 @@ double wrap_heading_deg(double deg);
 ImuSample apply_imu_offsets(const ImuSample& raw, const AppConfig& cfg);
 bool bno055_euler_from_bytes(const std::uint8_t bytes[6], ImuSample& out);
 
+// Decoded BNO055 CALIB_STAT (0x35): each field is 0 (uncalibrated) to 3 (fully calibrated).
+struct ImuCalibStatus {
+    int sys = 0;
+    int gyro = 0;
+    int accel = 0;
+    int mag = 0;
+
+    bool operator==(const ImuCalibStatus& other) const {
+        return sys == other.sys && gyro == other.gyro &&
+               accel == other.accel && mag == other.mag;
+    }
+    bool operator!=(const ImuCalibStatus& other) const { return !(*this == other); }
+};
+
+ImuCalibStatus bno055_calib_from_byte(std::uint8_t byte);
+
 class ImuReader {
 public:
     virtual ~ImuReader() = default;

@@ -29,6 +29,10 @@ l'implémentation.
    - Organisation du code actuel et rôle des parties C++/Python et
      React/Cesium.
 
+5b. [Où se rencontrent les trois caméras](fusion-emplacement.md)
+   - Décision SCRUM-56 : la fusion 3D s'exécute sur le VPS, pas sur une
+     Pi maîtresse ni dans un binaire C++ à part.
+
 6. [Formats de données](data-formats.md)
    - `metadata.json`, fichier voxel binaire, types de simulation et contrats de
      données proposés pour l'intégration future.

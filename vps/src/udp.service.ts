@@ -3,7 +3,14 @@ import * as dgram from 'dgram';
 import * as crypto from 'crypto';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
+import type { CameraConfig } from './cameras.service';
+import { FusionService } from './fusion.service';
+import type { FusionObservation } from './fusion.types';
 import { parseAttitudeLine, wrapHeadingDeg, AttitudePacket } from './udp-attitude';
+import {
+  parseRawDetectionLine,
+  type RawDetection,
+} from './udp-raw';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -12,6 +19,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly eventsGateway: EventsGateway,
     private readonly camerasService: CamerasService,
+    private readonly fusion: FusionService,
   ) { }
 
   /**
@@ -93,19 +101,13 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         }
 
         console.log(`[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ${messageStr}`);
-        if (parts[0] === 'raw' && parts.length >= 8) {
-          const detection = {
-            type: 'raw_detection',
-            cameraId: parts[1],
-            frameIndex: parseInt(parts[2], 10),
-            timestamp: parseFloat(parts[3]),
-            x: parseFloat(parts[4]),
-            y: parseFloat(parts[5]),
-            size: parseFloat(parts[6]),
-            confidence: parseFloat(parts[7]),
-          };
-          console.log('[UDP] Détection 2D brute parsée et diffusée :', detection);
-          this.eventsGateway.broadcast('raw_detection', detection);
+        const rawDetection = parseRawDetectionLine(messageStr);
+        if (rawDetection) {
+          console.log(
+            '[UDP] Détection 2D brute parsée et diffusée :',
+            rawDetection,
+          );
+          this.ingestRawDetection(rawDetection);
         } else if (parts[0].startsWith('obj') && parts.length >= 5) {
           const trackUpdate: any = {
             type: 'track_update',
@@ -161,6 +163,20 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     this.server.bind(port, host);
   }
 
+  /**
+   * Stocke la détection dans l'historique de fusion, puis la rediffuse.
+   * La triangulation n'est pas faite ici (SCRUM-58).
+   */
+  ingestRawDetection(detection: RawDetection): void {
+    const camera = this.camerasService
+      .list()
+      .find((item) => item.id === detection.cameraId);
+    this.fusion.ingest(
+      toFusionObservation(detection, camera, Date.now()),
+    );
+    this.eventsGateway.broadcast('raw_detection', detection);
+  }
+
   /** IMU from UDP or HTTP: always broadcast, even if cameraId is unknown. */
   ingestAttitude(attitude: AttitudePacket): void {
     const headingDeg = wrapHeadingDeg(attitude.headingDeg);
@@ -189,4 +205,32 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       console.log('[UDP] Serveur UDP fermé.');
     }
   }
+}
+
+function toFusionObservation(
+  detection: RawDetection,
+  camera: CameraConfig | undefined,
+  receivedAtMs: number,
+): FusionObservation {
+  return {
+    cameraId: detection.cameraId,
+    frameIndex: detection.frameIndex,
+    timestampUs: detection.timestamp,
+    x: detection.x,
+    y: detection.y,
+    size: detection.size,
+    confidence: detection.confidence,
+    receivedAtMs,
+    headingDeg: detection.headingDeg,
+    elevationDeg: detection.elevationDeg,
+    rollDeg: detection.rollDeg,
+    fovDeg: detection.fovDeg ?? camera?.fovDeg,
+    fx: detection.fx,
+    fy: detection.fy,
+    cx: detection.cx,
+    cy: detection.cy,
+    lat: camera?.lat,
+    lon: camera?.lon,
+    alt: camera?.alt,
+  };
 }

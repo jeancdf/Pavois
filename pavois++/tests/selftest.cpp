@@ -13,6 +13,7 @@
 #include "pavois/fusion/fusion_engine.hpp"
 #include "pavois/fusion/tracker.hpp"
 #include "pavois/fusion/triangulation.hpp"
+#include "pavois/transport/event_bus.hpp"
 #include "pavois/math/kalman_cv.hpp"
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
@@ -422,7 +423,10 @@ void test_tracker() {
             if (tr.update(p, t, 0.8, {"c0", "c1"})) ++emits;
         }
         check(emits >= 1, "emitted after confirm_updates");
-        check(tr.tick(t).size() == 1, "one confirmed track alive");
+        auto alive = tr.tick(t);
+        check(alive.size() == 1, "one confirmed track alive");
+        check(alive.front().classification == "other",
+              "default classification is other");
     }
     {
         Tracker tr(cfg);
@@ -481,6 +485,61 @@ void test_tracker() {
         }
         check(tr.tick(t).empty(), "hyper-fast track not confirmed under max_speed_mps");
     }
+}
+
+std::vector<std::string> split_csv(const std::string& s) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : s) {
+        if (c == ',') {
+            parts.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    parts.push_back(cur);
+    return parts;
+}
+
+void test_track_csv() {
+    group("track_csv");
+    TrackUpdate u;
+    u.object_id = 3;
+    u.x = 1.5;
+    u.y = 2.5;
+    u.z = 3.5;
+    u.timestamp_us = 12345;
+    const std::string csv = to_csv(u);
+    check(csv.find(",other") != std::string::npos, "to_csv includes ,other");
+    auto fields = split_csv(csv);
+    check(fields.size() == 6, "to_csv has 6 fields");
+    check(fields[0] == "obj3", "to_csv object id");
+    check(fields[5] == "other", "to_csv default class is other");
+
+    u.classification = "drone";
+    const std::string custom = to_csv(u);
+    check(split_csv(custom)[5] == "drone", "custom classification round-trips");
+
+    TrackUpdate gps_u;
+    gps_u.object_id = 1;
+    gps_u.x = 0.0;
+    gps_u.y = 0.0;
+    gps_u.z = 10.0;
+    gps_u.timestamp_us = 1000;
+    const double ref_lat = 48.82608;
+    const double ref_lon = 2.3659;
+    const double ref_alt = 58.52;
+    const std::string gps = to_gps_csv(gps_u, ref_lat, ref_lon, ref_alt);
+    auto g = split_csv(gps);
+    check(g.size() == 6, "to_gps_csv has 6 fields");
+    check(g[0] == "obj1", "to_gps_csv object id");
+    check_near(std::stod(g[1]), ref_lat, 1e-7, "to_gps_csv lat at ENU origin");
+    check_near(std::stod(g[2]), ref_lon, 1e-7, "to_gps_csv lon at ENU origin");
+    check_near(std::stod(g[3]), ref_alt + 10.0, 1e-2,
+               "to_gps_csv alt = ref + z");
+    check(std::stoull(g[4]) == 1000, "to_gps_csv timestamp");
+    check(g[5] == "other", "to_gps_csv 6th field is other");
 }
 
 // ===========================================================================
@@ -888,6 +947,7 @@ int main() {
     test_geometry();
     test_triangulation();
     test_tracker();
+    test_track_csv();
     test_fusion_engine();
     test_detector();
     test_pipeline();

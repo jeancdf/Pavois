@@ -26,7 +26,9 @@ describe('Tracker', () => {
       if (tr.update(p, t, 0.8, ['c0', 'c1'])) emits += 1;
     }
     expect(emits).toBeGreaterThanOrEqual(1);
-    expect(tr.tick(t)).toHaveLength(1);
+    const tracks = tr.tick(t);
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].classification).toBe('other');
   });
 
   it('opens two tracks for separated measurements', () => {

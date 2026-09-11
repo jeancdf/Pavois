@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -180,6 +181,9 @@ public:
     }
 
     bool read(ImuSample& sample) override {
+        // Shared by CameraWorker threads. Mutex covers Euler reads and
+        // I2C reopen+init so CONFIG→NDOF cannot race another transfer.
+        std::lock_guard<std::mutex> lock(mu_);
         const auto now_ms = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())
@@ -191,7 +195,10 @@ public:
         return read_once(sample, bus_fail);
     }
 
-    const std::string& last_error() const override { return err_; }
+    const std::string& last_error() const override {
+        std::lock_guard<std::mutex> lock(mu_);
+        return err_;
+    }
 
 private:
     bool recover_if_needed(std::uint64_t now_ms) {
@@ -320,6 +327,7 @@ private:
     AppConfig cfg_;
     I2cBus bus_;
     I2cFailWatchdog watchdog_;
+    mutable std::mutex mu_;
     std::string err_;
     ImuCalibStatus last_calib_;
     bool calib_logged_ = false;
@@ -335,6 +343,8 @@ public:
         : path_(std::move(path)), cfg_(cfg) {}
 
     bool read(ImuSample& sample) override {
+        // Shared by CameraWorker threads.
+        std::lock_guard<std::mutex> lock(mu_);
 #if defined(__linux__)
         struct stat info{};
         if (::stat(path_.c_str(), &info) != 0 || std::time(nullptr) - info.st_mtime > 2) {
@@ -374,11 +384,15 @@ public:
         return sample.valid;
     }
 
-    const std::string& last_error() const override { return err_; }
+    const std::string& last_error() const override {
+        std::lock_guard<std::mutex> lock(mu_);
+        return err_;
+    }
 
 private:
     std::string path_;
     AppConfig cfg_;
+    mutable std::mutex mu_;
     std::string err_;
 };
 

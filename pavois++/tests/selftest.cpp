@@ -17,17 +17,23 @@
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
 #include "pavois/config/app_config.hpp"
+#include "pavois/runtime/camera_worker.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/util/jpeg_gray.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <random>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace pavois;
@@ -801,6 +807,46 @@ void test_imu() {
     check(mag_only.calib_sys == -1 && mag_only.calib_mag == 2,
           "file mag-only levels");
     check(format_calib_token(mag_only) == "---2", "file mag-only token");
+
+    {
+        std::ofstream file(path);
+        file << "45.0 1.0 0.0 3333\n";
+    }
+    // CameraWorker does not call open_imu(); main injects one shared
+    // pointer. This is that process-wide share model.
+    std::shared_ptr<ImuReader> shared_imu = open_imu(file_cfg);
+    check(static_cast<bool>(shared_imu), "shared file imu opens");
+    {
+        FusionSettings fs;
+        FusionEngine fusion(fs);
+        CameraConfig cam;
+        cam.id = "shared-imu";
+        cam.enabled = false;
+        std::ostringstream sink;
+        std::mutex log_mu;
+        CameraWorker injected(cam, file_cfg, fusion, sink, log_mu,
+                              nullptr, nullptr, shared_imu, false);
+        (void)injected;
+    }
+    std::atomic<int> ok_reads{0};
+    std::atomic<int> fail_reads{0};
+    auto shared_reader = [&]() {
+        for (int i = 0; i < 40; ++i) {
+            ImuSample s{};
+            if (shared_imu->read(s) && s.valid &&
+                std::fabs(s.heading_deg - 45.0) < 1e-4) {
+                ++ok_reads;
+            } else {
+                ++fail_reads;
+            }
+        }
+    };
+    std::thread t0(shared_reader), t1(shared_reader), t2(shared_reader);
+    t0.join();
+    t1.join();
+    t2.join();
+    check(fail_reads.load() == 0, "shared imu 3 threads no fail");
+    check(ok_reads.load() == 120, "shared imu 120 concurrent reads");
 
     check(imu_i2c_backoff_ms(0, 200, 5000) == 200, "backoff attempt 0");
     check(imu_i2c_backoff_ms(1, 200, 5000) == 400, "backoff attempt 1");

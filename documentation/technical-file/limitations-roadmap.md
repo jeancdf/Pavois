@@ -1,149 +1,111 @@
 # Limites et feuille de route
 
-Ce fichier liste les limites connues et les prochaines étapes importantes.
+Dernière vérification dans le code : **11 septembre 2026** (`main` après
+fusion Kalman, IMU partagée, classification transport, tests UDP).
+
+Chaque limite ci-dessous doit rester vérifiable dans le dépôt. Les phrases
+périmées (frontend sur `pavoisSim.ts`, « pas de flux backend », « pas de
+Kalman ») ont été retirées.
 
 ## Limites actuelles
 
 ### Détection et localisation
 
-- Une seule caméra ne résout pas la profondeur. Elle sert surtout à tester le
-  pipeline.
-- Le détecteur de mouvement C++ est une différence d'images simple.
-- Les vibrations, ombres, changements de lumière et mouvements d'arrière-plan
-  peuvent créer des faux positifs.
-- La localisation multi-caméras exige une calibration précise qui n'est pas
-  encore complète.
-- Le chemin C++ contient une variable d'atténuation avec la distance, mais elle
-  n'est pas encore appliquée à l'accumulation.
-- La prévisualisation temps réel échantillonne les rayons au lieu d'utiliser le
-  DDA exact.
+- Une seule caméra ne résout pas la profondeur. La triangulation VPS exige
+  au moins deux observations alignées dans `FUSION_WINDOW_MS` (90 ms).
+- Le détecteur C++ est une différence d’images. Ombres, vibrations et
+  arrière-plan mobile restent des sources de faux positifs.
+- Les positions GPS des Pi sont encore des valeurs de site, à recaler depuis
+  l’UI. jean et tanel sont à ~1 m l’un de l’autre, même cap : la paire peut
+  échouer le seuil `fusion_min_parallax_deg=2`.
+- Le chemin voxel (`pixeltovoxelprojector/`) n’est pas le pipeline de
+  production. La fusion 3D tourne dans `vps/` (alignement, triangulation,
+  Kalman).
+
+### IMU et calibration
+
+- Terrain : BNO08x à `0x4a`, lu via `pavois-imu.service` puis fichier. Le
+  C++ a aussi un chemin BNO055 I2C (`0x28`/`0x29`). `imu.kind=auto` sans
+  `imu.file` ignore le BNO08x.
+- Un magnétomètre BNO055 < 2 fige le cap (`valid=0`). Le BNO08x ne
+  remonte en général que le niveau mag (`S- G- A- M3`).
+- L’outil `pavois_imu_calib` écrit `imu.heading_offset_deg`. La qualité IMU
+  arrive jusqu’à l’écran (SCRUM-62).
 
 ### Suivi
 
-- Le moteur de détection n'extrait pas encore de clusters depuis la grille voxel.
-- Il n'y a pas encore de filtre de Kalman de production.
-- Les identifiants de piste dans l'interface sont simulés.
-- La classification drone/oiseau n'est pas implémentée.
+- Kalman à vitesse constante et cycle tentative / confirmée / côte : **en
+  production VPS** (`FusionService`, confirm=3, coast=1,2 s).
+- Les identifiants de piste (`objN`) viennent du tracker, plus d’une
+  simulation frontend.
+- **Classification drone / oiseau / avion non implémentée.** Le 6ᵉ champ
+  CSV et le WS portent `classification`, toujours `"other"` (SCRUM-69).
+  L’alerte « DRONE confirmé » de l’Angular ne part donc pas. Les branches
+  `feature/pattern-matching-*` ne sont pas fusionnées (SCRUM-70).
 
 ### Intégration frontend
 
-- Le frontend utilise actuellement `pavoisSim.ts` comme source de données.
-- Aucun flux backend réel ne connecte encore le détecteur à l'interface.
-- Le repère de simulation et le repère ENU du prototype doivent être unifiés ou
-  reliés par une conversion claire.
+- Frontend canonique de travail : `frontend-angular/` (Leaflet, signaux).
+  Il consomme le VPS en WebSocket : `imu_update`, `raw_detection`,
+  `track_update`, `camera_preview`, `camera_positions`.
+- `frontend/` (React + Cesium + `pavoisSim.ts`) est encore dans le dépôt
+  mais n’est plus le flux opérateur (SCRUM-74).
+- Le mock Angular a deux modes (SCRUM-73) : `demo` envoie des pistes
+  fictives ; `terrain` n’envoie que `att` + `raw` comme les Pi. **Seul
+  `terrain` reflète la production.** En `demo`, une carte pleine de pistes
+  ne prouve pas que la fusion marche.
+- `GET /fusion` expose `lastFuse` (ok, raison, parallaxe, résidu).
+  L’Angular ne l’affiche pas encore : une carte à PISTES 0 n’explique pas
+  pourquoi.
+
+### Déploiement
+
+- Les trois Pi se déploient depuis `main`. Le job OVH peut encore échouer
+  (clé SSH refusée). Un VPS pas à jour n’a pas Kalman / `track_update`.
+- HMAC : le C++ signe si `UDP_HMAC_SECRET` est défini ; le VPS vérifie si
+  la même clé est là. `UDP_REQUIRE_HMAC=true` n’est pas le défaut. Un
+  secret ou une horloge faux = carte vide.
 
 ### Validation scientifique
 
-- L'erreur de localisation n'est pas encore documentée avec une vérité terrain.
-- Le taux de faux positifs n'est pas encore mesuré sur des scènes réalistes.
-- Les performances ne sont pas encore benchmarkées systématiquement.
+- Pas d’erreur de localisation chiffrée contre une vérité terrain.
+- Pas de taux de faux positifs mesuré sur scènes réelles.
+- Pas de benchmark systématique images / seconde.
 
 ## Feuille de route prioritaire
 
-### 1. Calibration
+### Fait dans le code (ne plus planifier comme du neuf)
 
-Ajouter :
+- Fusion 3D sur le VPS, pas sur la Pi (SCRUM-56 / 57 / 58).
+- Kalman et `track_update` GPS (SCRUM-59 / 60).
+- Pose caméra collée au `raw` (SCRUM-55).
+- Rayons bruts et cônes à portée 60 m (SCRUM-64 / 65).
+- Job CI `check` (tests VPS + Angular) avant deploy.
 
-- Intrinsèques : focale, point principal, distorsion.
-- Extrinsèques : position et orientation dans un repère ENU commun.
-- Procédure de validation avec cible ou mire.
+### Encore ouvert
 
-Pourquoi :
+1. **Classifieur** — trancher les branches pattern-matching (SCRUM-70).
+2. **Géométrie du parc** — recaler jean / tanel / walid, baseline utile.
+3. **Santé opérateur** — montrer `lastFuse` et un heartbeat par Pi.
+4. **HMAC aligné** — même secret Pi / VPS, doc et `UDP_REQUIRE_HMAC`.
+5. **Vérité terrain** — deux caméras, cible mesurée, tableau d’erreur.
+6. **Hygiène** — frontend unique, README racine, secrets, logs (en cours).
 
-L'erreur de calibration devient directement une erreur de localisation.
-
-### 2. Test réel à deux caméras
-
-Construire une expérience reproductible :
-
-- Base connue entre caméras.
-- Positions cible mesurées.
-- Images synchronisées.
-- Métadonnées et images sauvegardées.
-
-Livrable :
-
-- Tableau d'erreur de localisation selon distance et taille voxel.
-
-### 3. Extraction de clusters voxel
-
-Implémenter :
-
-- Seuillage.
-- Composantes connexes.
-- Barycentre pondéré.
-- Score de preuve.
-- Nombre de caméras contributrices.
-- Estimation de covariance.
-
-Cette étape transforme la grille en mesures 3D exploitables.
-
-### 4. Gestionnaire de pistes
-
-Implémenter :
-
-- Filtre de Kalman à vitesse constante.
-- Association mesure-piste.
-- États tentative, confirmée et perdue.
-- Règles de création et suppression de piste.
-- Mise à jour de confiance.
-
-### 5. Flux backend
-
-Ajouter un service qui émet :
-
-- État des caméras.
-- Mesures 3D.
-- Pistes.
-- Alertes.
-- Historique replay.
-
-Le frontend devrait consommer ces événements via WebSocket ou Server-Sent Events.
-
-### 6. Classification
-
-À ajouter après stabilisation du suivi :
-
-- Caractéristiques de mouvement.
-- Classifieur visuel sur crops.
-- Séparation drone, oiseau, personne, véhicule.
-- Calibration de confiance.
-
-### 7. Performance
-
-Améliorer :
-
-- Grille voxel sparse.
-- Décroissance temporelle stable.
-- Kernels GPU ou chemin PyTorch optimisé.
-- Batching des rayons par caméra.
-- Sélection adaptative des pixels candidats.
-
-## Ce qu'il ne faut pas prétendre trop tôt
+## Ce qu’il ne faut pas prétendre trop tôt
 
 Ne pas affirmer :
 
 - capacité opérationnelle de défense anti-drone ;
 - classification validée ;
-- suivi multi-cibles fiable ;
-- intégration Lattice fonctionnelle ;
-- précision terrain prouvée.
-
-Sauf si ces éléments sont effectivement implémentés et mesurés.
+- suivi multi-cibles fiable en conditions non contrôlées ;
+- précision terrain prouvée ;
+- que le mock `demo` est le système réel.
 
 Formulation prudente actuelle :
 
 ```text
-PAVOIS démontre le mécanisme logiciel de projection de mouvement optique dans
-une grille voxel 3D partagée, ainsi qu'une interface de visualisation de
-couverture et de pistes simulées.
+PAVOIS détecte du mouvement sur trois Pi, fusionne les détections 2D sur
+le VPS (triangulation + Kalman) et les affiche sur l’interface Angular.
+La classification n’est pas implémentée ; une caméra seule ne donne pas
+de position 3D. L’erreur métrique n’est pas encore mesurée sur le terrain.
 ```
-
-Formulation plus forte après validation :
-
-```text
-Dans des essais contrôlés à deux caméras, PAVOIS localise des cibles aériennes
-avec une erreur mesurée de X mètres à Y mètres de distance, à une performance de
-Z images par seconde.
-```
-

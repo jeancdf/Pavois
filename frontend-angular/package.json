@@ -9,7 +9,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "vitest run",
     "test:watch": "vitest",
-    "mock:ws": "node mock-server/server.mjs"
+    "mock:ws": "node mock-server/server.mjs",
+    "mock:ws:terrain": "MOCK_MODE=terrain node mock-server/server.mjs"
   },
   "private": true,
   "packageManager": "npm@10.9.8",

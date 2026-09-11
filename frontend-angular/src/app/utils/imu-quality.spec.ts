@@ -41,6 +41,14 @@ describe('imuQuality', () => {
 
   it('reports unknown calibration when the Pi does not send it', () => {
     expect(imuQuality(sample({ calibration: null }), NOW)).toBe('inconnue');
+    expect(imuQuality(sample({ calibration: { sys: null, gyro: 3, accel: 3, mag: null } }), NOW))
+      .toBe('inconnue');
+  });
+
+  it('judges a BNO08x on its magnetometer alone', () => {
+    const magOnly = (mag: number) => ({ sys: null, gyro: null, accel: null, mag });
+    expect(imuQuality(sample({ calibration: magOnly(3) }), NOW)).toBe('ok');
+    expect(imuQuality(sample({ calibration: magOnly(1) }), NOW)).toBe('partielle');
   });
 
   it('reports a frozen heading before looking at calibration', () => {
@@ -67,5 +75,6 @@ describe('formatCalibration', () => {
 
   it('shows a dash when unknown', () => {
     expect(formatCalibration(null)).toBe('—');
+    expect(formatCalibration({ sys: null, gyro: null, accel: null, mag: 3 })).toBe('S- G- A- M3');
   });
 });

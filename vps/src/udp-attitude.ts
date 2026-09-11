@@ -1,8 +1,8 @@
 export interface ImuCalibration {
-  sys: number;
-  gyro: number;
-  accel: number;
-  mag: number;
+  sys: number | null;
+  gyro: number | null;
+  accel: number | null;
+  mag: number | null;
 }
 
 export interface AttitudePacket {
@@ -11,13 +11,13 @@ export interface AttitudePacket {
   headingDeg: number;
   elevationDeg: number;
   rollDeg: number;
-  /** null quand la Pi ne connaît pas l'état (trame v1 ou `-`). */
+  /** null quand la Pi ne connaît aucun niveau (trame v1 ou `-`). */
   calibration: ImuCalibration | null;
   /** false : lecture IMU ratée, angles = dernière pose connue. */
   valid: boolean;
 }
 
-const CALIB_TOKEN = /^[0-3]{4}$/;
+const CALIB_TOKEN = /^[0-3-]{4}$/;
 
 export function wrapHeadingDeg(deg: number): number {
   const wrapped = deg % 360;
@@ -30,8 +30,24 @@ export function headingDeltaDeg(from: number, to: number): number {
 }
 
 /**
+ * Jeton SGAM (sys, gyro, accel, mag) : niveaux 0-3, `-` par niveau inconnu,
+ * ou `-` seul. null si tout est inconnu, undefined si le jeton est malformé.
+ */
+export function parseCalibrationToken(
+  token: string,
+): ImuCalibration | null | undefined {
+  if (token === '-') return null;
+  if (!CALIB_TOKEN.test(token)) return undefined;
+  const [sys, gyro, accel, mag] = [...token].map((ch) =>
+    ch === '-' ? null : Number(ch),
+  );
+  if ([sys, gyro, accel, mag].every((level) => level === null)) return null;
+  return { sys, gyro, accel, mag };
+}
+
+/**
  * UDP v2: att,<cameraId>,<timestamp_us>,<heading>,<elevation>,<roll>,<calib>,<valid>
- * calib = SGAM (sys, gyro, accel, mag, 0-3) ou `-` ; valid = 1 | 0.
+ * calib = jeton SGAM (voir parseCalibrationToken) ; valid = 1 | 0.
  * La trame v1 à 6 champs reste acceptée (calibration inconnue, valide).
  */
 export function parseAttitudeLine(line: string): AttitudePacket | null {
@@ -47,12 +63,11 @@ export function parseAttitudeLine(line: string): AttitudePacket | null {
     return null;
   }
 
-  const calibToken = parts[6];
   let calibration: ImuCalibration | null = null;
-  if (calibToken !== undefined && calibToken !== '-') {
-    if (!CALIB_TOKEN.test(calibToken)) return null;
-    const [sys, gyro, accel, mag] = [...calibToken].map(Number);
-    calibration = { sys, gyro, accel, mag };
+  if (parts[6] !== undefined) {
+    const parsed = parseCalibrationToken(parts[6]);
+    if (parsed === undefined) return null;
+    calibration = parsed;
   }
 
   const validToken = parts[7];

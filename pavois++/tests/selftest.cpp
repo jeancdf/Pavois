@@ -17,6 +17,7 @@
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
 #include "pavois/sensors/imu.hpp"
+#include "pavois/util/jpeg_gray.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -765,7 +766,45 @@ void test_imu() {
     check(reader && reader->read(bad_calib) && bad_calib.valid,
           "file imu read with bad calib");
     check(format_calib_token(bad_calib) == "-", "file bad calib ignored");
+    {
+        std::ofstream file(path);
+        file << "221.25 -3.5 0.5 ---2\n";
+    }
+    ImuSample mag_only{};
+    check(reader && reader->read(mag_only) && mag_only.valid,
+          "file imu read with mag-only calib");
+    check(mag_only.calib_sys == -1 && mag_only.calib_mag == 2,
+          "file mag-only levels");
+    check(format_calib_token(mag_only) == "---2", "file mag-only token");
     std::filesystem::remove_all(dir, ec);
+}
+
+void test_jpeg_preview() {
+    group("jpeg_preview");
+    GrayFrame src;
+    src.width = 64;
+    src.height = 32;
+    src.pixels.resize(static_cast<std::size_t>(src.width) * src.height);
+    for (int y = 0; y < src.height; ++y) {
+        for (int x = 0; x < src.width; ++x) {
+            src.pixels[static_cast<std::size_t>(y) * src.width + x] =
+                static_cast<std::uint8_t>(x + y);
+        }
+    }
+    const GrayFrame small = downscale_gray(src, 16);
+    check(small.width == 16 && small.height == 8, "downscale 16x8");
+    check(!small.empty(), "downscale pixels");
+
+    std::vector<std::uint8_t> jpeg;
+    check(encode_gray_jpeg(small, 55, jpeg), "encode jpeg");
+    check(jpeg.size() > 24 && jpeg.size() < 60000, "jpeg size");
+    check(jpeg[0] == 0xff && jpeg[1] == 0xd8, "jpeg SOI");
+    check(jpeg[jpeg.size() - 2] == 0xff && jpeg.back() == 0xd9,
+          "jpeg EOI");
+
+    GrayFrame empty;
+    std::vector<std::uint8_t> none;
+    check(!encode_gray_jpeg(empty, 55, none), "empty frame rejected");
 }
 
 }  // namespace
@@ -782,6 +821,7 @@ int main() {
     test_pipeline();
     test_replay();
     test_imu();
+    test_jpeg_preview();
 
     std::printf("\n%d/%d checks passed\n", g_checks - g_failures, g_checks);
     if (g_failures) {

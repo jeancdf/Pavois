@@ -34,7 +34,8 @@ sudo bash scripts/setup_pi.sh "$(id -un)"
 sudo nano /etc/pavois/pavois.conf
 ```
 
-Renseigner `output_host` avec l'adresse rÃ©elle du VPS et `output_port=41234`.
+Renseigner `output_host` avec l'adresse rÃ©elle du VPS et `output_port=41234`
+(staging OVH Ã©coute 41234 et 41235).
 Le script attribue le nom de la Pi Ã  `camera.0.id` : garder des identifiants
 diffÃ©rents sur chaque Pi. La camÃ©ra est sÃ©lectionnÃ©e par `camera.0.device=csi:0`,
 Ã  comparer avec `rpicam-hello --list-cameras`. Le modÃ¨le de configuration propose
@@ -137,3 +138,29 @@ les images ; arrÃªter le service avant tout second programme utilisant la camÃ©r
 
 RÃ©fÃ©rences : [rpicam-apps](https://www.raspberrypi.com/documentation/computers/camera_software.html),
 [runners avec labels](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow).
+
+
+## Correctif télémétrie et BNO08x — 11 septembre 2026
+
+Les trois Pi ont un capteur compatible BNO08x à `0x4a` sur `/dev/i2c-1`,
+confirmé par des lectures de quaternions avec le pilote Adafruit. Le pilote BNO055
+à `0x28/0x29` ne convient pas. `sudo bash scripts/setup_bno08x.sh` installe le
+lecteur dédié `pavois-imu.service`; le C++ lit ses angles depuis un fichier atomique
+et rejette un fichier vieux de plus de deux secondes. Le service Python redémarre
+après une erreur du capteur. Le cap dépend du montage : régler les offsets IMU
+pour aligner les axes de la caméra après installation.
+
+Sur chaque Pi, `output_host=51.91.98.159` et `output_port=41234` ciblent le VPS
+Pavois. La preview utilise ce même hôte, port 8081 et chemin `/api/preview`.
+L'ancienne adresse `51.15.213.226` ne doit plus être utilisée pour ce VPS.
+
+Le backend exige HMAC-SHA256. Fournir sa même clé dans
+`/etc/pavois/telemetry.env` sous `UDP_HMAC_SECRET=...`, propriétaire root, mode 0600.
+Ne jamais committer ce fichier. Le C++ signe le timestamp Unix en millisecondes
+(big endian, 8 octets) suivi du CSV, puis émet timestamp + HMAC (32 octets) + CSV.
+Installer `libssl-dev` avant compilation. Le service attend la synchronisation
+NTP pour respecter la fenêtre anti-rejeu du backend.
+
+Validation en production : les événements WebSocket `imu_update` et
+`camera_preview` sont reçus pour jean, tanel et walid; les JPEG sont acceptés en
+HTTP 201 et les paquets UDP en HMAC OK. Les trois tests C++ passent sur ARM64.

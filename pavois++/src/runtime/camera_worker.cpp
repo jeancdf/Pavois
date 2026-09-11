@@ -6,13 +6,17 @@
 #include "pavois/sensors/imu.hpp"
 #include "pavois/transport/event_bus.hpp"
 #include "pavois/util/debug_sink.hpp"
+#include "pavois/util/jpeg_gray.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace pavois {
 namespace {
@@ -59,13 +63,16 @@ CameraPose pose_from(const CameraConfig& c) {
 
 CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app, FusionEngine& fusion,
                            std::ostream& log_out, std::mutex& log_mutex,
-                           std::shared_ptr<UdpSender> udp_sender, bool emit_raw_observations)
+                           std::shared_ptr<UdpSender> udp_sender,
+                           std::shared_ptr<HttpPoster> preview_http,
+                           bool emit_raw_observations)
     : cfg_(cfg),
       app_(app),
       fusion_(fusion),
       log_out_(log_out),
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
+      preview_http_(std::move(preview_http)),
       emit_raw_observations_(emit_raw_observations) {}
 
 void CameraWorker::log_line(const std::string& line) {
@@ -108,18 +115,57 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
     udp_sender_->send_line(line.str());
 }
 
-void CameraWorker::operator()() {
-    if (!cfg_.enabled) return;
-
-    auto source = make_frame_source(cfg_);
-    if (!source->open()) {
-        log_line("camera " + cfg_.id + " open failed: " + source->last_error());
+void CameraWorker::maybe_send_preview(const GrayFrame& frame,
+                                      std::uint64_t now_us,
+                                      std::uint64_t& last_preview_us) {
+    if (!app_.preview_enabled || !preview_http_ || !preview_http_->valid()) {
         return;
     }
+    if (frame.empty()) return;
+    const int fps = std::max(1, app_.preview_fps);
+    const std::uint64_t interval_us = 1000000ULL / static_cast<std::uint64_t>(fps);
+    if (last_preview_us != 0 && now_us - last_preview_us < interval_us) {
+        return;
+    }
+    last_preview_us = now_us;
+    const GrayFrame small = downscale_gray(frame, app_.preview_width);
+    std::vector<std::uint8_t> jpeg;
+    if (!encode_gray_jpeg(small, app_.preview_quality, jpeg)) return;
+    // Nest rejects bodies over 64 KiB; skip an oversized thumbnail.
+    if (jpeg.size() > 60000) return;
+    preview_http_->post_jpeg(cfg_.id, std::move(jpeg));
+}
 
-    MotionDetector detector(cfg_);
-    DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
-    detector.set_debug(debug.active());
+// No reader: the config pose is authoritative and streams as valid.
+// A failed read keeps the last pose and reports false (frozen heading).
+bool CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose,
+                                    std::string& calib_token) {
+    calib_token = "-";
+    if (!imu) return true;
+    ImuSample sample;
+    if (!imu->read(sample) || !sample.valid) return false;
+    pose.heading_deg = sample.heading_deg;
+    pose.elevation_deg = sample.elevation_deg;
+    pose.roll_deg = sample.roll_deg;
+    calib_token = format_calib_token(sample);
+    return true;
+}
+
+void CameraWorker::stream_attitude_only(
+    ImuReader* imu, CameraPose pose) {
+    std::uint64_t last_att_us = 0;
+    const int wait_ms = std::max(50, app_.imu_emit_interval_ms);
+    while (cfg_.frames < 0) {
+        std::string calib_token;
+        const bool imu_valid = apply_imu_sample(imu, pose, calib_token);
+        maybe_emit_attitude(pose, calib_token, imu_valid, wall_clock_us(),
+                            last_att_us);
+        std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
+    }
+}
+
+void CameraWorker::operator()() {
+    if (!cfg_.enabled) return;
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
     CameraPose pose = pose_from(cfg_);
@@ -128,36 +174,42 @@ void CameraWorker::operator()() {
         log_line("camera " + cfg_.id + " IMU live");
     } else if (app_.imu_enabled && app_.imu_kind != "none") {
         log_line("camera " + cfg_.id +
-                 " IMU off, using config heading_deg");
+                 " IMU off, streaming config heading_deg");
     }
+
+    auto source = make_frame_source(cfg_);
+    if (!source->open()) {
+        log_line("camera " + cfg_.id + " open failed: " +
+                 source->last_error());
+        stream_attitude_only(imu.get(), pose);
+        return;
+    }
+
+    MotionDetector detector(cfg_);
+    DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
+    detector.set_debug(debug.active());
 
     GrayFrame frame;
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;
+    std::uint64_t last_preview_us = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         if (!source->read_frame(frame)) {
-            log_line("camera " + cfg_.id + " read failed: " + source->last_error());
+            log_line("camera " + cfg_.id + " read failed: " +
+                     source->last_error());
+            stream_attitude_only(imu.get(), pose);
             return;
         }
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
-        ImuSample imu_sample;
-        if (imu) {
-            const bool imu_ok = imu->read(imu_sample) && imu_sample.valid;
-            if (imu_ok) {
-                pose.heading_deg = imu_sample.heading_deg;
-                pose.elevation_deg = imu_sample.elevation_deg;
-                pose.roll_deg = imu_sample.roll_deg;
-            }
-            // A failed read still emits (valid=0, last pose) so the UI can
-            // tell a frozen heading from a live one.
-            maybe_emit_attitude(pose,
-                                imu_ok ? format_calib_token(imu_sample) : "-",
-                                imu_ok, frame.captured_us, last_att_us);
-        }
+        std::string calib_token;
+        const bool imu_valid = apply_imu_sample(imu.get(), pose, calib_token);
+        maybe_emit_attitude(pose, calib_token, imu_valid, frame.captured_us,
+                            last_att_us);
+        maybe_send_preview(frame, frame.captured_us, last_preview_us);
 
         const DetectionResult det = detector.process(frame);
         if (debug.active()) debug.dump(frame, det);

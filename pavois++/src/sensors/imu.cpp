@@ -13,6 +13,8 @@
 
 #if defined(__linux__)
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <ctime>
 #include <linux/i2c-dev.h>
 #include <linux/i2c.h>
 #include <sys/ioctl.h>
@@ -184,6 +186,14 @@ public:
         : path_(std::move(path)), cfg_(cfg) {}
 
     bool read(ImuSample& sample) override {
+#if defined(__linux__)
+        struct stat info{};
+        if (::stat(path_.c_str(), &info) != 0 || std::time(nullptr) - info.st_mtime > 2) {
+            err_ = "IMU file missing or stale";
+            sample.valid = false;
+            return false;
+        }
+#endif
         std::ifstream in(path_);
         if (!in) {
             err_ = "cannot read " + path_;
@@ -197,15 +207,18 @@ public:
             return false;
         }
         raw.valid = true;
-        // Optional 4th token: calibration levels as "SGAM", e.g. 3303.
+        // Optional 4th token: "SGAM" levels 0-3, '-' for an unknown level
+        // (the BNO08x bridge only knows the magnetometer, e.g. ---3).
         std::string calib;
         if (in >> calib && calib.size() == 4 &&
-            std::all_of(calib.begin(), calib.end(),
-                        [](char ch) { return ch >= '0' && ch <= '3'; })) {
-            raw.calib_sys = calib[0] - '0';
-            raw.calib_gyro = calib[1] - '0';
-            raw.calib_accel = calib[2] - '0';
-            raw.calib_mag = calib[3] - '0';
+            std::all_of(calib.begin(), calib.end(), [](char ch) {
+                return ch == '-' || (ch >= '0' && ch <= '3');
+            })) {
+            auto level = [](char ch) { return ch == '-' ? -1 : ch - '0'; };
+            raw.calib_sys = level(calib[0]);
+            raw.calib_gyro = level(calib[1]);
+            raw.calib_accel = level(calib[2]);
+            raw.calib_mag = level(calib[3]);
         }
         sample = apply_imu_offsets(raw, cfg_);
         err_.clear();
@@ -223,8 +236,7 @@ private:
 std::unique_ptr<ImuReader> open_file_imu(const AppConfig& cfg) {
     if (cfg.imu_file.empty()) return nullptr;
     auto reader = std::make_unique<FileImuReader>(cfg.imu_file, cfg);
-    ImuSample sample;
-    if (!reader->read(sample)) return nullptr;
+    // Keep the reader while the bridge starts or reconnects; read() checks freshness.
     return reader;
 }
 
@@ -283,11 +295,16 @@ std::string format_calib_token(const ImuSample& sample) {
     const int levels[4] = {sample.calib_sys, sample.calib_gyro,
                            sample.calib_accel, sample.calib_mag};
     std::string token;
+    bool any_known = false;
     for (int level : levels) {
-        if (level < 0 || level > 3) return "-";
-        token.push_back(static_cast<char>('0' + level));
+        if (level >= 0 && level <= 3) {
+            token.push_back(static_cast<char>('0' + level));
+            any_known = true;
+        } else {
+            token.push_back('-');
+        }
     }
-    return token;
+    return any_known ? token : "-";
 }
 
 std::unique_ptr<ImuReader> open_imu(const AppConfig& cfg) {

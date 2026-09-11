@@ -27,8 +27,10 @@ add_library(pavois_core STATIC
     src/runtime/camera_worker.cpp
     src/sensors/imu.cpp
     src/transport/event_bus.cpp
+    src/transport/http_poster.cpp
     src/transport/udp_sender.cpp
     src/util/debug_sink.cpp
+    src/util/jpeg_gray.cpp
     src/v4l2_camera.cpp
 )
 
@@ -38,7 +40,8 @@ target_include_directories(pavois_core PUBLIC
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(pavois_core PUBLIC Threads::Threads)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(pavois_core PUBLIC Threads::Threads OpenSSL::Crypto)
 
 if (MSVC)
     target_compile_options(pavois_core PRIVATE /W4)

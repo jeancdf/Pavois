@@ -1,10 +1,12 @@
 import { createServer } from 'node:http';
+import { deflateSync, crc32 } from 'node:zlib';
 import { WebSocketServer } from 'ws';
 
 const PORT = 3000;
 const RAW_DETECTION_INTERVAL_MS = 800;
 const TRACK_INTERVAL_MS = 200;
 const IMU_INTERVAL_MS = 200;
+const PREVIEW_INTERVAL_MS = 500;
 const DEV_TOKEN = 'dev-pavois-token';
 
 // Pistes simulées autour des caméras ci-dessous.
@@ -149,6 +151,53 @@ function simulatedImu(cameraId, headingBase, calibration, valid = true) {
   };
 }
 
+function pngChunk(type, data) {
+  const typeBuf = Buffer.from(type);
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([len, typeBuf, data, crc]);
+}
+
+function grayPng(width, height, pixels) {
+  const raw = Buffer.alloc((width + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (width + 1)] = 0;
+    pixels.copy(raw, y * (width + 1) + 1, y * width, (y + 1) * width);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  return Buffer.concat([
+    sig,
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function simulatedPreview(cameraId, tickValue) {
+  const width = 160;
+  const height = 90;
+  const pixels = Buffer.alloc(width * height);
+  const bar = Math.floor((tickValue * 7) % width);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const stripe = ((x + y + tickValue) & 16) ? 40 : 18;
+      pixels[y * width + x] = x === bar ? 220 : stripe;
+    }
+  }
+  return {
+    cameraId,
+    mime: 'image/png',
+    jpegBase64: grayPng(width, height, pixels).toString('base64'),
+    timestamp: Date.now(),
+  };
+}
+
 wss.on('connection', (socket) => {
   console.log('Client connected');
   socket.send(JSON.stringify({ event: 'camera_positions', data: cameras }));
@@ -164,7 +213,8 @@ wss.on('connection', (socket) => {
   const imuInterval = setInterval(() => {
     socket.send(JSON.stringify({
       event: 'imu_update',
-      data: simulatedImu('cam0', cameras[0].headingDeg, { sys: 3, gyro: 3, accel: 3, mag: 3 }),
+      // BNO08x : seul le magnétomètre est connu, calibré.
+      data: simulatedImu('cam0', cameras[0].headingDeg, { sys: null, gyro: null, accel: null, mag: 3 }),
     }));
     socket.send(JSON.stringify({
       event: 'imu_update',
@@ -178,10 +228,32 @@ wss.on('connection', (socket) => {
     }));
   }, IMU_INTERVAL_MS);
 
+  let previewTick = 0;
+  const previewInterval = setInterval(() => {
+    previewTick += 1;
+    socket.send(JSON.stringify({
+      event: 'camera_preview',
+      data: simulatedPreview('cam0', previewTick),
+    }));
+    socket.send(JSON.stringify({
+      event: 'camera_preview',
+      data: simulatedPreview('cam1', previewTick + 8),
+    }));
+    socket.send(JSON.stringify({
+      event: 'camera_preview',
+      data: simulatedPreview('pi-inconnu', previewTick + 16),
+    }));
+    socket.send(JSON.stringify({
+      event: 'camera_preview',
+      data: simulatedPreview('preview-orpheline', previewTick + 24),
+    }));
+  }, PREVIEW_INTERVAL_MS);
+
   socket.on('close', () => {
     clearInterval(rawInterval);
     clearInterval(trackInterval);
     clearInterval(imuInterval);
+    clearInterval(previewInterval);
     console.log('Client disconnected');
   });
 });

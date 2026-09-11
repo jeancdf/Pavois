@@ -6,6 +6,7 @@ import { TrackUpdate } from '../models/track-update.model';
 import { CameraGpsConfig, buildCameraPositions } from '../config/cameras.config';
 import { AuthService } from './auth.service';
 import { ImuSample } from '../models/imu-sample.model';
+import { CameraPreview } from '../models/camera-preview.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -17,6 +18,7 @@ export class RealtimeService implements OnDestroy {
   readonly cameraConfigs = signal<CameraGpsConfig[]>([]);
   readonly cameras = computed(() => buildCameraPositions(this.cameraConfigs()));
   readonly imuByCamera = signal<Record<string, ImuSample>>({});
+  readonly previewByCamera = signal<Record<string, CameraPreview>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
 
@@ -75,6 +77,14 @@ export class RealtimeService implements OnDestroy {
           case 'imu_update':
             this.storeImuSample(payload.data as Omit<ImuSample, 'receivedAt'>);
             break;
+          case 'camera_preview':
+            this.storePreview(payload.data as {
+              cameraId: string;
+              jpegBase64: string;
+              mime?: string;
+              timestamp?: number;
+            });
+            break;
           case 'track_update': {
             const track = payload.data as TrackUpdate;
             this.trackUpdates$.next(track);
@@ -113,6 +123,10 @@ export class RealtimeService implements OnDestroy {
     return this.imuByCamera()[cameraId];
   }
 
+  previewOf(cameraId: string): CameraPreview | undefined {
+    return this.previewByCamera()[cameraId];
+  }
+
   private storeImuSample(
     // calibration/valid absents si le VPS n'est pas à jour.
     sample: Omit<ImuSample, 'receivedAt' | 'calibration' | 'valid'> &
@@ -135,9 +149,44 @@ export class RealtimeService implements OnDestroy {
     }));
   }
 
+  private storePreview(sample: {
+    cameraId: string;
+    jpegBase64: string;
+    mime?: string;
+    timestamp?: number;
+  }): void {
+    if (!sample?.cameraId || !sample.jpegBase64) return;
+    let bytes: Uint8Array;
+    try {
+      const bin = atob(sample.jpegBase64);
+      bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+    } catch {
+      return;
+    }
+    const mime = sample.mime || 'image/jpeg';
+    const blob = new Blob([bytes as BlobPart], { type: mime });
+    const src = URL.createObjectURL(blob);
+    this.previewByCamera.update((current) => {
+      const prev = current[sample.cameraId];
+      if (prev) URL.revokeObjectURL(prev.src);
+      return {
+        ...current,
+        [sample.cameraId]: {
+          cameraId: sample.cameraId,
+          src,
+          receivedAt: Date.now(),
+        },
+      };
+    });
+  }
+
   ngOnDestroy(): void {
     this.destroyed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.ws?.close();
+    const previews = this.previewByCamera();
+    for (const preview of Object.values(previews)) {
+      URL.revokeObjectURL(preview.src);
+    }
   }
 }

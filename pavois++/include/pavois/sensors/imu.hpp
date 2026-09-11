@@ -24,7 +24,8 @@ double wrap_heading_deg(double deg);
 ImuSample apply_imu_offsets(const ImuSample& raw, const AppConfig& cfg);
 bool bno055_euler_from_bytes(const std::uint8_t bytes[6], ImuSample& out);
 void bno055_calib_from_byte(std::uint8_t stat, ImuSample& out);
-// "SGAM" digits (sys, gyro, accel, mag) for the att frame, "-" when unknown.
+// "SGAM" levels (sys, gyro, accel, mag) for the att frame: '-' marks an
+// unknown level, and the whole token is "-" when every level is unknown.
 std::string format_calib_token(const ImuSample& sample);
 
 class ImuReader {

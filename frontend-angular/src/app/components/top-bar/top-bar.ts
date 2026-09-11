@@ -25,6 +25,12 @@ export class TopBar implements OnDestroy {
   readonly imuTrustedCount = computed(
     () => this.imuQualities().filter((quality) => quality === 'ok').length,
   );
+  readonly previewLiveCount = computed(() => {
+    const now = this.now();
+    return Object.values(this.realtime.previewByCamera()).filter(
+      (preview) => now - preview.receivedAt < 2000,
+    ).length;
+  });
 
   private uptimeTimer: ReturnType<typeof setInterval> | null = null;
 

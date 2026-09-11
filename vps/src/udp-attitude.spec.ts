@@ -49,8 +49,24 @@ describe('udp attitude packets', () => {
     expect(parsed?.valid).toBe(true);
   });
 
+  it('keeps unknown levels as null (BNO08x only reports the magnetometer)', () => {
+    const parsed = parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,---2,1');
+    expect(parsed?.calibration).toEqual({
+      sys: null,
+      gyro: null,
+      accel: null,
+      mag: 2,
+    });
+  });
+
+  it('treats an all-unknown SGAM token like `-`', () => {
+    const parsed = parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,----,1');
+    expect(parsed?.calibration).toBeNull();
+  });
+
   it('rejects malformed calibration tokens', () => {
     expect(parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,3403,1')).toBeNull();
+    expect(parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,3-x3,1')).toBeNull();
     expect(parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,333,1')).toBeNull();
     expect(parseAttitudeLine('att,jean,1,164.2,-1.5,0.3,,1')).toBeNull();
   });

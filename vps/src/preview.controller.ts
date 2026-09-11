@@ -14,7 +14,7 @@ export class PreviewController {
     @Query('cameraId') cameraId: string,
     @Req() req: Request,
   ): { ok: true } {
-    const body = req.body;
+    const body: unknown = req.body;
     const jpeg = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
     if (!this.previews.ingest(cameraId || '', jpeg)) {
       throw new BadRequestException('preview JPEG invalide');

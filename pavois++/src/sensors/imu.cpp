@@ -33,6 +33,10 @@ constexpr std::uint8_t kBnoConfigMode = 0x00;
 constexpr std::uint8_t kBnoNdof = 0x0C;
 constexpr std::uint8_t kBnoEulerLsb = 0x1A;
 constexpr std::uint8_t kBnoCalibStat = 0x35;
+constexpr std::uint8_t kBnoUnitSel = 0x3B;
+// bit2=0 (Euler in degrees) and the rest at their power-on defaults (m/s^2, dps,
+// Celsius, Windows orientation). bno055_euler_from_bytes() assumes degrees.
+constexpr std::uint8_t kBnoUnitSelDegrees = 0x00;
 constexpr std::uint8_t kBnoAxisMapConfig = 0x41;
 constexpr std::uint8_t kBnoAxisMapSign = 0x42;
 constexpr int kBnoAddrA = 0x28;
@@ -135,11 +139,13 @@ public:
         bus_.write_reg(addr_, kBnoPageId, 0);
         bus_.write_reg(addr_, kBnoOprMode, kBnoConfigMode);
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
-        // AXIS_MAP_CONFIG/AXIS_MAP_SIGN are only writable in CONFIG mode. Written
-        // unconditionally on every init so the mounting-specific remap always takes
-        // effect; scalar offsets alone cannot correct a swapped physical axis.
-        bus_.write_reg(addr_, kBnoAxisMapConfig, static_cast<std::uint8_t>(cfg_.imu_axis_map));
-        bus_.write_reg(addr_, kBnoAxisMapSign, static_cast<std::uint8_t>(cfg_.imu_axis_sign));
+        // AXIS_MAP and UNIT_SEL are only writable in CONFIG mode. Written on
+        // every init so mounting remap and degree units always take effect.
+        bus_.write_reg(addr_, kBnoAxisMapConfig,
+                       static_cast<std::uint8_t>(cfg_.imu_axis_map));
+        bus_.write_reg(addr_, kBnoAxisMapSign,
+                       static_cast<std::uint8_t>(cfg_.imu_axis_sign));
+        bus_.write_reg(addr_, kBnoUnitSel, kBnoUnitSelDegrees);
         if (!bus_.write_reg(addr_, kBnoOprMode, kBnoNdof)) {
             err_ = "BNO055 mode switch failed: " + bus_.error();
             return false;

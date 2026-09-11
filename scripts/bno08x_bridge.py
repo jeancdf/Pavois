@@ -11,12 +11,19 @@ from adafruit_bno08x.i2c import BNO08X_I2C
 output = Path("/run/pavois-imu/orientation")
 try:
     sensor = BNO08X_I2C(ExtendedI2C(1), address=0x4a)
-    sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+    sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, report_interval=100000)
     print("BNO08x connected on I2C bus 1, address 0x4a", flush=True)
     last_valid = time.monotonic()
     while True:
         time.sleep(0.1)
-        x, y, z, w = sensor.quaternion
+        try:
+            x, y, z, w = sensor.quaternion
+        except (OSError, KeyError) as error:
+            # Discard a corrupt I2C report without resetting the sensor fusion.
+            output.unlink(missing_ok=True)
+            if time.monotonic() - last_valid > 5:
+                raise RuntimeError("IMU transport failed for five seconds") from error
+            continue
         norm = math.sqrt(x*x + y*y + z*z + w*w)
         if not math.isfinite(norm) or norm < 0.5:
             if time.monotonic() - last_valid > 5:
@@ -30,6 +37,5 @@ try:
         temporary = output.with_suffix(".tmp")
         temporary.write_text(f"{yaw:.5f} {pitch:.5f} {roll:.5f}\n")
         os.replace(temporary, output)
-        time.sleep(0.1)
 finally:
     output.unlink(missing_ok=True)

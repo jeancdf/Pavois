@@ -27,6 +27,8 @@ camera.0.roll_deg=0.0
 imu.enabled=true
 imu.kind=auto
 imu.i2c_dev=/dev/i2c-1
+# 0 = probe 0x28 then 0x29. >0 = probe only that address.
+imu.i2c_address=0
 # Reopen I2C after N consecutive errors; exponential backoff (ms).
 imu.i2c_fail_threshold=5
 imu.i2c_retry_min_ms=200
@@ -37,6 +39,8 @@ imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
 imu.elevation_offset_deg=0.0
 imu.roll_offset_deg=0.0
+# 1 = as reported. -1 = flip pitch on an inverted mount.
+imu.elevation_sign=1.0
 # imu.file=/tmp/pavois_imu.txt
 # imu.kind=file
 

@@ -8,11 +8,14 @@ import { FusionService } from './fusion.service';
 import type { FusionObservation } from './fusion.types';
 import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
-import { routeUdpLine } from './udp-route';
+import { routeUdpLine, type RoutedUdp } from './udp-route';
+import { udpDebug } from './udp-log';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
   private server: dgram.Socket | null = null;
+  private readonly seenCameras = new Set<string>();
+  private readonly unknownCameras = new Set<string>();
 
   constructor(
     private readonly eventsGateway: EventsGateway,
@@ -98,8 +101,8 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
           const verification = this.verifyUdpPacket(msg, hmacSecret);
           if (verification.valid && verification.payload) {
             payloadBuffer = Buffer.from(verification.payload);
-            console.log(
-              `[UDP] [HMAC OK] Paquet signé et authentifié avec succès de ${rinfo.address}:${rinfo.port}`,
+            udpDebug(
+              `[UDP] [HMAC OK] Paquet signé de ${rinfo.address}:${rinfo.port}`,
             );
           } else if (requireHmac) {
             console.warn(
@@ -115,54 +118,11 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         }
 
         const messageStr = payloadBuffer.toString('utf-8').trim();
-        const routed = routeUdpLine(messageStr);
-        switch (routed.kind) {
-          case 'drop':
-            return;
-          case 'att':
-            this.ingestAttitude(routed.attitude);
-            return;
-          case 'raw':
-            console.log(
-              `[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ` +
-                messageStr,
-            );
-            console.log(
-              '[UDP] Détection 2D brute parsée et diffusée :',
-              routed.detection,
-            );
-            this.ingestRawDetection(routed.detection);
-            return;
-          case 'obj':
-            console.log(
-              `[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ` +
-                messageStr,
-            );
-            console.log(
-              '[UDP] Piste 3D GPS parsée et diffusée :',
-              routed.track,
-            );
-            this.eventsGateway.broadcast('track_update', routed.track);
-            return;
-          case 'unknown': {
-            console.log(
-              `[UDP] Message reçu de ${rinfo.address}:${rinfo.port} : ` +
-                messageStr,
-            );
-            const genericPayload = {
-              type: 'generic_udp',
-              raw: routed.raw,
-              data: routed.data,
-              sender: { address: rinfo.address, port: rinfo.port },
-            };
-            console.log(
-              '[UDP] Message inconnu/générique diffusé :',
-              genericPayload,
-            );
-            this.eventsGateway.broadcast('generic_udp', genericPayload);
-            return;
-          }
-        }
+        this.dispatchRouted(
+          routeUdpLine(messageStr),
+          messageStr,
+          rinfo,
+        );
       } catch (error) {
         console.error('[UDP] Erreur de traitement du message :', error);
         // Diffusion de secours en cas d'erreur de traitement
@@ -184,6 +144,67 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.server.bind(port, host);
+  }
+
+  private dispatchRouted(
+    routed: RoutedUdp,
+    messageStr: string,
+    rinfo: dgram.RemoteInfo,
+  ): void {
+    const from = `${rinfo.address}:${rinfo.port}`;
+    switch (routed.kind) {
+      case 'drop':
+        return;
+      case 'att':
+        this.noteFirstFrame(routed.attitude.cameraId, 'att');
+        this.ingestAttitude(routed.attitude);
+        return;
+      case 'raw':
+        udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
+        udpDebug('[UDP] Détection 2D brute :', routed.detection);
+        this.noteFirstFrame(routed.detection.cameraId, 'raw');
+        this.ingestRawDetection(routed.detection);
+        return;
+      case 'obj':
+        udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
+        udpDebug('[UDP] Piste 3D GPS :', routed.track);
+        this.eventsGateway.broadcast('track_update', routed.track);
+        return;
+      case 'unknown': {
+        const genericPayload = {
+          type: 'generic_udp',
+          raw: routed.raw,
+          data: routed.data,
+          sender: { address: rinfo.address, port: rinfo.port },
+        };
+        console.warn(`[UDP] Message inconnu de ${from}`);
+        udpDebug('[UDP] Payload inconnu :', genericPayload);
+        this.eventsGateway.broadcast('generic_udp', genericPayload);
+      }
+    }
+  }
+
+  private noteFirstFrame(cameraId: string, kind: string): void {
+    const key = `${kind}:${cameraId}`;
+    if (this.seenCameras.has(key)) {
+      return;
+    }
+    this.seenCameras.add(key);
+    console.log(`[UDP] Première trame ${kind} pour ${cameraId}`);
+    const known = this.camerasService
+      .list()
+      .some((item) => item.id === cameraId);
+    if (!known) {
+      this.warnUnknownCamera(cameraId);
+    }
+  }
+
+  private warnUnknownCamera(cameraId: string): void {
+    if (this.unknownCameras.has(cameraId)) {
+      return;
+    }
+    this.unknownCameras.add(cameraId);
+    console.warn(`[UDP] Identifiant caméra inconnu : ${cameraId}`);
   }
 
   /**

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { applyBodyParsers } from './../src/http-body';
+import { UdpService } from './../src/udp.service';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -86,6 +87,59 @@ describe('AppController (e2e)', () => {
       .set('Content-Type', 'image/jpeg')
       .send(Buffer.from('not-a-jpeg-body!!'))
       .expect(400);
+  });
+
+  it('/fusion (GET) rejects a missing token', () => {
+    return request(app.getHttpServer()).get('/fusion').expect(401);
+  });
+
+  it('/fusion (GET) returns an empty diagnostic snapshot', () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    return request(app.getHttpServer())
+      .get('/fusion')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.activeCameras).toBe(0);
+        expect(res.body.cameraCount).toBe(0);
+        expect(Array.isArray(res.body.cameras)).toBe(true);
+      });
+  });
+
+  it('/fusion (GET) keeps detections from three cameras', async () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const udp = app.get(UdpService);
+    const timestamp = Date.now();
+    for (const cameraId of ['jean', 'tanel', 'walid']) {
+      udp.ingestRawDetection({
+        type: 'raw_detection',
+        cameraId,
+        frameIndex: 1,
+        timestamp,
+        x: 10,
+        y: 20,
+        size: 5,
+        confidence: 0.9,
+        headingDeg: 164.2,
+        elevationDeg: -1.5,
+        rollDeg: 0.3,
+      });
+    }
+
+    const res = await request(app.getHttpServer())
+      .get('/fusion')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.activeCameras).toBe(3);
+    expect(res.body.cameraCount).toBe(3);
+    expect(res.body.cameras).toHaveLength(3);
+    for (const camera of res.body.cameras) {
+      expect(camera.active).toBe(true);
+      expect(camera.hasPose).toBe(true);
+      expect(camera.ageMs).toBeGreaterThanOrEqual(0);
+      expect(camera.detectionCount).toBe(1);
+    }
   });
 
   afterEach(async () => {

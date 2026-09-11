@@ -11,6 +11,8 @@ import { AuthController } from './auth.controller';
 import { AttitudeController } from './attitude.controller';
 import { PreviewController } from './preview.controller';
 import { PreviewService } from './preview.service';
+import { FusionController } from './fusion.controller';
+import { FusionService } from './fusion.service';
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { PreviewService } from './preview.service';
     CamerasController,
     AttitudeController,
     PreviewController,
+    FusionController,
   ],
   providers: [
     AppService,
@@ -34,6 +37,7 @@ import { PreviewService } from './preview.service';
     EventsGateway,
     CamerasService,
     PreviewService,
+    FusionService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

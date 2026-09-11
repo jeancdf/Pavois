@@ -100,6 +100,8 @@ struct AppConfig {
     std::string imu_i2c_dev = "/dev/i2c-1";
     int imu_i2c_address = 0;
     std::string imu_file;
+    // 22-byte BNO055 offset profile (registers 0x55-0x6A). Empty disables I/O.
+    std::string imu_calib_file = "/var/lib/pavois/imu_calib.bin";
     int imu_emit_interval_ms = 200;
     double imu_heading_offset_deg = 0.0;
     double imu_elevation_offset_deg = 0.0;

@@ -8,22 +8,37 @@ const TRACK_INTERVAL_MS = 200;
 const IMU_INTERVAL_MS = 200;
 const PREVIEW_INTERVAL_MS = 500;
 const DEV_TOKEN = 'dev-pavois-token';
+const MOCK_MODE = (process.env.MOCK_MODE || 'demo').trim().toLowerCase();
+const IS_TERRAIN = MOCK_MODE === 'terrain';
 
-// Pistes simulées autour des caméras ci-dessous.
+// Pistes du mode demo uniquement — absentes en production.
 const ORIGIN_LAT = 48.82603;
 const ORIGIN_LNG = 2.36605;
 const ORIGIN_ALT = 35.0;
 
-// Équivalent de la configuration stockée par le backend (PUT /cameras/:id/position).
-const cameras = [
+const DEMO_CAMERAS = [
   { id: 'cam0', lat: 48.82608, lon: 2.3659, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0, rangeM: 60 },
   { id: 'cam1', lat: 48.8260968, lon: 2.3658928, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0, rangeM: 60 },
 ];
 
+// IDs et poses du parc réel (vps/src/cameras.service.ts).
+const TERRAIN_CAMERAS = [
+  { id: 'jean', lat: 48.826132, lon: 2.365856, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: 60 },
+  { id: 'tanel', lat: 48.826134, lon: 2.365869, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: 60 },
+  { id: 'walid', lat: 48.826098, lon: 2.365877, alt: 58.524, headingDeg: 344, fovDeg: 65, rangeM: 60 },
+];
+
+const cameras = IS_TERRAIN ? TERRAIN_CAMERAS : DEMO_CAMERAS;
+
 const server = createServer(handleHttpRequest);
 const wss = new WebSocketServer({ server });
 server.listen(PORT, () => {
-  console.log(`Mock server listening on http://localhost:${PORT} (WebSocket + PUT /cameras/:id/position)`);
+  const profile = IS_TERRAIN
+    ? 'terrain = production (att + raw, pas de piste)'
+    : 'demo = playground UI (pistes simulées)';
+  console.log(
+    `Mock server on http://localhost:${PORT} mode=${MOCK_MODE} (${profile})`,
+  );
 });
 
 let frameIndex = 0;
@@ -96,17 +111,20 @@ function handleHttpRequest(req, res) {
   });
 }
 
-function randomRawDetection() {
+function randomRawDetection(camera) {
   frameIndex += 1;
   return {
     type: 'raw_detection',
-    cameraId: 'cam0',
+    cameraId: camera.id,
     frameIndex,
     timestamp: Date.now(),
     x: Math.round((300 + Math.random() * 600) * 100) / 100,
     y: Math.round((200 + Math.random() * 400) * 100) / 100,
     size: Math.round(500 + Math.random() * 3000),
     confidence: Math.round((0.7 + Math.random() * 0.3) * 1000) / 1000,
+    headingDeg: camera.headingDeg,
+    elevationDeg: 0,
+    rollDeg: 0,
   };
 }
 
@@ -198,62 +216,73 @@ function simulatedPreview(cameraId, tickValue) {
   };
 }
 
-wss.on('connection', (socket) => {
-  console.log('Client connected');
-  socket.send(JSON.stringify({ event: 'camera_positions', data: cameras }));
+function sendEvent(socket, event, data) {
+  socket.send(JSON.stringify({ event, data }));
+}
 
-  const rawInterval = setInterval(() => {
-    socket.send(JSON.stringify({ event: 'raw_detection', data: randomRawDetection() }));
-  }, RAW_DETECTION_INTERVAL_MS);
+function startDemoStream(socket, timers) {
+  timers.push(setInterval(() => {
+    sendEvent(socket, 'raw_detection', randomRawDetection(cameras[0]));
+  }, RAW_DETECTION_INTERVAL_MS));
 
-  const trackInterval = setInterval(() => {
-    socket.send(JSON.stringify({ event: 'track_update', data: simulatedTrackUpdate() }));
-  }, TRACK_INTERVAL_MS);
+  timers.push(setInterval(() => {
+    sendEvent(socket, 'track_update', simulatedTrackUpdate());
+  }, TRACK_INTERVAL_MS));
 
-  const imuInterval = setInterval(() => {
-    socket.send(JSON.stringify({
-      event: 'imu_update',
-      // BNO08x : seul le magnétomètre est connu, calibré.
-      data: simulatedImu('cam0', cameras[0].headingDeg, { sys: null, gyro: null, accel: null, mag: 3 }),
-    }));
-    socket.send(JSON.stringify({
-      event: 'imu_update',
-      // Magnétomètre pas calibré : doit s'afficher « calibration partielle ».
-      data: simulatedImu('cam1', cameras[1].headingDeg, { sys: 2, gyro: 3, accel: 3, mag: 1 }),
-    }));
-    socket.send(JSON.stringify({
-      event: 'imu_update',
-      // Lecture ratée côté Pi : doit s'afficher « cap figé ».
-      data: simulatedImu('pi-inconnu', 42, null, false),
-    }));
-  }, IMU_INTERVAL_MS);
+  timers.push(setInterval(() => {
+    sendEvent(socket, 'imu_update', simulatedImu(
+      'cam0', cameras[0].headingDeg,
+      { sys: null, gyro: null, accel: null, mag: 3 },
+    ));
+    sendEvent(socket, 'imu_update', simulatedImu(
+      'cam1', cameras[1].headingDeg,
+      { sys: 2, gyro: 3, accel: 3, mag: 1 },
+    ));
+    sendEvent(socket, 'imu_update', simulatedImu('pi-inconnu', 42, null, false));
+  }, IMU_INTERVAL_MS));
 
   let previewTick = 0;
-  const previewInterval = setInterval(() => {
+  timers.push(setInterval(() => {
     previewTick += 1;
-    socket.send(JSON.stringify({
-      event: 'camera_preview',
-      data: simulatedPreview('cam0', previewTick),
-    }));
-    socket.send(JSON.stringify({
-      event: 'camera_preview',
-      data: simulatedPreview('cam1', previewTick + 8),
-    }));
-    socket.send(JSON.stringify({
-      event: 'camera_preview',
-      data: simulatedPreview('pi-inconnu', previewTick + 16),
-    }));
-    socket.send(JSON.stringify({
-      event: 'camera_preview',
-      data: simulatedPreview('preview-orpheline', previewTick + 24),
-    }));
-  }, PREVIEW_INTERVAL_MS);
+    sendEvent(socket, 'camera_preview', simulatedPreview('cam0', previewTick));
+    sendEvent(socket, 'camera_preview', simulatedPreview('cam1', previewTick + 8));
+    sendEvent(socket, 'camera_preview', simulatedPreview('pi-inconnu', previewTick + 16));
+    sendEvent(socket, 'camera_preview', simulatedPreview('preview-orpheline', previewTick + 24));
+  }, PREVIEW_INTERVAL_MS));
+}
+
+function startTerrainStream(socket, timers) {
+  // Profil Pi réel : att + raw. Pas de track_update (la fusion est sur le VPS).
+  const rawCams = [cameras[0], cameras[2]];
+  timers.push(setInterval(() => {
+    const cam = rawCams[frameIndex % rawCams.length];
+    sendEvent(socket, 'raw_detection', randomRawDetection(cam));
+  }, RAW_DETECTION_INTERVAL_MS));
+
+  timers.push(setInterval(() => {
+    for (const cam of cameras) {
+      sendEvent(socket, 'imu_update', simulatedImu(
+        cam.id, cam.headingDeg,
+        { sys: null, gyro: null, accel: null, mag: 3 },
+      ));
+    }
+  }, IMU_INTERVAL_MS));
+}
+
+wss.on('connection', (socket) => {
+  console.log(`Client connected (mode=${MOCK_MODE})`);
+  sendEvent(socket, 'camera_positions', cameras);
+  const timers = [];
+  if (IS_TERRAIN) {
+    startTerrainStream(socket, timers);
+  } else {
+    startDemoStream(socket, timers);
+  }
 
   socket.on('close', () => {
-    clearInterval(rawInterval);
-    clearInterval(trackInterval);
-    clearInterval(imuInterval);
-    clearInterval(previewInterval);
+    for (const timer of timers) {
+      clearInterval(timer);
+    }
     console.log('Client disconnected');
   });
 });

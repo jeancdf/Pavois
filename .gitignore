@@ -55,3 +55,8 @@ local_settings.py
 
 # --- Notes personnelles non versionnées ---
 *.local.md
+
+# --- Media / artefacts d'expérience (SCRUM-76) ---
+*.mp4
+pixeltovoxelprojector/single_cam_run/*.jpg
+pixeltovoxelprojector/single_cam_run/*.bin

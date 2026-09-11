@@ -1,16 +1,37 @@
-# FrontendAngular
+# Frontend Angular (PAVOIS)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.4.
+Interface opérateur. Générée avec Angular CLI 22.
+
+## Serveur mock (deux modes)
+
+Le mock (`mock-server/server.mjs`) n’est **pas** le VPS. Il pousse des
+événements WebSocket pour travailler l’UI hors des trois Pi.
+
+| Mode | Commande | Ce qu’il émet | Reflète la production ? |
+|---|---|---|---|
+| **demo** (défaut) | `npm run mock:ws` | `imu_update`, `raw_detection`, **`track_update` classées**, previews | Non. Pistes fictives toutes les 200 ms. |
+| **terrain** | `npm run mock:ws:terrain` | `imu_update` + `raw_detection` des Pi jean / tanel / walid | **Oui.** Une Pi n’envoie pas de piste 3D. La carte reste à PISTES 0. |
+
+Lancer l’UI contre le mock :
+
+```bash
+npm run mock:ws            # ou mock:ws:terrain
+npm run start:mock         # http://localhost:4200 → ws://localhost:3000
+```
+
+`MOCK_MODE=terrain` active le profil réel. Le mode demo sert au design
+(icônes, alertes, liste de pistes). Ne pas s’en servir pour juger que la
+fusion marche.
 
 ## Development server
 
-To start a local development server, run:
+Contre le vrai backend (VPS) :
 
 ```bash
-ng serve
+npm start
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Puis ouvrir `http://localhost:4200/`.
 
 ## Code scaffolding
 

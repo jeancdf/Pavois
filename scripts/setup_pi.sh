@@ -61,6 +61,17 @@ preview.http_path=/api/preview
 EOF
 fi
 
+if [[ -f /etc/pavois/pavois.conf ]] && ! grep -q '^imu.axis_map=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+# Chip mounting orientation (flat vs. on edge etc). Defaults below are the
+# BNO055 power-on values (P1, identity mapping) -- no change until you verify
+# this Pi's physical mounting. See the comment block in pavois.conf.example.
+imu.axis_map=0x24
+imu.axis_sign=0x00
+EOF
+fi
+
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/pavois.service" /etc/systemd/system/pavois.service
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/60-pavois-i2c.rules" \
   /etc/udev/rules.d/60-pavois-i2c.rules

@@ -31,6 +31,10 @@ constexpr std::uint8_t kBnoOprMode = 0x3D;
 constexpr std::uint8_t kBnoConfigMode = 0x00;
 constexpr std::uint8_t kBnoNdof = 0x0C;
 constexpr std::uint8_t kBnoEulerLsb = 0x1A;
+constexpr std::uint8_t kBnoUnitSel = 0x3B;
+// bit2=0 (Euler in degrees) and the rest at their power-on defaults (m/s^2, dps,
+// Celsius, Windows orientation). bno055_euler_from_bytes() assumes degrees.
+constexpr std::uint8_t kBnoUnitSelDegrees = 0x00;
 constexpr int kBnoAddrA = 0x28;
 constexpr int kBnoAddrB = 0x29;
 
@@ -129,6 +133,9 @@ public:
         bus_.write_reg(addr_, kBnoPageId, 0);
         bus_.write_reg(addr_, kBnoOprMode, kBnoConfigMode);
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        // UNIT_SEL is only writable in CONFIG mode. Written unconditionally on every
+        // init so a chip left in radians by an earlier test/run is always corrected.
+        bus_.write_reg(addr_, kBnoUnitSel, kBnoUnitSelDegrees);
         if (!bus_.write_reg(addr_, kBnoOprMode, kBnoNdof)) {
             err_ = "BNO055 mode switch failed: " + bus_.error();
             return false;

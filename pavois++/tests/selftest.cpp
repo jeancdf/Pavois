@@ -711,6 +711,16 @@ void test_imu() {
     check_near(parsed.heading_deg, 90.0, 1e-9, "bno heading 90");
     check_near(parsed.elevation_deg, 2.0, 1e-9, "bno pitch 2");
 
+    // BNO055 Euler registers are LSB = 1/16 degree only once UNIT_SEL (0x3B) selects
+    // degrees; this must never be read back as radians. 270.0deg -> 4320 (0x10E0),
+    // 45.0deg -> 720 (0x02D0), -30.0deg -> -480 (0xFE20 as int16).
+    std::uint8_t degree_bytes[6] = {0xE0, 0x10, 0xD0, 0x02, 0x20, 0xFE};
+    ImuSample degree_parsed{};
+    check(bno055_euler_from_bytes(degree_bytes, degree_parsed), "bno parse (degrees)");
+    check_near(degree_parsed.heading_deg, 270.0, 1e-9, "bno heading 270 deg (not rad)");
+    check_near(degree_parsed.roll_deg, 45.0, 1e-9, "bno roll 45 deg (not rad)");
+    check_near(degree_parsed.elevation_deg, -30.0, 1e-9, "bno pitch -30 deg (not rad)");
+
     AppConfig cfg;
     cfg.imu_heading_offset_deg = 20.0;
     const ImuSample out = apply_imu_offsets({350.0, 5.0, 1.0, true}, cfg);

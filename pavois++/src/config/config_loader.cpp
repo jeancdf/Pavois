@@ -118,6 +118,15 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "imu.i2c_address") {
             cfg.imu_i2c_address = static_cast<int>(std::stoul(v, nullptr, 0));
         }
+        else if (key == "imu.i2c_fail_threshold") {
+            cfg.imu_i2c_fail_threshold = std::stoi(v);
+        }
+        else if (key == "imu.i2c_retry_min_ms") {
+            cfg.imu_i2c_retry_min_ms = std::stoi(v);
+        }
+        else if (key == "imu.i2c_retry_max_ms") {
+            cfg.imu_i2c_retry_max_ms = std::stoi(v);
+        }
         else if (key == "imu.file") cfg.imu_file = v;
         else if (key == "imu.calib_file") cfg.imu_calib_file = v;
         else if (key == "imu.emit_interval_ms") {

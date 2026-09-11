@@ -1,6 +1,7 @@
 #include "pavois/config/app_config.hpp"
 #include "pavois/fusion/fusion_engine.hpp"
 #include "pavois/runtime/camera_worker.hpp"
+#include "pavois/sensors/imu.hpp"
 #include "pavois/transport/http_poster.hpp"
 #include "pavois/transport/udp_sender.hpp"
 
@@ -168,6 +169,10 @@ int run(int argc, char** argv) {
     fusion_settings.tracker.max_speed_mps = config.track_max_speed_mps;
     FusionEngine fusion(fusion_settings);
 
+    // One IMU per process, shared like UdpSender. Per-worker open_imu()
+    // would CONFIG→NDOF once per camera and reset fusion on the others.
+    std::shared_ptr<ImuReader> imu_reader = open_imu(config);
+
     std::mutex output_mutex;
     std::vector<std::thread> threads;
     threads.reserve(config.cameras.size());
@@ -181,6 +186,7 @@ int run(int argc, char** argv) {
             output_mutex,
             udp_sender,
             preview_http,
+            imu_reader,
             enabled_cameras == 1));
     }
 

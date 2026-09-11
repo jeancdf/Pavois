@@ -17,17 +17,23 @@
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
 #include "pavois/config/app_config.hpp"
+#include "pavois/runtime/camera_worker.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/util/jpeg_gray.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <random>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace pavois;
@@ -802,9 +808,71 @@ void test_imu() {
           "file mag-only levels");
     check(format_calib_token(mag_only) == "---2", "file mag-only token");
 
+    {
+        std::ofstream file(path);
+        file << "45.0 1.0 0.0 3333\n";
+    }
+    // CameraWorker does not call open_imu(); main injects one shared
+    // pointer. This is that process-wide share model.
+    std::shared_ptr<ImuReader> shared_imu = open_imu(file_cfg);
+    check(static_cast<bool>(shared_imu), "shared file imu opens");
+    {
+        FusionSettings fs;
+        FusionEngine fusion(fs);
+        CameraConfig cam;
+        cam.id = "shared-imu";
+        cam.enabled = false;
+        std::ostringstream sink;
+        std::mutex log_mu;
+        CameraWorker injected(cam, file_cfg, fusion, sink, log_mu,
+                              nullptr, nullptr, shared_imu, false);
+        (void)injected;
+    }
+    std::atomic<int> ok_reads{0};
+    std::atomic<int> fail_reads{0};
+    auto shared_reader = [&]() {
+        for (int i = 0; i < 40; ++i) {
+            ImuSample s{};
+            if (shared_imu->read(s) && s.valid &&
+                std::fabs(s.heading_deg - 45.0) < 1e-4) {
+                ++ok_reads;
+            } else {
+                ++fail_reads;
+            }
+        }
+    };
+    std::thread t0(shared_reader), t1(shared_reader), t2(shared_reader);
+    t0.join();
+    t1.join();
+    t2.join();
+    check(fail_reads.load() == 0, "shared imu 3 threads no fail");
+    check(ok_reads.load() == 120, "shared imu 120 concurrent reads");
+
+    check(imu_i2c_backoff_ms(0, 200, 5000) == 200, "backoff attempt 0");
+    check(imu_i2c_backoff_ms(1, 200, 5000) == 400, "backoff attempt 1");
+    check(imu_i2c_backoff_ms(2, 200, 5000) == 800, "backoff attempt 2");
+    check(imu_i2c_backoff_ms(10, 200, 5000) == 5000, "backoff clamp");
+
+    I2cFailWatchdog dog;
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 1 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 2 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 3 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 4 no reopen");
+    check(dog.should_reopen(0, 5, 200, 5000), "fail 5 reopens");
+    check(!dog.should_reopen(50, 5, 200, 5000), "before retry no reopen");
+    dog.on_success();
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 1");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 2");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 3");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 4");
+    check(dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 5 reopens");
+
     AppConfig def_cfg;
     check(def_cfg.imu_calib_file == "/var/lib/pavois/imu_calib.bin",
           "default calib path");
+    check(def_cfg.imu_i2c_fail_threshold == 5, "default i2c fail threshold");
+    check(def_cfg.imu_i2c_retry_min_ms == 200, "default i2c retry min");
+    check(def_cfg.imu_i2c_retry_max_ms == 5000, "default i2c retry max");
     std::uint8_t discarded[kBnoCalibOffsetBytes]{};
     check(!load_imu_calib_offsets("", discarded), "empty path load");
     check(!save_imu_calib_offsets("", discarded), "empty path save");
@@ -843,10 +911,16 @@ void test_imu() {
     {
         std::ofstream file(conf_path);
         file << "imu.calib_file=/tmp/custom_imu.bin\n";
+        file << "imu.i2c_fail_threshold=7\n";
+        file << "imu.i2c_retry_min_ms=100\n";
+        file << "imu.i2c_retry_max_ms=3000\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
           "config calib_file");
+    check(loaded.imu_i2c_fail_threshold == 7, "config i2c fail threshold");
+    check(loaded.imu_i2c_retry_min_ms == 100, "config i2c retry min");
+    check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
 
     std::filesystem::remove_all(dir, ec);
 }

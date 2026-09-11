@@ -719,6 +719,16 @@ void test_imu() {
           "bno calib decode");
     check(format_calib_token(calib) == "3013", "calib token");
 
+    const ImuCalibStatus calib_full = bno055_calib_from_byte(0xFF);
+    check(calib_full.sys == 3 && calib_full.gyro == 3 && calib_full.accel == 3 &&
+              calib_full.mag == 3,
+          "calib fully calibrated");
+    const ImuCalibStatus calib_mag_low = bno055_calib_from_byte(0b11111001);
+    check(calib_mag_low.mag == 1, "calib mag low");
+    check(calib_mag_low.sys == 3 && calib_mag_low.gyro == 3 &&
+              calib_mag_low.accel == 2,
+          "calib other fields unaffected by low mag");
+
     AppConfig cfg;
     cfg.imu_heading_offset_deg = 20.0;
     const ImuSample out = apply_imu_offsets({350.0, 5.0, 1.0, true}, cfg);

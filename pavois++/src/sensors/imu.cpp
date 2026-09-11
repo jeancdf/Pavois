@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -34,6 +35,8 @@ constexpr std::uint8_t kBnoEulerLsb = 0x1A;
 constexpr std::uint8_t kBnoCalibStat = 0x35;
 constexpr int kBnoAddrA = 0x28;
 constexpr int kBnoAddrB = 0x29;
+// NDOF fusion heading is unreliable until the magnetometer reaches this level (0-3).
+constexpr int kBnoMinMagCalib = 2;
 
 double wrap360(double deg) {
     double x = std::fmod(deg, 360.0);
@@ -136,10 +139,29 @@ public:
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
         err_.clear();
+
+        std::uint8_t calib_byte = 0;
+        if (bus_.read_reg(addr_, kBnoCalibStat, &calib_byte, 1)) {
+            log_calib_if_changed(bno055_calib_from_byte(calib_byte));
+        }
         return true;
     }
 
     bool read(ImuSample& sample) override {
+        std::uint8_t calib_byte = 0;
+        if (!bus_.read_reg(addr_, kBnoCalibStat, &calib_byte, 1)) {
+            err_ = "CALIB_STAT read failed: " + bus_.error();
+            sample.valid = false;
+            return false;
+        }
+        const ImuCalibStatus calib = bno055_calib_from_byte(calib_byte);
+        log_calib_if_changed(calib);
+        if (calib.mag < kBnoMinMagCalib) {
+            err_ = "magnetometer not calibrated (mag=" + std::to_string(calib.mag) + ")";
+            sample.valid = false;
+            return false;
+        }
+
         std::uint8_t bytes[6] = {};
         if (!bus_.read_reg(addr_, kBnoEulerLsb, bytes, 6)) {
             err_ = bus_.error();
@@ -152,11 +174,8 @@ public:
             sample.valid = false;
             return false;
         }
-        // A missed CALIB_STAT read leaves calibration unknown, not the heading.
-        std::uint8_t stat = 0;
-        if (bus_.read_reg(addr_, kBnoCalibStat, &stat, 1)) {
-            bno055_calib_from_byte(stat, raw);
-        }
+        // Same CALIB_STAT snapshot used for the mag gate and att token.
+        bno055_calib_from_byte(calib_byte, raw);
         sample = apply_imu_offsets(raw, cfg_);
         err_.clear();
         return sample.valid;
@@ -171,11 +190,22 @@ private:
         return out.str();
     }
 
+    void log_calib_if_changed(const ImuCalibStatus& calib) {
+        if (calib_logged_ && calib == last_calib_) return;
+        calib_logged_ = true;
+        last_calib_ = calib;
+        std::cerr << "[IMU] BNO055 " << dev_ << " calibration: sys=" << calib.sys
+                   << " gyro=" << calib.gyro << " accel=" << calib.accel
+                   << " mag=" << calib.mag << '\n';
+    }
+
     std::string dev_;
     int addr_ = 0;
     AppConfig cfg_;
     I2cBus bus_;
     std::string err_;
+    ImuCalibStatus last_calib_;
+    bool calib_logged_ = false;
 };
 
 #endif
@@ -305,6 +335,15 @@ std::string format_calib_token(const ImuSample& sample) {
         }
     }
     return any_known ? token : "-";
+}
+
+ImuCalibStatus bno055_calib_from_byte(std::uint8_t byte) {
+    ImuCalibStatus status;
+    status.mag = byte & 0x03;
+    status.accel = (byte >> 2) & 0x03;
+    status.gyro = (byte >> 4) & 0x03;
+    status.sys = (byte >> 6) & 0x03;
+    return status;
 }
 
 std::unique_ptr<ImuReader> open_imu(const AppConfig& cfg) {

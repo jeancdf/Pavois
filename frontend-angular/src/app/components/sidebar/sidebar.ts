@@ -96,6 +96,10 @@ export class Sidebar implements OnDestroy {
     return `${value.toFixed(1)}°`;
   }
 
+  fmtRange(value: number): string {
+    return `${Math.round(value)} m`;
+  }
+
   startEditing(camera: CameraPosition): void {
     this.positionForm.reset({
       lat: camera.lat,

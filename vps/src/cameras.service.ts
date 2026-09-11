@@ -11,19 +11,39 @@ export interface CameraConfig {
   alt: number;
   headingDeg: number;
   fovDeg: number;
+  rangeM: number;
 }
 
 export type CameraPosition = Pick<CameraConfig, 'lat' | 'lon' | 'alt'>;
 
 const ATTITUDE_MIN_DELTA_DEG = 0.4;
 
+// Portée par défaut d'une caméra (m), utilisée pour dessiner le cône de champ
+// de vision. Avant ce champ, le frontend calculait une "portée" en prenant la
+// distance entre les deux premières caméras du parc (~1m entre elles) — les
+// cônes étaient donc invisibles à toute échelle utile.
+//
+// 60m reprend fusion_max_range_m=60 (pavois++.conf, plafond de sécurité déjà
+// utilisé par le pipeline de fusion réel) plutôt que le max_range_m=30 de
+// PLAN.md, qui n'est qu'un schéma Django illustratif, pas une mesure.
+//
+// Vérification optique (config réelle déployée sur walid le 11/09/2026 :
+// FOV 65°, largeur traitée 1280px, min_blob_area=12px² dans pavois++.conf) :
+// résolution angulaire ≈ 65/1280 = 0.0508°/px, taille min détectable
+// ≈ √12 px ≈ 3.46px → angle min ≈ 0.00307 rad. Portée théorique au seuil
+// minimum (bruité, pas confirmé sur plusieurs frames) : ~98m pour un drone de
+// 0.3m, ~163m pour 0.5m. 60m reste donc un plafond conservateur par rapport à
+// cette limite optique, pas une vraie portée mesurée sur le terrain — à
+// affiner avec un test réel.
+const DEFAULT_RANGE_M = 60;
+
 // Caméras des trois Pi (le script d'installation donne à camera.0.id le nom de la Pi).
 // Positions provisoires reprises du dernier site de pavois++/pavois++.conf, à placer
 // depuis le frontend. FOV de pavois++/deploy/pavois.conf.example (OV5647).
 const DEFAULT_CAMERAS: CameraConfig[] = [
-  { id: 'jean', lat: 48.826132, lon: 2.365856, alt: 58.524, headingDeg: 164, fovDeg: 65 },
-  { id: 'tanel', lat: 48.826134, lon: 2.365869, alt: 58.524, headingDeg: 164, fovDeg: 65 },
-  { id: 'walid', lat: 48.826098, lon: 2.365877, alt: 58.524, headingDeg: 344, fovDeg: 65 },
+  { id: 'jean', lat: 48.826132, lon: 2.365856, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
+  { id: 'tanel', lat: 48.826134, lon: 2.365869, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
+  { id: 'walid', lat: 48.826098, lon: 2.365877, alt: 58.524, headingDeg: 344, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
 ];
 
 function isFiniteNumber(value: unknown): value is number {
@@ -44,12 +64,16 @@ export function isCameraPosition(value: unknown): value is CameraPosition {
 
 function isCameraConfig(value: unknown): value is CameraConfig {
   if (!isCameraPosition(value)) return false;
-  const { id, headingDeg, fovDeg } = value as Partial<CameraConfig>;
+  const { id, headingDeg, fovDeg, rangeM } = value as Partial<CameraConfig>;
   return (
     typeof id === 'string' &&
     id.length > 0 &&
     isFiniteNumber(headingDeg) &&
-    isFiniteNumber(fovDeg)
+    isFiniteNumber(fovDeg) &&
+    // rangeM est optionnel à la lecture : un data/cameras.json écrit avant
+    // l'ajout de ce champ ne doit pas empêcher le backend de démarrer, voir
+    // le backfill dans load().
+    (rangeM === undefined || (isFiniteNumber(rangeM) && rangeM > 0))
   );
 }
 
@@ -115,7 +139,11 @@ export class CamerasService {
     if (!Array.isArray(cameras) || !cameras.every(isCameraConfig)) {
       throw new Error(`Configuration caméras invalide (${this.filePath})`);
     }
-    return cameras;
+    // Backfill pour un fichier écrit avant l'ajout de rangeM.
+    return cameras.map((camera) => ({
+      ...camera,
+      rangeM: isFiniteNumber(camera.rangeM) && camera.rangeM > 0 ? camera.rangeM : DEFAULT_RANGE_M,
+    }));
   }
 
   // Fichier temporaire puis renommage : jamais de fichier à moitié écrit.

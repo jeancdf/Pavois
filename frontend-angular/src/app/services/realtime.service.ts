@@ -128,7 +128,9 @@ export class RealtimeService implements OnDestroy {
   }
 
   private storeImuSample(
-    sample: Omit<ImuSample, 'receivedAt'>,
+    // calibration/valid absents si le VPS n'est pas à jour.
+    sample: Omit<ImuSample, 'receivedAt' | 'calibration' | 'valid'> &
+      Partial<Pick<ImuSample, 'calibration' | 'valid'>>,
   ): void {
     if (!sample?.cameraId) return;
     const stored: ImuSample = {
@@ -136,6 +138,8 @@ export class RealtimeService implements OnDestroy {
       headingDeg: sample.headingDeg,
       elevationDeg: sample.elevationDeg,
       rollDeg: sample.rollDeg,
+      calibration: sample.calibration ?? null,
+      valid: sample.valid ?? true,
       timestamp: sample.timestamp,
       receivedAt: Date.now(),
     };

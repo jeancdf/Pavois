@@ -1,7 +1,14 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { AuthTokenGuard } from './access-control';
 import { AttitudeDto } from './attitude.dto';
+import { parseCalibrationToken } from './udp-attitude';
 import { UdpService } from './udp.service';
 
 @Controller()
@@ -13,12 +20,19 @@ export class AttitudeController {
   @SkipThrottle()
   @Post('attitude')
   ingest(@Body() body: AttitudeDto): { ok: true } {
+    const calibration =
+      body.calib === undefined ? null : parseCalibrationToken(body.calib);
+    if (calibration === undefined) {
+      throw new BadRequestException('calib must be SGAM (0-3 or -) or -');
+    }
     this.udpService.ingestAttitude({
       cameraId: body.cameraId,
       headingDeg: body.headingDeg,
       elevationDeg: body.elevationDeg,
       rollDeg: body.rollDeg,
       timestamp: body.timestamp ?? Date.now(),
+      calibration,
+      valid: body.valid ?? true,
     });
     return { ok: true };
   }

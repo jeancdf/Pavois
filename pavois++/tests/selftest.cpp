@@ -711,6 +711,14 @@ void test_imu() {
     check_near(parsed.heading_deg, 90.0, 1e-9, "bno heading 90");
     check_near(parsed.elevation_deg, 2.0, 1e-9, "bno pitch 2");
 
+    ImuSample calib{};
+    check(format_calib_token(calib) == "-", "calib unknown token");
+    bno055_calib_from_byte(0xC7, calib);
+    check(calib.calib_sys == 3 && calib.calib_gyro == 0 &&
+              calib.calib_accel == 1 && calib.calib_mag == 3,
+          "bno calib decode");
+    check(format_calib_token(calib) == "3013", "calib token");
+
     AppConfig cfg;
     cfg.imu_heading_offset_deg = 20.0;
     const ImuSample out = apply_imu_offsets({350.0, 5.0, 1.0, true}, cfg);
@@ -738,6 +746,36 @@ void test_imu() {
     check(reader && reader->read(live) && live.valid, "file imu read");
     check_near(live.heading_deg, 221.25, 1e-4, "file heading");
     check_near(live.elevation_deg, -3.5, 1e-4, "file elevation");
+    check(format_calib_token(live) == "-", "file imu without calib");
+    {
+        std::ofstream file(path);
+        file << "221.25 -3.5 0.5 3303\n";
+    }
+    ImuSample calibrated{};
+    check(reader && reader->read(calibrated) && calibrated.valid,
+          "file imu read with calib");
+    check(calibrated.calib_sys == 3 && calibrated.calib_gyro == 3 &&
+              calibrated.calib_accel == 0 && calibrated.calib_mag == 3,
+          "file calib levels");
+    check(format_calib_token(calibrated) == "3303", "file calib token");
+    {
+        std::ofstream file(path);
+        file << "221.25 -3.5 0.5 3403\n";
+    }
+    ImuSample bad_calib{};
+    check(reader && reader->read(bad_calib) && bad_calib.valid,
+          "file imu read with bad calib");
+    check(format_calib_token(bad_calib) == "-", "file bad calib ignored");
+    {
+        std::ofstream file(path);
+        file << "221.25 -3.5 0.5 ---2\n";
+    }
+    ImuSample mag_only{};
+    check(reader && reader->read(mag_only) && mag_only.valid,
+          "file imu read with mag-only calib");
+    check(mag_only.calib_sys == -1 && mag_only.calib_mag == 2,
+          "file mag-only levels");
+    check(format_calib_token(mag_only) == "---2", "file mag-only token");
     std::filesystem::remove_all(dir, ec);
 }
 

@@ -80,10 +80,18 @@ Les deux passerelles (Python et NestJS) appliquent la même logique de décodage
   ```
 
 ### C. Attitude IMU (orientation live)
-* **Format UDP (Chaîne CSV)** : `att,cameraId,timestamp,heading_deg,elevation_deg,roll_deg`
-* **Exemple** : `att,jean,1782465675417840,164.20,-1.50,0.30`
-* **Événement WS émis** : `"camera_positions"` (liste complète, `headingDeg` mis à jour)
-* Émis ~5 fois par seconde tant que le BNO055 fournit un échantillon valide.
+* **Format UDP (Chaîne CSV)** : `att,cameraId,timestamp,heading_deg,elevation_deg,roll_deg,calib,valid`
+* **Exemple** : `att,jean,1782465675417840,164.20,-1.50,0.30,3313,1`
+* **`calib`** : 4 caractères `SGAM` (sys, gyro, accel, mag), chacun un niveau 0–3 ou `-` s'il est inconnu ; `-` seul quand tout est inconnu (lecture ratée, pas d'IMU, bridge sans calibration).
+  * BNO055 : CALIB_STAT (0x35) complet, ex. `3013`.
+  * BNO08x (`scripts/bno08x_bridge.py`) : seule la précision du magnétomètre est exposée, ex. `---3`. Le bridge l'ajoute en 4ᵉ champ du fichier lu par le C++.
+* **`valid`** : `1` = angles frais (lecture IMU réussie, ou Pi sans IMU qui diffuse le `heading_deg` de sa config) ; `0` = lecture ratée, les angles sont la dernière pose connue (cap figé).
+* **Rétro-compatibilité** : l'ancienne trame à 6 champs reste acceptée (calibration inconnue, `valid` = 1). Un `calib` ou `valid` malformé fait rejeter la trame.
+* **Événements WS émis** :
+  * `"imu_update"` : `{ cameraId, headingDeg, elevationDeg, rollDeg, timestamp, calibration: { sys, gyro, accel, mag } | null, valid }`
+  * `"camera_positions"` (liste complète, `headingDeg` mis à jour) — uniquement si `valid` = 1.
+* Émis ~5 fois par seconde, y compris quand la lecture échoue (`valid` = 0).
+* **Repli HTTP** : `POST /attitude` accepte les mêmes informations en JSON : `calib` (même jeton, optionnel) et `valid` (booléen, défaut `true`). Un `calib` malformé renvoie 400.
 
 ### D. Messages Génériques / JSON brut (Fallback)
 * **Format UDP** : Tout message ne respectant pas les formats ci-dessus.

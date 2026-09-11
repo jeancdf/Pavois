@@ -61,6 +61,38 @@ describe('AppController (e2e)', () => {
       .expect({ ok: true });
   });
 
+  it('/attitude (POST) accepts calibration and a frozen heading', () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    return request(app.getHttpServer())
+      .post('/attitude')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cameraId: 'jean',
+        headingDeg: 171.4,
+        elevationDeg: -2.5,
+        rollDeg: 1.2,
+        calib: '---3',
+        valid: false,
+      })
+      .expect(201)
+      .expect({ ok: true });
+  });
+
+  it('/attitude (POST) rejects a malformed calibration token', () => {
+    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    return request(app.getHttpServer())
+      .post('/attitude')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cameraId: 'jean',
+        headingDeg: 171.4,
+        elevationDeg: -2.5,
+        rollDeg: 1.2,
+        calib: '3403',
+      })
+      .expect(400);
+  });
+
   it('/preview (POST) accepts a jpeg thumbnail', () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
     return request(app.getHttpServer())

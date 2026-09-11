@@ -186,7 +186,11 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       elevationDeg: attitude.elevationDeg,
       rollDeg: attitude.rollDeg,
       timestamp: attitude.timestamp,
+      calibration: attitude.calibration,
+      valid: attitude.valid,
     });
+    // Cap figé (lecture ratée côté Pi) : on ne tourne pas le cône.
+    if (!attitude.valid) return;
     const updated = this.camerasService.updateAttitude(
       attitude.cameraId,
       headingDeg,

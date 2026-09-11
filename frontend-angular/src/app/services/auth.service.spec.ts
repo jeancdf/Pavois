@@ -1,4 +1,3 @@
-import '../../setup-test-env';
 import { TestBed } from '@angular/core/testing';
 import {
   HttpTestingController,
@@ -32,7 +31,10 @@ describe('AuthService', () => {
     expect(req.request.headers.get('Authorization')).toBe(
       'Bearer nimporte-quoi',
     );
-    req.flush({ message: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+    req.flush(
+      { message: 'Unauthorized' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
 
     await expect(attempt).rejects.toThrow('jeton refusé');
     expect(service.isAuthenticated()).toBe(false);

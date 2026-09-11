@@ -44,6 +44,9 @@ elif ! grep -q '^imu.enabled=' /etc/pavois/pavois.conf; then
 imu.enabled=true
 imu.kind=auto
 imu.i2c_dev=/dev/i2c-1
+imu.i2c_fail_threshold=5
+imu.i2c_retry_min_ms=200
+imu.i2c_retry_max_ms=5000
 imu.calib_file=/var/lib/pavois/imu_calib.bin
 imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
@@ -61,6 +64,16 @@ preview.width=320
 preview.quality=55
 preview.http_port=8081
 preview.http_path=/api/preview
+EOF
+fi
+
+if [[ -f /etc/pavois/pavois.conf ]] && ! grep -q '^imu.i2c_fail_threshold=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+# Reopen I2C after consecutive errors; exponential backoff (ms).
+imu.i2c_fail_threshold=5
+imu.i2c_retry_min_ms=200
+imu.i2c_retry_max_ms=5000
 EOF
 fi
 

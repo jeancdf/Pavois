@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -57,8 +58,8 @@ double wrap360(double deg) {
 
 class I2cBus {
 public:
-    explicit I2cBus(const std::string& path) {
-        fd_ = ::open(path.c_str(), O_RDWR);
+    explicit I2cBus(const std::string& path) : path_(path) {
+        fd_ = ::open(path_.c_str(), O_RDWR);
         if (fd_ < 0) {
             err_ = std::strerror(errno);
         }
@@ -73,6 +74,20 @@ public:
 
     bool ok() const { return fd_ >= 0; }
     const std::string& error() const { return err_; }
+
+    bool reopen() {
+        if (fd_ >= 0) {
+            ::close(fd_);
+            fd_ = -1;
+        }
+        fd_ = ::open(path_.c_str(), O_RDWR);
+        if (fd_ < 0) {
+            err_ = std::strerror(errno);
+            return false;
+        }
+        err_.clear();
+        return true;
+    }
 
     bool write_reg(int addr, std::uint8_t reg, std::uint8_t value) {
         std::uint8_t buf[2] = {reg, value};
@@ -113,6 +128,7 @@ private:
         return true;
     }
 
+    std::string path_;
     int fd_ = -1;
     std::string err_;
 };
@@ -165,17 +181,64 @@ public:
     }
 
     bool read(ImuSample& sample) override {
+        // Shared by CameraWorker threads. Mutex covers Euler reads and
+        // I2C reopen+init so CONFIG→NDOF cannot race another transfer.
+        std::lock_guard<std::mutex> lock(mu_);
+        const auto now_ms = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                    .count());
+        bool bus_fail = false;
+        if (read_once(sample, bus_fail)) return true;
+        if (!bus_fail) return false;
+        if (!recover_if_needed(now_ms)) return false;
+        return read_once(sample, bus_fail);
+    }
+
+    const std::string& last_error() const override {
+        std::lock_guard<std::mutex> lock(mu_);
+        return err_;
+    }
+
+private:
+    bool recover_if_needed(std::uint64_t now_ms) {
+        if (!watchdog_.should_reopen(
+                now_ms, cfg_.imu_i2c_fail_threshold,
+                cfg_.imu_i2c_retry_min_ms,
+                cfg_.imu_i2c_retry_max_ms)) {
+            return false;
+        }
+        std::cerr << "[IMU] I2C reopen after " << watchdog_.consecutive
+                  << " consecutive failures on " << dev_ << '\n';
+        if (!bus_.reopen()) {
+            err_ = "I2C reopen failed: " + bus_.error();
+            std::cerr << "[IMU] " << err_ << '\n';
+            return false;
+        }
+        if (!init()) {
+            std::cerr << "[IMU] BNO055 re-init failed: " << err_ << '\n';
+            return false;
+        }
+        watchdog_.on_success();
+        std::cerr << "[IMU] BNO055 re-init ok after bus reset\n";
+        return true;
+    }
+
+    bool read_once(ImuSample& sample, bool& bus_fail) {
+        bus_fail = false;
         std::uint8_t calib_byte = 0;
         if (!bus_.read_reg(addr_, kBnoCalibStat, &calib_byte, 1)) {
             err_ = "CALIB_STAT read failed: " + bus_.error();
             sample.valid = false;
+            bus_fail = true;
             return false;
         }
         const ImuCalibStatus calib = bno055_calib_from_byte(calib_byte);
         log_calib_if_changed(calib);
         persist_offsets_if_calibrated(calib.sys);
         if (calib.mag < kBnoMinMagCalib) {
-            err_ = "magnetometer not calibrated (mag=" + std::to_string(calib.mag) + ")";
+            err_ = "magnetometer not calibrated (mag=" +
+                   std::to_string(calib.mag) + ")";
             sample.valid = false;
             return false;
         }
@@ -184,6 +247,7 @@ public:
         if (!bus_.read_reg(addr_, kBnoEulerLsb, bytes, 6)) {
             err_ = bus_.error();
             sample.valid = false;
+            bus_fail = true;
             return false;
         }
         ImuSample raw;
@@ -196,12 +260,10 @@ public:
         bno055_calib_from_byte(calib_byte, raw);
         sample = apply_imu_offsets(raw, cfg_);
         err_.clear();
+        if (sample.valid) watchdog_.on_success();
         return sample.valid;
     }
 
-    const std::string& last_error() const override { return err_; }
-
-private:
     static std::string hex(int v) {
         std::ostringstream out;
         out << std::hex << v;
@@ -264,6 +326,8 @@ private:
     int addr_ = 0;
     AppConfig cfg_;
     I2cBus bus_;
+    I2cFailWatchdog watchdog_;
+    mutable std::mutex mu_;
     std::string err_;
     ImuCalibStatus last_calib_;
     bool calib_logged_ = false;
@@ -279,6 +343,8 @@ public:
         : path_(std::move(path)), cfg_(cfg) {}
 
     bool read(ImuSample& sample) override {
+        // Shared by CameraWorker threads.
+        std::lock_guard<std::mutex> lock(mu_);
 #if defined(__linux__)
         struct stat info{};
         if (::stat(path_.c_str(), &info) != 0 || std::time(nullptr) - info.st_mtime > 2) {
@@ -318,11 +384,15 @@ public:
         return sample.valid;
     }
 
-    const std::string& last_error() const override { return err_; }
+    const std::string& last_error() const override {
+        std::lock_guard<std::mutex> lock(mu_);
+        return err_;
+    }
 
 private:
     std::string path_;
     AppConfig cfg_;
+    mutable std::mutex mu_;
     std::string err_;
 };
 
@@ -342,6 +412,34 @@ std::unique_ptr<ImuReader> open_bno(const AppConfig& cfg, int addr) {
 #endif
 
 }  // namespace
+
+int imu_i2c_backoff_ms(int attempt, int min_ms, int max_ms) {
+    if (attempt < 0 || max_ms < min_ms) return min_ms;
+    if (min_ms <= 0) return min_ms;
+    if (attempt > 30) return max_ms;
+    const long long delay =
+        static_cast<long long>(min_ms) << attempt;
+    if (delay > max_ms) return max_ms;
+    return static_cast<int>(delay);
+}
+
+void I2cFailWatchdog::on_success() {
+    consecutive = 0;
+    reopen_attempts = 0;
+    next_retry_ms = 0;
+}
+
+bool I2cFailWatchdog::should_reopen(std::uint64_t now_ms, int threshold,
+                                   int min_ms, int max_ms) {
+    ++consecutive;
+    if (consecutive < threshold) return false;
+    if (now_ms < next_retry_ms) return false;
+    const int delay =
+        imu_i2c_backoff_ms(reopen_attempts, min_ms, max_ms);
+    next_retry_ms = now_ms + static_cast<std::uint64_t>(delay);
+    ++reopen_attempts;
+    return true;
+}
 
 double wrap_heading_deg(double deg) { return wrap360(deg); }
 

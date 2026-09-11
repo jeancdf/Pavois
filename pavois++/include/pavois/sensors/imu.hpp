@@ -54,9 +54,25 @@ bool load_imu_calib_offsets(const std::string& path,
 bool save_imu_calib_offsets(const std::string& path,
                             const std::uint8_t data[kBnoCalibOffsetBytes]);
 
+// Exponential backoff: min_ms * 2^attempt, clamped to max_ms. attempt>=0.
+int imu_i2c_backoff_ms(int attempt, int min_ms, int max_ms);
+
+// Consecutive I2C fail / reopen scheduler. now_ms is monotonic milliseconds.
+struct I2cFailWatchdog {
+    int consecutive = 0;
+    int reopen_attempts = 0;
+    std::uint64_t next_retry_ms = 0;
+
+    void on_success();
+    // Record a bus failure. Returns true if caller should reopen+init NOW.
+    bool should_reopen(std::uint64_t now_ms, int threshold,
+                       int min_ms, int max_ms);
+};
+
 class ImuReader {
 public:
     virtual ~ImuReader() = default;
+    // Thread-safe: CameraWorkers share one reader per process.
     virtual bool read(ImuSample& sample) = 0;
     virtual const std::string& last_error() const = 0;
 };

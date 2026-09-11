@@ -12,6 +12,7 @@ describe('FusionController', () => {
     historyWindowMs: 2000,
     staleAfterMs: 2000,
     lastFuse: null,
+    tracks: [],
     cameras: [
       {
         cameraId: 'jean',

@@ -1,5 +1,13 @@
+import {
+  lookAt,
+  makeIntrinsics,
+  projectWorldToPixel,
+  type Vec3,
+} from './fusion-geo';
 import { FusionService } from './fusion.service';
 import { FusionObservation } from './fusion.types';
+
+const TARGET: Vec3 = { x: 2, y: 30, z: 12 };
 
 function observation(
   cameraId: string,
@@ -16,6 +24,38 @@ function observation(
     receivedAtMs: Date.now(),
     ...extra,
   };
+}
+
+function posedObservation(
+  cameraId: string,
+  eye: Vec3,
+  extra: Partial<FusionObservation> = {},
+): FusionObservation {
+  const pose = lookAt(eye, TARGET);
+  const intr = makeIntrinsics(1280, 720, 70);
+  const pix = projectWorldToPixel(intr, pose, TARGET);
+  if (!pix) {
+    throw new Error(`no projection for ${cameraId}`);
+  }
+  return observation(cameraId, {
+    timestampUs: 1_000_000,
+    x: pix[0],
+    y: pix[1],
+    camX: pose.x,
+    camY: pose.y,
+    camZ: pose.z,
+    headingDeg: pose.headingDeg,
+    elevationDeg: pose.elevationDeg,
+    rollDeg: pose.rollDeg,
+    fx: intr.fx,
+    fy: intr.fy,
+    cx: intr.cx,
+    cy: intr.cy,
+    fovDeg: intr.fovDeg,
+    imageWidth: intr.imageWidth,
+    imageHeight: intr.imageHeight,
+    ...extra,
+  });
 }
 
 describe('FusionService', () => {
@@ -115,5 +155,31 @@ describe('FusionService', () => {
 
     const ids = service.snapshot(nowMs).cameras.map((c) => c.cameraId);
     expect(ids).toEqual(['jean', 'tanel', 'walid']);
+  });
+
+  it('fuses jean/tanel/walid onto a nearby 3D point', () => {
+    const nowMs = Date.now();
+    const extra = { receivedAtMs: nowMs };
+    service.ingest(posedObservation('jean', { x: -12, y: -2, z: 2 }, extra));
+    service.ingest(posedObservation('tanel', { x: 11, y: 1, z: 2 }, extra));
+    service.ingest(posedObservation('walid', { x: 0, y: -14, z: 3 }, extra));
+
+    const fuse = service.snapshot(nowMs).lastFuse;
+    expect(fuse?.ok).toBe(true);
+    expect(fuse?.point).toBeTruthy();
+    const p = fuse!.point!;
+    const err = Math.hypot(p.x - TARGET.x, p.y - TARGET.y, p.z - TARGET.z);
+    expect(err).toBeLessThan(1);
+  });
+
+  it('rejects two nearly collinear cameras', () => {
+    const nowMs = Date.now();
+    const extra = { receivedAtMs: nowMs };
+    service.ingest(posedObservation('jean', { x: 0, y: 0, z: 2 }, extra));
+    service.ingest(posedObservation('tanel', { x: 0.15, y: 0, z: 2 }, extra));
+
+    const fuse = service.snapshot(nowMs).lastFuse;
+    expect(fuse?.ok).toBe(false);
+    expect(fuse?.rejectReason).toBe('no subset passed parallax/residual gates');
   });
 });

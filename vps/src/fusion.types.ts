@@ -18,6 +18,11 @@ export interface FusionObservation {
   lat?: number;
   lon?: number;
   alt?: number;
+  camX?: number;
+  camY?: number;
+  camZ?: number;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface FusionCameraState {
@@ -33,10 +38,21 @@ export interface FusionCameraState {
   lastConfidence: number | null;
 }
 
+export interface FusionLastFuse {
+  ok: boolean;
+  rejectReason: string | null;
+  residualM: number | null;
+  parallaxDeg: number | null;
+  confidence: number | null;
+  cameras: string[];
+  point: { x: number; y: number; z: number } | null;
+}
+
 export interface FusionSnapshot {
   activeCameras: number;
   cameraCount: number;
   historyWindowMs: number;
   staleAfterMs: number;
   cameras: FusionCameraState[];
+  lastFuse: FusionLastFuse | null;
 }

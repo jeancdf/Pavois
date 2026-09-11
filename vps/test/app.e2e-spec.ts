@@ -5,10 +5,13 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { applyBodyParsers } from './../src/http-body';
 
+const TEST_AUTH_TOKEN = 'e2e-test-token';
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
+    process.env.WS_AUTH_TOKEN = TEST_AUTH_TOKEN;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -37,7 +40,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/auth/verify (GET) accepts the configured token', () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     return request(app.getHttpServer())
       .get('/auth/verify')
       .set('Authorization', `Bearer ${token}`)
@@ -46,7 +49,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/attitude (POST) accepts a live IMU sample', () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     return request(app.getHttpServer())
       .post('/attitude')
       .set('Authorization', `Bearer ${token}`)

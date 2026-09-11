@@ -26,9 +26,27 @@ export function isIpAllowed(ip: string): boolean {
   return allowedIps.includes(ip);
 }
 
+/** Valeurs d'exemple présentes dans les fichiers .env.*example du dépôt : jamais acceptées comme jeton réel. */
+const PLACEHOLDER_AUTH_TOKENS = new Set(['dev-pavois-token', 'change-me', 'staging-token-change-me']);
+
+/**
+ * Vérifie que WS_AUTH_TOKEN est défini et n'est pas une valeur d'exemple publiée dans le dépôt.
+ * À appeler au démarrage : on préfère un échec explicite au boot à une authentification
+ * silencieusement contournable si la variable d'environnement est absente.
+ */
+export function assertAuthTokenConfigured(): void {
+  const token = process.env.WS_AUTH_TOKEN;
+  if (!token || PLACEHOLDER_AUTH_TOKENS.has(token)) {
+    throw new Error(
+      "WS_AUTH_TOKEN est absent ou correspond à une valeur d'exemple (.env.example). " +
+        "Définissez un jeton secret réel dans l'environnement avant de démarrer le serveur.",
+    );
+  }
+}
+
 export function isValidAuthToken(token: string | null | undefined): boolean {
-  const expectedToken = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
-  return !!token && token === expectedToken;
+  const expectedToken = process.env.WS_AUTH_TOKEN;
+  return !!expectedToken && !!token && token === expectedToken;
 }
 
 /** Même jeton que le WebSocket, transmis en `Authorization: Bearer <token>`. */

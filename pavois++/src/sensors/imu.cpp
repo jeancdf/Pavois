@@ -33,6 +33,8 @@ constexpr std::uint8_t kBnoConfigMode = 0x00;
 constexpr std::uint8_t kBnoNdof = 0x0C;
 constexpr std::uint8_t kBnoEulerLsb = 0x1A;
 constexpr std::uint8_t kBnoCalibStat = 0x35;
+constexpr std::uint8_t kBnoAxisMapConfig = 0x41;
+constexpr std::uint8_t kBnoAxisMapSign = 0x42;
 constexpr int kBnoAddrA = 0x28;
 constexpr int kBnoAddrB = 0x29;
 // NDOF fusion heading is unreliable until the magnetometer reaches this level (0-3).
@@ -133,6 +135,11 @@ public:
         bus_.write_reg(addr_, kBnoPageId, 0);
         bus_.write_reg(addr_, kBnoOprMode, kBnoConfigMode);
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        // AXIS_MAP_CONFIG/AXIS_MAP_SIGN are only writable in CONFIG mode. Written
+        // unconditionally on every init so the mounting-specific remap always takes
+        // effect; scalar offsets alone cannot correct a swapped physical axis.
+        bus_.write_reg(addr_, kBnoAxisMapConfig, static_cast<std::uint8_t>(cfg_.imu_axis_map));
+        bus_.write_reg(addr_, kBnoAxisMapSign, static_cast<std::uint8_t>(cfg_.imu_axis_sign));
         if (!bus_.write_reg(addr_, kBnoOprMode, kBnoNdof)) {
             err_ = "BNO055 mode switch failed: " + bus_.error();
             return false;

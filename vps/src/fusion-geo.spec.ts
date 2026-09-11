@@ -1,6 +1,8 @@
 import {
   Ray,
   Vec3,
+  enuToGps,
+  gpsToEnu,
   leastSquaresIntersection,
   lookAt,
   makeIntrinsics,
@@ -78,5 +80,20 @@ describe('fusion-geo', () => {
     }
     const ray = pixelToRay(intr, pose, pix[0], pix[1]);
     expect(rayResidual(ray, target)).toBeLessThan(1e-6);
+  });
+
+  it('enuToGps inverts gpsToEnu', () => {
+    const origin = { lat: 48.82608, lon: 2.3659, alt: 58.52 };
+    const enu: Vec3 = { x: 2, y: 30, z: 12 };
+    const gps = enuToGps(enu, origin);
+    const back = gpsToEnu(
+      gps.lat,
+      gps.lng,
+      gps.alt,
+      origin.lat,
+      origin.lon,
+      origin.alt,
+    );
+    expect(vNorm(vSub(back, enu))).toBeLessThan(1e-6);
   });
 });

@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { timeAlign } from './fusion-align';
 import {
+  enuToGps,
   gpsToEnu,
   makeIntrinsics,
   type CameraIntrinsics,
   type CameraPose,
+  type GeoOrigin,
   type Vec3,
 } from './fusion-geo';
 import {
@@ -19,6 +21,7 @@ import {
   FusionObservation,
   FusionSnapshot,
   FusionTrack,
+  FusionTrackUpdate,
 } from './fusion.types';
 
 interface CameraLastSeen {
@@ -30,10 +33,23 @@ interface CameraLastSeen {
   hasPose: boolean;
 }
 
-interface GpsOrigin {
-  lat: number;
-  lon: number;
-  alt: number;
+function toWsUpdates(
+  tracks: FusionTrack[],
+  origin: GeoOrigin,
+): FusionTrackUpdate[] {
+  const out: FusionTrackUpdate[] = [];
+  for (const t of tracks) {
+    const gps = enuToGps({ x: t.x, y: t.y, z: t.z }, origin);
+    out.push({
+      type: 'track_update',
+      trackId: 'obj' + t.objectId,
+      lat: gps.lat,
+      lng: gps.lng,
+      alt: gps.alt,
+      timestamp: t.timestampUs,
+    });
+  }
+  return out;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -138,8 +154,9 @@ export class FusionService {
   private lastFuseUs = 0;
   private readonly tracker = new Tracker(trackerConfigFromEnv());
   private tracks: FusionTrack[] = [];
+  private pendingTrackUpdates: FusionTrackUpdate[] = [];
   // Origine ENU figée à la première obs GPS.
-  private origin: GpsOrigin | null = null;
+  private origin: GeoOrigin | null = null;
 
   ingest(obs: FusionObservation): void {
     if (!obs.cameraId) {
@@ -192,6 +209,13 @@ export class FusionService {
     return deque.slice();
   }
 
+  // GPS track_update payloads from the last fuse tick. Drains the queue.
+  pullTrackUpdates(): FusionTrackUpdate[] {
+    const out = this.pendingTrackUpdates;
+    this.pendingTrackUpdates = [];
+    return out;
+  }
+
   private tryFuse(tRefUs: number): void {
     const intervalUs = this.fusionWindowMs * 1000;
     if (this.lastFuseUs !== 0 && tRefUs < this.lastFuseUs + intervalUs) {
@@ -233,6 +257,9 @@ export class FusionService {
       );
     }
     this.tracks = this.tracker.tick(tRefUs);
+    this.pendingTrackUpdates = this.origin
+      ? toWsUpdates(this.tracks, this.origin)
+      : [];
   }
 
   private captureOrigin(obs: FusionObservation): void {

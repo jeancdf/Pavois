@@ -89,6 +89,8 @@ void CameraWorker::emit(const TrackUpdate& update) {
 }
 
 void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
+                                       const std::string& calib_token,
+                                       bool imu_valid,
                                        std::uint64_t now_us,
                                        std::uint64_t& last_att_us) {
     if (!udp_sender_ || !udp_sender_->valid()) return;
@@ -101,7 +103,8 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
     std::ostringstream line;
     line << "att," << cfg_.id << ',' << now_us << ',' << std::fixed
          << std::setprecision(2) << pose.heading_deg << ','
-         << pose.elevation_deg << ',' << pose.roll_deg;
+         << pose.elevation_deg << ',' << pose.roll_deg << ',' << calib_token
+         << ',' << (imu_valid ? '1' : '0');
     udp_sender_->send_line(line.str());
 }
 
@@ -142,11 +145,18 @@ void CameraWorker::operator()() {
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
         ImuSample imu_sample;
-        if (imu && imu->read(imu_sample) && imu_sample.valid) {
-            pose.heading_deg = imu_sample.heading_deg;
-            pose.elevation_deg = imu_sample.elevation_deg;
-            pose.roll_deg = imu_sample.roll_deg;
-            maybe_emit_attitude(pose, frame.captured_us, last_att_us);
+        if (imu) {
+            const bool imu_ok = imu->read(imu_sample) && imu_sample.valid;
+            if (imu_ok) {
+                pose.heading_deg = imu_sample.heading_deg;
+                pose.elevation_deg = imu_sample.elevation_deg;
+                pose.roll_deg = imu_sample.roll_deg;
+            }
+            // A failed read still emits (valid=0, last pose) so the UI can
+            // tell a frozen heading from a live one.
+            maybe_emit_attitude(pose,
+                                imu_ok ? format_calib_token(imu_sample) : "-",
+                                imu_ok, frame.captured_us, last_att_us);
         }
 
         const DetectionResult det = detector.process(frame);

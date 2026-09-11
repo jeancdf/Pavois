@@ -136,13 +136,15 @@ function simulatedTrackUpdate() {
   return { type: 'track_update', timestamp: Date.now(), ...track };
 }
 
-function simulatedImu(cameraId, headingBase) {
+function simulatedImu(cameraId, headingBase, calibration, valid = true) {
   const t = Date.now() / 1000;
   return {
     cameraId,
     headingDeg: headingBase + Math.sin(t) * 8,
     elevationDeg: Math.sin(t * 1.3) * 3,
     rollDeg: Math.cos(t * 0.9) * 2,
+    calibration,
+    valid,
     timestamp: Date.now(),
   };
 }
@@ -162,15 +164,17 @@ wss.on('connection', (socket) => {
   const imuInterval = setInterval(() => {
     socket.send(JSON.stringify({
       event: 'imu_update',
-      data: simulatedImu('cam0', cameras[0].headingDeg),
+      data: simulatedImu('cam0', cameras[0].headingDeg, { sys: 3, gyro: 3, accel: 3, mag: 3 }),
     }));
     socket.send(JSON.stringify({
       event: 'imu_update',
-      data: simulatedImu('cam1', cameras[1].headingDeg),
+      // Magnétomètre pas calibré : doit s'afficher « calibration partielle ».
+      data: simulatedImu('cam1', cameras[1].headingDeg, { sys: 2, gyro: 3, accel: 3, mag: 1 }),
     }));
     socket.send(JSON.stringify({
       event: 'imu_update',
-      data: simulatedImu('pi-inconnu', 42),
+      // Lecture ratée côté Pi : doit s'afficher « cap figé ».
+      data: simulatedImu('pi-inconnu', 42, null, false),
     }));
   }, IMU_INTERVAL_MS);
 

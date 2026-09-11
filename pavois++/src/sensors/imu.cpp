@@ -29,6 +29,7 @@ constexpr std::uint8_t kBnoOprMode = 0x3D;
 constexpr std::uint8_t kBnoConfigMode = 0x00;
 constexpr std::uint8_t kBnoNdof = 0x0C;
 constexpr std::uint8_t kBnoEulerLsb = 0x1A;
+constexpr std::uint8_t kBnoCalibStat = 0x35;
 constexpr int kBnoAddrA = 0x28;
 constexpr int kBnoAddrB = 0x29;
 
@@ -149,6 +150,11 @@ public:
             sample.valid = false;
             return false;
         }
+        // A missed CALIB_STAT read leaves calibration unknown, not the heading.
+        std::uint8_t stat = 0;
+        if (bus_.read_reg(addr_, kBnoCalibStat, &stat, 1)) {
+            bno055_calib_from_byte(stat, raw);
+        }
         sample = apply_imu_offsets(raw, cfg_);
         err_.clear();
         return sample.valid;
@@ -191,6 +197,16 @@ public:
             return false;
         }
         raw.valid = true;
+        // Optional 4th token: calibration levels as "SGAM", e.g. 3303.
+        std::string calib;
+        if (in >> calib && calib.size() == 4 &&
+            std::all_of(calib.begin(), calib.end(),
+                        [](char ch) { return ch >= '0' && ch <= '3'; })) {
+            raw.calib_sys = calib[0] - '0';
+            raw.calib_gyro = calib[1] - '0';
+            raw.calib_accel = calib[2] - '0';
+            raw.calib_mag = calib[3] - '0';
+        }
         sample = apply_imu_offsets(raw, cfg_);
         err_.clear();
         return sample.valid;
@@ -254,6 +270,24 @@ bool bno055_euler_from_bytes(const std::uint8_t bytes[6], ImuSample& out) {
     out.roll_deg = roll;
     out.valid = true;
     return true;
+}
+
+void bno055_calib_from_byte(std::uint8_t stat, ImuSample& out) {
+    out.calib_sys = (stat >> 6) & 0x03;
+    out.calib_gyro = (stat >> 4) & 0x03;
+    out.calib_accel = (stat >> 2) & 0x03;
+    out.calib_mag = stat & 0x03;
+}
+
+std::string format_calib_token(const ImuSample& sample) {
+    const int levels[4] = {sample.calib_sys, sample.calib_gyro,
+                           sample.calib_accel, sample.calib_mag};
+    std::string token;
+    for (int level : levels) {
+        if (level < 0 || level > 3) return "-";
+        token.push_back(static_cast<char>('0' + level));
+    }
+    return token;
 }
 
 std::unique_ptr<ImuReader> open_imu(const AppConfig& cfg) {

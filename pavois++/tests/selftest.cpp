@@ -802,9 +802,31 @@ void test_imu() {
           "file mag-only levels");
     check(format_calib_token(mag_only) == "---2", "file mag-only token");
 
+    check(imu_i2c_backoff_ms(0, 200, 5000) == 200, "backoff attempt 0");
+    check(imu_i2c_backoff_ms(1, 200, 5000) == 400, "backoff attempt 1");
+    check(imu_i2c_backoff_ms(2, 200, 5000) == 800, "backoff attempt 2");
+    check(imu_i2c_backoff_ms(10, 200, 5000) == 5000, "backoff clamp");
+
+    I2cFailWatchdog dog;
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 1 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 2 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 3 no reopen");
+    check(!dog.should_reopen(0, 5, 200, 5000), "fail 4 no reopen");
+    check(dog.should_reopen(0, 5, 200, 5000), "fail 5 reopens");
+    check(!dog.should_reopen(50, 5, 200, 5000), "before retry no reopen");
+    dog.on_success();
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 1");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 2");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 3");
+    check(!dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 4");
+    check(dog.should_reopen(1000, 5, 200, 5000), "post-ok fail 5 reopens");
+
     AppConfig def_cfg;
     check(def_cfg.imu_calib_file == "/var/lib/pavois/imu_calib.bin",
           "default calib path");
+    check(def_cfg.imu_i2c_fail_threshold == 5, "default i2c fail threshold");
+    check(def_cfg.imu_i2c_retry_min_ms == 200, "default i2c retry min");
+    check(def_cfg.imu_i2c_retry_max_ms == 5000, "default i2c retry max");
     std::uint8_t discarded[kBnoCalibOffsetBytes]{};
     check(!load_imu_calib_offsets("", discarded), "empty path load");
     check(!save_imu_calib_offsets("", discarded), "empty path save");
@@ -843,10 +865,16 @@ void test_imu() {
     {
         std::ofstream file(conf_path);
         file << "imu.calib_file=/tmp/custom_imu.bin\n";
+        file << "imu.i2c_fail_threshold=7\n";
+        file << "imu.i2c_retry_min_ms=100\n";
+        file << "imu.i2c_retry_max_ms=3000\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
           "config calib_file");
+    check(loaded.imu_i2c_fail_threshold == 7, "config i2c fail threshold");
+    check(loaded.imu_i2c_retry_min_ms == 100, "config i2c retry min");
+    check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
 
     std::filesystem::remove_all(dir, ec);
 }

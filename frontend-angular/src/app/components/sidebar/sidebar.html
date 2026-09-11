@@ -55,8 +55,8 @@
           } @else {
             <span class="camera-coords">{{ camera.lat.toFixed(6) }}, {{ camera.lon.toFixed(6) }}</span>
             <span class="camera-meta">
-              alt {{ camera.alt }} m · azimut {{ camera.azimuthDeg }}° · FOV {{ camera.fovDeg }}° ·
-              portée {{ camera.rangeM }} m
+              alt {{ fmtAlt(camera.alt) }} · azimut {{ fmtDeg(camera.azimuthDeg) }} · FOV {{ fmtDeg(camera.fovDeg) }} ·
+              portée {{ fmtRange(camera.rangeM) }}
             </span>
             @if (imuOf(camera.id); as imu) {
               <span class="imu-block imu-live">

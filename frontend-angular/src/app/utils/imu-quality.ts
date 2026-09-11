@@ -7,7 +7,7 @@ export type ImuQuality = 'ok' | 'partielle' | 'inconnue' | 'figee' | 'silencieus
 /** Au-delà, la Pi est considérée muette. */
 export const IMU_STALE_MS = 2000;
 
-/** Niveau BNO055 minimal (sys et mag) pour faire confiance au cap absolu. */
+/** Niveau minimal (sys et mag, s'ils sont connus) pour faire confiance au cap. */
 export const IMU_MIN_TRUSTED_LEVEL = 2;
 
 export const IMU_QUALITY_LABELS: Record<ImuQuality, string> = {
@@ -21,11 +21,13 @@ export const IMU_QUALITY_LABELS: Record<ImuQuality, string> = {
 export function imuQuality(sample: ImuSample, now: number): ImuQuality {
   if (now - sample.receivedAt > IMU_STALE_MS) return 'silencieuse';
   if (!sample.valid) return 'figee';
-  const calibration = sample.calibration;
-  if (!calibration) return 'inconnue';
+  // Le BNO08x ne remonte que le magnétomètre : sys reste inconnu.
+  const sys = sample.calibration?.sys ?? null;
+  const mag = sample.calibration?.mag ?? null;
+  if (sys === null && mag === null) return 'inconnue';
   if (
-    calibration.sys < IMU_MIN_TRUSTED_LEVEL ||
-    calibration.mag < IMU_MIN_TRUSTED_LEVEL
+    (sys !== null && sys < IMU_MIN_TRUSTED_LEVEL) ||
+    (mag !== null && mag < IMU_MIN_TRUSTED_LEVEL)
   ) {
     return 'partielle';
   }
@@ -34,5 +36,6 @@ export function imuQuality(sample: ImuSample, now: number): ImuQuality {
 
 export function formatCalibration(calibration: ImuCalibration | null): string {
   if (!calibration) return '—';
-  return `S${calibration.sys} G${calibration.gyro} A${calibration.accel} M${calibration.mag}`;
+  const level = (value: number | null) => (value === null ? '-' : value);
+  return `S${level(calibration.sys)} G${level(calibration.gyro)} A${level(calibration.accel)} M${level(calibration.mag)}`;
 }

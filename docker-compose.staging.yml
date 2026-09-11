@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     ports:
       - "41235:41234/udp"
+      - "41234:41234/udp"
       - "3003:3002/tcp"
     env_file:
       - ./vps/.env.staging

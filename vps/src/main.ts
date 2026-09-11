@@ -6,9 +6,11 @@ import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { applyBodyParsers } from './http-body';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  applyBodyParsers(app);
 
   // 1. En-têtes HTTP de sécurité (Helmet)
   app.use(helmet());

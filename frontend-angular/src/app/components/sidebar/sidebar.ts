@@ -8,6 +8,7 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CameraPosition } from '../../models/world-position.model';
 import { ImuSample } from '../../models/imu-sample.model';
+import { CameraPreview } from '../../models/camera-preview.model';
 import { CameraConfigService } from '../../services/camera-config.service';
 import { NotificationService } from '../../services/notification.service';
 import { RealtimeService } from '../../services/realtime.service';
@@ -38,6 +39,16 @@ export class Sidebar implements OnDestroy {
     );
   });
 
+  readonly extraPreviewIds = computed(() => {
+    const known = new Set([
+      ...this.cameras().map((camera) => camera.id),
+      ...this.extraImuIds(),
+    ]);
+    return Object.keys(this.realtime.previewByCamera()).filter(
+      (id) => !known.has(id),
+    );
+  });
+
   readonly editingId = signal<string | null>(null);
   readonly saving = signal(false);
   readonly saveError = signal<string | null>(null);
@@ -64,6 +75,19 @@ export class Sidebar implements OnDestroy {
   imuOf(id: string): ImuSample | undefined {
     this.now();
     return this.realtime.imuOf(id);
+  }
+
+  previewOf(id: string): CameraPreview | undefined {
+    this.now();
+    return this.realtime.previewOf(id);
+  }
+
+  previewAge(id: string): string {
+    const preview = this.previewOf(id);
+    if (!preview) return 'hors ligne';
+    const ageMs = Math.max(0, this.now() - preview.receivedAt);
+    if (ageMs < 800) return 'live';
+    return `${(ageMs / 1000).toFixed(1)} s`;
   }
 
   imuAge(id: string): string {

@@ -16,7 +16,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/.." && pwd)
 
 apt-get update
-apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg i2c-tools
+apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg i2c-tools libssl-dev
 
 if ! getent group pavois >/dev/null; then
   groupadd --system pavois
@@ -46,6 +46,18 @@ imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
 imu.elevation_offset_deg=0.0
 imu.roll_offset_deg=0.0
+EOF
+fi
+
+if [[ -f /etc/pavois/pavois.conf ]] && ! grep -q '^preview.enabled=' /etc/pavois/pavois.conf; then
+  cat >> /etc/pavois/pavois.conf <<'EOF'
+
+preview.enabled=true
+preview.fps=2
+preview.width=320
+preview.quality=55
+preview.http_port=8081
+preview.http_path=/api/preview
 EOF
 fi
 

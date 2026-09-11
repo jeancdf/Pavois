@@ -106,6 +106,14 @@ struct AppConfig {
     double imu_roll_offset_deg = 0.0;
     double imu_elevation_sign = 1.0;
 
+    bool preview_enabled = true;
+    int preview_fps = 2;
+    int preview_width = 320;
+    int preview_quality = 55;
+    std::string preview_host;
+    int preview_http_port = 8081;
+    std::string preview_http_path = "/api/preview";
+
     double reference_lat = 0.0;
     double reference_lon = 0.0;
     double reference_alt = 0.0;

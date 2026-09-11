@@ -1,7 +1,7 @@
 [Unit]
 Description=Pavois camera detector
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target systemd-time-wait-sync.service
+After=network-online.target systemd-time-wait-sync.service
 Conflicts=pavois-camstream.service
 
 [Service]
@@ -10,6 +10,7 @@ User=pavois
 Group=pavois
 SupplementaryGroups=video
 WorkingDirectory=/opt/pavois
+EnvironmentFile=-/etc/pavois/telemetry.env
 ExecStart=/opt/pavois/bin/pavois_detect --config /etc/pavois/pavois.conf
 Restart=always
 RestartSec=5

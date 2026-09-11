@@ -3,7 +3,7 @@ import * as dgram from 'dgram';
 import * as crypto from 'crypto';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
-import { parseAttitudeLine } from './udp-attitude';
+import { parseAttitudeLine, wrapHeadingDeg, AttitudePacket } from './udp-attitude';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -88,29 +88,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         if (parts[0] === 'att' && parts.length >= 6) {
           const attitude = parseAttitudeLine(messageStr);
           if (!attitude) return;
-          // IMU brute : le front l'affiche même si l'id n'est
-          // pas dans camera_positions (diagnostic d'id mismatch).
-          this.eventsGateway.broadcast('imu_update', {
-            cameraId: attitude.cameraId,
-            headingDeg: attitude.headingDeg,
-            elevationDeg: attitude.elevationDeg,
-            rollDeg: attitude.rollDeg,
-            timestamp: attitude.timestamp,
-            calibration: attitude.calibration,
-            valid: attitude.valid,
-          });
-          // Cap figé (lecture ratée côté Pi) : on ne tourne pas le cône.
-          if (!attitude.valid) return;
-          const updated = this.camerasService.updateAttitude(
-            attitude.cameraId,
-            attitude.headingDeg,
-          );
-          if (updated) {
-            this.eventsGateway.broadcast(
-              'camera_positions',
-              this.camerasService.list(),
-            );
-          }
+          this.ingestAttitude(attitude);
           return;
         }
 
@@ -181,6 +159,32 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.server.bind(port, host);
+  }
+
+  /** IMU from UDP or HTTP: always broadcast, even if cameraId is unknown. */
+  ingestAttitude(attitude: AttitudePacket): void {
+    const headingDeg = wrapHeadingDeg(attitude.headingDeg);
+    this.eventsGateway.broadcast('imu_update', {
+      cameraId: attitude.cameraId,
+      headingDeg,
+      elevationDeg: attitude.elevationDeg,
+      rollDeg: attitude.rollDeg,
+      timestamp: attitude.timestamp,
+      calibration: attitude.calibration,
+      valid: attitude.valid,
+    });
+    // Cap figé (lecture ratée côté Pi) : on ne tourne pas le cône.
+    if (!attitude.valid) return;
+    const updated = this.camerasService.updateAttitude(
+      attitude.cameraId,
+      headingDeg,
+    );
+    if (updated) {
+      this.eventsGateway.broadcast(
+        'camera_positions',
+        this.camerasService.list(),
+      );
+    }
   }
 
   onModuleDestroy() {

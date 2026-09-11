@@ -1,9 +1,9 @@
-/** Niveaux de calibration BNO055 (0 = aucune, 3 = complète). */
+/** Niveaux de calibration (0 = aucune, 3 = complète, null = inconnu). */
 export interface ImuCalibration {
-  sys: number;
-  gyro: number;
-  accel: number;
-  mag: number;
+  sys: number | null;
+  gyro: number | null;
+  accel: number | null;
+  mag: number | null;
 }
 
 export interface ImuSample {

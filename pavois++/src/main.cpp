@@ -1,6 +1,7 @@
 #include "pavois/config/app_config.hpp"
 #include "pavois/fusion/fusion_engine.hpp"
 #include "pavois/runtime/camera_worker.hpp"
+#include "pavois/transport/http_poster.hpp"
 #include "pavois/transport/udp_sender.hpp"
 
 #include <algorithm>
@@ -124,6 +125,27 @@ int run(int argc, char** argv) {
         }
     }
 
+    std::shared_ptr<HttpPoster> preview_http;
+    if (config.preview_enabled) {
+        const std::string host = config.preview_host.empty()
+                                     ? config.output_host
+                                     : config.preview_host;
+        if (!host.empty() && config.preview_http_port > 0) {
+            preview_http = std::make_shared<HttpPoster>();
+            if (preview_http->open(host, config.preview_http_port,
+                                   config.preview_http_path)) {
+                std::cerr << "Preview HTTP: " << host << ':'
+                          << config.preview_http_port
+                          << config.preview_http_path << " @ "
+                          << config.preview_fps << " fps\n";
+            } else {
+                std::cerr << "Preview HTTP disabled: "
+                          << preview_http->last_error() << "\n";
+                preview_http.reset();
+            }
+        }
+    }
+
     for (auto& camera : config.cameras) {
         if (camera.frames < 0) {
             camera.frames = config.frames;
@@ -158,6 +180,7 @@ int run(int argc, char** argv) {
             std::cout,
             output_mutex,
             udp_sender,
+            preview_http,
             enabled_cameras == 1));
     }
 

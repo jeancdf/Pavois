@@ -56,6 +56,7 @@ export interface FusionTrack {
   z: number;
   confidence: number;
   cameras: string[];
+  classification: string;
 }
 
 /** WebSocket `track_update` payload (same shape as the UDP objN frame). */

@@ -48,6 +48,7 @@ private:
         bool confirmed = false;
         double confidence = 0.0;
         std::vector<std::string> cameras;
+        std::string classification = "other";
     };
 
     TrackUpdate make_update(const Track& t) const;

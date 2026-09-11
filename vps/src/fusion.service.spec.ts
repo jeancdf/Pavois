@@ -296,6 +296,7 @@ describe('FusionService', () => {
     expect(updates[0].lat).toBeCloseTo(gps.lat, 4);
     expect(updates[0].lng).toBeCloseTo(gps.lng, 4);
     expect(updates[0].alt).toBeCloseTo(gps.alt, 1);
+    expect(updates[0].classification).toBe('other');
     expect(service.pullTrackUpdates()).toEqual([]);
   });
 

@@ -21,19 +21,6 @@
 namespace pavois {
 namespace {
 
-std::string to_gps_csv(const TrackUpdate& u, double ref_lat, double ref_lon, double ref_alt) {
-    constexpr double kPi = 3.14159265358979323846;
-    constexpr double kEarthRadiusM = 6378137.0;
-    const double ref_lat_rad = ref_lat * kPi / 180.0;
-    const double lat = ref_lat + (u.y / kEarthRadiusM) * (180.0 / kPi);
-    const double lon = ref_lon + (u.x / (kEarthRadiusM * std::cos(ref_lat_rad))) * (180.0 / kPi);
-    const double alt = ref_alt + u.z;
-    std::ostringstream out;
-    out << "obj" << u.object_id << ',' << std::fixed << std::setprecision(7) << lat << ','
-        << lon << ',' << std::setprecision(2) << alt << ',' << u.timestamp_us;
-    return out.str();
-}
-
 CameraIntrinsics intrinsics_from(const CameraConfig& c) {
     CameraIntrinsics in;
     in.fx = c.fx;

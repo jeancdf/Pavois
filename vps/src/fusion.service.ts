@@ -47,6 +47,7 @@ function toWsUpdates(
       lng: gps.lng,
       alt: gps.alt,
       timestamp: t.timestampUs,
+      classification: t.classification || 'other',
     });
   }
   return out;

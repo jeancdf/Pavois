@@ -15,6 +15,15 @@
       >
         {{ cameraDragEnabled() ? 'terminer le déplacement' : 'déplacer les caméras' }}
       </button>
+      <button
+        type="button"
+        class="map-btn"
+        [class.active]="showRawRays()"
+        [attr.aria-pressed]="showRawRays()"
+        (click)="toggleRawRays()"
+      >
+        rayons bruts : {{ showRawRays() ? 'ON' : 'OFF' }}
+      </button>
       <button type="button" class="map-btn" (click)="resetView()">réinitialiser la vue</button>
     </div>
   </header>

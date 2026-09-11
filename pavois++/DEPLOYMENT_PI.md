@@ -48,8 +48,10 @@ Le script installe les dépendances, le compte de service `pavois` et le service
 systemd. Il autorise le compte de déploiement à remplacer le binaire et à
 redémarrer uniquement ce service via sudo. L'orientation vient de l'IMU
 (BNO055 en I2C) lorsqu'elle est détectée ; sinon `heading_deg` du fichier
-reste la valeur de repli. Caler le cap avec `imu.heading_offset_deg` dans
-`/etc/pavois/pavois.conf`.
+reste la valeur de repli. Pour caler le cap, **ne pas éditer
+`imu.heading_offset_deg` à la main** — utiliser `pavois_imu_calib` (voir
+section « Calibration terrain » plus bas), qui guide la manœuvre, calibre la
+puce et écrit l'offset lui-même.
 
 Après une mise à jour qui ajoute l'IMU, relancer une fois
 `sudo bash scripts/setup_pi.sh "$(id -un)"` pour installer la règle udev I2C
@@ -164,3 +166,53 @@ NTP pour respecter la fen�tre anti-rejeu du backend.
 Validation en production : les �v�nements WebSocket `imu_update` et
 `camera_preview` sont re�us pour jean, tanel et walid; les JPEG sont accept�s en
 HTTP 201 et les paquets UDP en HMAC OK. Les trois tests C++ passent sur ARM64.
+
+
+## Calibration terrain (pavois_imu_calib)
+
+Remplace l'ancienne procédure manuelle (éditer `imu.heading_offset_deg` à la
+main, redémarrer, regarder la carte, recommencer) par un outil guidé. Rend la
+calibration reproductible d'une Pi à l'autre : trois personnes qui calibrent
+trois Pi avec cet outil, en visant le même type de repère, doivent obtenir
+des caps comparables.
+
+Prérequis :
+- Le service `pavois-imu.service` déjà installé (`setup_bno08x.sh`).
+- Un repère visuel dont le relèvement (cap réel, 0-360°, mesuré depuis la
+  position de la caméra) est connu — carte, boussole, ou calcul GPS vers un
+  point de repère fixe.
+- Accès `sudo` sur la Pi.
+
+Lancement :
+
+```bash
+sudo /opt/pavois/imu-venv/bin/python /opt/pavois/pavois_imu_calib.py
+```
+
+Déroulé :
+1. L'outil arrête `pavois-imu.service` (il utilise le même bus I2C) et se
+   connecte directement au capteur.
+2. **CALIB_STAT en direct** : affiche le cap courant et le statut de
+   calibration du capteur (0 à 3) en continu. Effectuer une manœuvre en huit
+   avec la caméra (mouvement large sur les trois axes) jusqu'à un statut
+   stable à 2 ou 3, puis appuyer sur Entrée.
+3. La calibration interne du capteur (accéléromètre/gyroscope/magnétomètre)
+   est sauvegardée dans la mémoire flash de la puce — elle persiste après une
+   coupure d'alimentation.
+4. Viser précisément le repère de référence avec la caméra, puis entrer son
+   relèvement connu quand l'outil le demande. L'outil mesure le cap actuel du
+   capteur (moyenné sur ~1s) et calcule l'écart.
+5. L'écart est écrit dans `imu.heading_offset_deg`
+   (`/etc/pavois/pavois.conf`, sauvegardé avant modification) — aucune
+   édition manuelle de fichier.
+6. `pavois-imu.service` puis `pavois.service` sont redémarrés
+   automatiquement pour appliquer le nouvel offset immédiatement.
+
+Vérification : dans le frontend (panneau latéral, bloc IMU de la caméra), le
+cap affiché doit correspondre au relèvement visé, à quelques degrés près. Si
+les trois Pi sont calibrées de cette façon contre des repères dont le
+relèvement réel est connu, elles doivent afficher le même cap à quelques
+degrés près pour une même visée.
+
+Pour re-caler uniquement le cap d'une caméra déjà bien calibrée (sans refaire
+la manœuvre en huit) : `--skip-chip-calibration`.

@@ -8,6 +8,10 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.spec.ts'],
     setupFiles: ['src/setup-test-env.ts'],
+    // Forks keep Angular's TestBed singleton from being shared across
+    // spec files on multi-core CI runners.
+    pool: 'forks',
+    isolate: true,
   },
 });
 

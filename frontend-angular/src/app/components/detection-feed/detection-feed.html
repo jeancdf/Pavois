@@ -31,7 +31,7 @@
         <li class="feed-item">
           <span class="cam">{{ item.cameraId }}</span>
           <span class="coords">x={{ item.x.toFixed(1) }} y={{ item.y.toFixed(1) }}</span>
-          <span class="size">s={{ item.size }}</span>
+          <span class="size">s={{ item.size.toFixed(0) }}</span>
           <span class="confidence" [class.conf-high]="item.confidence >= 0.95">
             {{ (item.confidence * 100).toFixed(0) }}%
           </span>

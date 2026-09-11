@@ -52,6 +52,9 @@ reste la valeur de repli. Pour caler le cap, **ne pas éditer
 `imu.heading_offset_deg` à la main** — utiliser `pavois_imu_calib` (voir
 section « Calibration terrain » plus bas), qui guide la manœuvre, calibre la
 puce et écrit l'offset lui-même.
+`imu.i2c_address=0` sonde automatiquement 0x28 puis 0x29 ; une valeur >0
+sonde uniquement cette adresse. `imu.elevation_sign` vaut 1 par defaut ;
+mettre `-1` pour inverser le pitch.
 
 Après une mise à jour qui ajoute l'IMU, relancer une fois
 `sudo bash scripts/setup_pi.sh "$(id -un)"` pour installer la règle udev I2C

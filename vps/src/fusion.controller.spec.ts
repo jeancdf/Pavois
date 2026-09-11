@@ -11,6 +11,7 @@ describe('FusionController', () => {
     cameraCount: 2,
     historyWindowMs: 2000,
     staleAfterMs: 2000,
+    lastFuse: null,
     cameras: [
       {
         cameraId: 'jean',
@@ -49,9 +50,7 @@ describe('FusionController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FusionController],
-      providers: [
-        { provide: FusionService, useValue: fusion },
-      ],
+      providers: [{ provide: FusionService, useValue: fusion }],
     }).compile();
 
     controller = module.get(FusionController);

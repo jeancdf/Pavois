@@ -103,6 +103,7 @@ describe('AppController (e2e)', () => {
         expect(res.body.activeCameras).toBe(0);
         expect(res.body.cameraCount).toBe(0);
         expect(Array.isArray(res.body.cameras)).toBe(true);
+        expect(res.body.lastFuse).toBeNull();
       });
   });
 

@@ -54,7 +54,8 @@ Kalman ») ont été retirées.
 - **Porter** le scorecard v2 dans le tracker Kalman actuel
   (`fusion-classify.ts`), avec l’altitude GPS = origine ENU + z.
 - **Supprimer** les deux branches distantes une fois le port sur origin
-  (cette feuille de route + le code VPS sont la copie utile).
+  — fait : `feature/pattern-matching-classification` et
+  `feature/pattern-matching-v2` n’existent plus sur origin.
 
 ### Intégration frontend
 

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UdpService } from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
+import { FusionService } from './fusion.service';
 import * as crypto from 'crypto';
 
 describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
@@ -18,6 +19,10 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         {
           provide: CamerasService,
           useValue: { setHeadingDeg: jest.fn() },
+        },
+        {
+          provide: FusionService,
+          useValue: { ingest: jest.fn() },
         },
       ],
     }).compile();

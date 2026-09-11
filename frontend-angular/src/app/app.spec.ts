@@ -1,4 +1,3 @@
-import '../setup-test-env';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { App } from './app';

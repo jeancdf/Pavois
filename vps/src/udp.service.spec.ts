@@ -22,7 +22,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         },
         {
           provide: FusionService,
-          useValue: { ingest: jest.fn() },
+          useValue: { ingest: jest.fn(), pullTrackUpdates: jest.fn().mockReturnValue([]) },
         },
       ],
     }).compile();
@@ -86,5 +86,49 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
       expect(result.valid).toBe(false);
       expect(result.reason).toContain('Rejet Anti-Replay');
     });
+  });
+});
+
+describe('UdpService fused track_update', () => {
+  it('broadcasts GPS tracks after ingesting a raw detection', async () => {
+    const broadcast = jest.fn();
+    const ingest = jest.fn();
+    const track = {
+      type: 'track_update' as const,
+      trackId: 'obj1',
+      lat: 48.8264,
+      lng: 2.3659,
+      alt: 70.5,
+      timestamp: 1_000_000,
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UdpService,
+        { provide: EventsGateway, useValue: { broadcast } },
+        { provide: CamerasService, useValue: { list: () => [] } },
+        {
+          provide: FusionService,
+          useValue: {
+            ingest,
+            pullTrackUpdates: () => [track],
+          },
+        },
+      ],
+    }).compile();
+    const udp = module.get(UdpService);
+    const detection = {
+      type: 'raw_detection' as const,
+      cameraId: 'jean',
+      frameIndex: 1,
+      timestamp: 1_000_000,
+      x: 10,
+      y: 20,
+      size: 5,
+      confidence: 0.9,
+    };
+    udp.ingestRawDetection(detection);
+    expect(ingest).toHaveBeenCalled();
+    expect(broadcast).toHaveBeenCalledWith('raw_detection', detection);
+    expect(broadcast).toHaveBeenCalledWith('track_update', track);
   });
 });

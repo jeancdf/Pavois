@@ -187,8 +187,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Stocke la détection dans l'historique de fusion, puis la rediffuse.
-   * La triangulation n'est pas faite ici (SCRUM-58).
+   * Stocke la détection, fusionne, et pousse les pistes GPS confirmées.
    */
   ingestRawDetection(detection: RawDetection): void {
     const camera = this.camerasService
@@ -196,6 +195,9 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       .find((item) => item.id === detection.cameraId);
     this.fusion.ingest(toFusionObservation(detection, camera, Date.now()));
     this.eventsGateway.broadcast('raw_detection', detection);
+    for (const update of this.fusion.pullTrackUpdates()) {
+      this.eventsGateway.broadcast('track_update', update);
+    }
   }
 
   /** IMU from UDP or HTTP: always broadcast, even if cameraId is unknown. */

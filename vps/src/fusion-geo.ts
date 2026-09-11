@@ -33,6 +33,12 @@ export interface CameraIntrinsics {
 const kDeg = Math.PI / 180.0;
 const kEarthRadiusM = 6378137.0;
 
+export interface GeoOrigin {
+  lat: number;
+  lon: number;
+  alt: number;
+}
+
 export function vAdd(a: Vec3, b: Vec3): Vec3 {
   return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
 }
@@ -303,6 +309,24 @@ export function minPairwiseAngleDeg(rays: Ray[]): number {
     }
   }
   return best;
+}
+
+/** Inverse of gpsToEnu. lng is longitude in degrees (WS track_update). */
+export function enuToGps(
+  enu: Vec3,
+  origin: GeoOrigin,
+): { lat: number; lng: number; alt: number } {
+  const originLatR = origin.lat * kDeg;
+  const latRad = originLatR + enu.y / kEarthRadiusM;
+  const meanLat = (latRad + originLatR) * 0.5;
+  const lonRad =
+    origin.lon * kDeg +
+    enu.x / (Math.cos(meanLat) * kEarthRadiusM);
+  return {
+    lat: latRad / kDeg,
+    lng: lonRad / kDeg,
+    alt: enu.z + origin.alt,
+  };
 }
 
 /** ENU local: x East, y North, z Up. Same formula as pavois++ gps_to_local_approx. */

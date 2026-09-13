@@ -1,0 +1,37 @@
+{
+  "profile": "Supplied A1 mini 0.08 mm 3MF",
+  "checks": "Automatic normal supports enabled, including on model; generated extrusion exists",
+  "physical_removal_test_required": true,
+  "results": [
+    {
+      "part": "camera_rail",
+      "automatic_supports": true,
+      "support_extrusion_moves": {
+        "Support interface": 1157,
+        "Support": 2088,
+        "Support transition": 46
+      },
+      "pass": true
+    },
+    {
+      "part": "camera_end_left",
+      "automatic_supports": true,
+      "support_extrusion_moves": {
+        "Support interface": 1157,
+        "Support": 2088,
+        "Support transition": 46
+      },
+      "pass": true
+    },
+    {
+      "part": "camera_end_right",
+      "automatic_supports": true,
+      "support_extrusion_moves": {
+        "Support interface": 1175,
+        "Support": 2088,
+        "Support transition": 46
+      },
+      "pass": true
+    }
+  ]
+}

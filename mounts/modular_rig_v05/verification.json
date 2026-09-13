@@ -1,0 +1,182 @@
+{
+  "prototype": "0.5",
+  "rig_width_mm": 1000,
+  "rise_mm": 0,
+  "camera_board_z_mm": 138,
+  "fit_per_face_mm": 0.1,
+  "notice": "CAD only. Fit, stiffness and repeatability require printed tests.",
+  "parts": [
+    {
+      "file": "camera_end_left.stl",
+      "dimensions_mm": [
+        162.857,
+        160.0,
+        18.0
+      ],
+      "volume_cm3": 139.547,
+      "triangles": 244,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 1,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "camera_end_right.stl",
+      "dimensions_mm": [
+        142.857,
+        160.0,
+        18.0
+      ],
+      "volume_cm3": 131.005,
+      "triangles": 244,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 1,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "camera_rail.stl",
+      "dimensions_mm": [
+        162.857,
+        160.0,
+        18.0
+      ],
+      "volume_cm3": 135.229,
+      "triangles": 292,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 1,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "coupon_socket_05.stl",
+      "dimensions_mm": [
+        30.0,
+        30.0,
+        8.0
+      ],
+      "volume_cm3": 5.058,
+      "triangles": 1160,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_socket_10.stl",
+      "dimensions_mm": [
+        30.0,
+        30.0,
+        8.0
+      ],
+      "volume_cm3": 5.037,
+      "triangles": 496,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_socket_15.stl",
+      "dimensions_mm": [
+        30.0,
+        30.0,
+        8.0
+      ],
+      "volume_cm3": 5.011,
+      "triangles": 804,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_tongue.stl",
+      "dimensions_mm": [
+        30.0,
+        30.0,
+        8.0
+      ],
+      "volume_cm3": 4.512,
+      "triangles": 36,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "cradle_key.stl",
+      "dimensions_mm": [
+        10.4,
+        95.0,
+        5.8
+      ],
+      "volume_cm3": 2.325,
+      "triangles": 40,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 2,
+      "quantity_3_cameras": 3
+    },
+    {
+      "file": "rail.stl",
+      "dimensions_mm": [
+        162.857,
+        160.0,
+        8.0
+      ],
+      "volume_cm3": 59.982,
+      "triangles": 192,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 4,
+      "quantity_3_cameras": 4
+    }
+  ]
+}

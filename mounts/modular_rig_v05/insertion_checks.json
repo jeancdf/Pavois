@@ -1,0 +1,37 @@
+{
+  "motion": "Continuous straight translation Y=-160..0 mm; X=1000/14, constant Z",
+  "reference": "Source V2, lower 10.01 mm; rail obstacles stop at Z=18, floor at Z=8",
+  "method": "Union of endpoint hulls of three convex primitives; exact decomposition verified against mount()",
+  "decomposition_difference_mm3": [
+    0,
+    0
+  ],
+  "supports": "Must be removed before sliding the camera; clean STL used for clearance",
+  "not_validated": "Printed dimensions, electronics/cables, breakaway force",
+  "results": [
+    {
+      "case": "v4_reproduces_blockage",
+      "intersection_mm3": 788.568,
+      "expected_blockage": true,
+      "pass": true
+    },
+    {
+      "case": "v5_camera_clear",
+      "intersection_mm3": 0.0,
+      "expected_blockage": false,
+      "pass": true
+    },
+    {
+      "case": "v5_terminal_clear",
+      "intersection_mm3": 0.0,
+      "expected_blockage": false,
+      "pass": true
+    },
+    {
+      "case": "v5_left_clear",
+      "intersection_mm3": 0.0,
+      "expected_blockage": false,
+      "pass": true
+    }
+  ]
+}

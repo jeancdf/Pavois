@@ -1,0 +1,36 @@
+{
+  "metric": "Geometric solid volume, NOT sliced filament or print time",
+  "parts": [
+    {
+      "file": "camera_rail.stl",
+      "v2_solid_cm3": 271.462,
+      "v3_solid_cm3": 142.561,
+      "reduction_percent": 47.5,
+      "quantity": 2
+    },
+    {
+      "file": "camera_rail_end.stl",
+      "v2_solid_cm3": 267.238,
+      "v3_solid_cm3": 138.337,
+      "reduction_percent": 48.2,
+      "quantity": 1
+    },
+    {
+      "file": "cradle_key.stl",
+      "v2_solid_cm3": 2.325,
+      "v3_solid_cm3": 2.325,
+      "reduction_percent": 0.0,
+      "quantity": 3
+    },
+    {
+      "file": "rail.stl",
+      "v2_solid_cm3": 182.762,
+      "v3_solid_cm3": 58.395,
+      "reduction_percent": 68.0,
+      "quantity": 4
+    }
+  ],
+  "v2_total_solid_cm3": 1548.185,
+  "v3_total_solid_cm3": 664.014,
+  "total_reduction_percent": 57.1
+}

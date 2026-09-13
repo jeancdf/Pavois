@@ -1,0 +1,35 @@
+{
+  "settings_source": "camera_rail_end.3mf",
+  "layer_height_mm": 0.08,
+  "wall_loops": 2,
+  "infill": "15%",
+  "automatic_supports": true,
+  "built_in_supports": false,
+  "not_validated": "Physical breakaway force and printed fit",
+  "results": [
+    {
+      "part": "camera_rail",
+      "seconds": 10644,
+      "filament_g": 69.01,
+      "warning": ""
+    },
+    {
+      "part": "camera_rail_end",
+      "seconds": 10241,
+      "filament_g": 67.53,
+      "warning": ""
+    },
+    {
+      "part": "camera_end_left",
+      "seconds": 10469,
+      "filament_g": 70.11,
+      "warning": ""
+    },
+    {
+      "part": "camera_end_right",
+      "seconds": 10239,
+      "filament_g": 67.53,
+      "warning": ""
+    }
+  ]
+}

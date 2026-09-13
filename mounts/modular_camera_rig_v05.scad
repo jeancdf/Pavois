@@ -1,12 +1,12 @@
 // PAVOIS V0.5 : passage camera corrige, plateau a 8 mm.
-// Versions precedentes conservees. Supports automatiques dans le projet 3MF uniquement.
+// Supports automatiques dans le projet 3MF uniquement.
 // Toutes les pieces reposent sur la table ; pas de verrouillage vertical.
 // Un ajustement imprime et une calibration restent necessaires.
 use <camera_mount_v2_pi25.scad>
 
 /* [Vue] */
 view = "assembly"; // [assembly,exploded,part,cradle_detail]
-part = "camera_rail"; // [rail,camera_rail,camera_end_left,camera_end_right,camera_rail_end,cradle_key,coupon_socket,coupon_tongue]
+part = "camera_rail"; // [rail,camera_rail,camera_end_left,camera_end_right,cradle_key,coupon_socket,coupon_tongue]
 camera_count = 3; // [2,3]
 show_mounts = true;
 show_axes = true;
@@ -134,7 +134,7 @@ module print_part() {
     if(part=="rail") rail();
     else if(part=="camera_rail") camera_rail();
     else if(part=="camera_end_left") camera_rail(first=true);
-    else if(part=="camera_end_right" || part=="camera_rail_end") camera_rail(last=true);
+    else if(part=="camera_end_right") camera_rail(last=true);
     else if(part=="cradle_key") translate([0,0,-0.3]) cradle_key();
     else if(part=="coupon_socket") coupon_socket();
     else if(part=="coupon_tongue") coupon_tongue();

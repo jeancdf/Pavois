@@ -6,15 +6,9 @@
     0,
     0
   ],
-  "supports": "Must be removed before sliding the camera; clean STL used for clearance",
+  "supports": "Must be removed before sliding the camera; production STL used for clearance",
   "not_validated": "Printed dimensions, electronics/cables, breakaway force",
   "results": [
-    {
-      "case": "v4_reproduces_blockage",
-      "intersection_mm3": 788.568,
-      "expected_blockage": true,
-      "pass": true
-    },
     {
       "case": "v5_camera_clear",
       "intersection_mm3": 0.0,

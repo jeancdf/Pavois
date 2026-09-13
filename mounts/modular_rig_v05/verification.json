@@ -67,60 +67,6 @@
       "quantity_3_cameras": 1
     },
     {
-      "file": "camera_rail_clean.stl",
-      "dimensions_mm": [
-        162.857,
-        160.0,
-        18.0
-      ],
-      "volume_cm3": 135.229,
-      "triangles": 292,
-      "checks": {
-        "closed": true,
-        "consistent_winding": true,
-        "positive_volume": true,
-        "one_component": true,
-        "fits_170mm": true,
-        "on_build_plate": true
-      }
-    },
-    {
-      "file": "camera_rail_end.stl",
-      "dimensions_mm": [
-        142.857,
-        160.0,
-        18.0
-      ],
-      "volume_cm3": 131.005,
-      "triangles": 244,
-      "checks": {
-        "closed": true,
-        "consistent_winding": true,
-        "positive_volume": true,
-        "one_component": true,
-        "fits_170mm": true,
-        "on_build_plate": true
-      }
-    },
-    {
-      "file": "camera_rail_end_clean.stl",
-      "dimensions_mm": [
-        142.857,
-        160.0,
-        18.0
-      ],
-      "volume_cm3": 131.005,
-      "triangles": 244,
-      "checks": {
-        "closed": true,
-        "consistent_winding": true,
-        "positive_volume": true,
-        "one_component": true,
-        "fits_170mm": true,
-        "on_build_plate": true
-      }
-    },
-    {
       "file": "coupon_socket_05.stl",
       "dimensions_mm": [
         30.0,

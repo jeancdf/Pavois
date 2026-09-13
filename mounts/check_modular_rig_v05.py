@@ -66,9 +66,8 @@ def main():
         assert sweep.is_watertight
         print('Continuous sweep of three verified convex components rendered',flush=True)
         results=[]
-        cases=[('v4_reproduces_blockage',ROOT/'modular_rig_v04/camera_rail.stl',3,True),
-               ('v5_camera_clear',OUT/'camera_rail_clean.stl',8,False),
-               ('v5_terminal_clear',OUT/'camera_rail_end_clean.stl',8,False),
+        cases=[('v5_camera_clear',OUT/'camera_rail.stl',8,False),
+               ('v5_terminal_clear',OUT/'camera_end_right.stl',8,False),
                ('v5_left_clear',OUT/'camera_end_left.stl',8,False)]
         for name,rail,z,blocked in cases:
             src=temp/(name+'.scad'); dest=temp/(name+'.stl')
@@ -82,7 +81,7 @@ def main():
                 'reference':'Source V2, lower 10.01 mm; rail obstacles stop at Z=18, floor at Z=8',
                 'method':'Union of endpoint hulls of three convex primitives; exact decomposition verified against mount()',
                 'decomposition_difference_mm3':errors,
-                'supports':'Must be removed before sliding the camera; clean STL used for clearance',
+                'supports':'Must be removed before sliding the camera; production STL used for clearance',
                 'not_validated':'Printed dimensions, electronics/cables, breakaway force',
                 'results':results}
         (OUT/'insertion_checks.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

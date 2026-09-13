@@ -1,5 +1,5 @@
 {
-  "settings_source": "camera_rail_end.3mf",
+  "settings_source": "user_machine.json, user_process.json, user_filament.json",
   "layer_height_mm": 0.08,
   "wall_loops": 2,
   "infill": "15%",
@@ -14,20 +14,14 @@
       "warning": ""
     },
     {
-      "part": "camera_rail_end",
-      "seconds": 10241,
-      "filament_g": 67.53,
-      "warning": ""
-    },
-    {
       "part": "camera_end_left",
-      "seconds": 10469,
+      "seconds": 10470,
       "filament_g": 70.11,
       "warning": ""
     },
     {
       "part": "camera_end_right",
-      "seconds": 10239,
+      "seconds": 10238,
       "filament_g": 67.53,
       "warning": ""
     }

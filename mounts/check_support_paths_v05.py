@@ -1,4 +1,4 @@
-"""Verify automatic support settings and actual support extrusion in both 3MFs."""
+"""Verify automatic support settings and actual support extrusion in all three 3MFs."""
 from pathlib import Path
 from collections import Counter
 import json
@@ -7,7 +7,7 @@ import zipfile
 
 OUT=Path(__file__).resolve().parent/'modular_rig_v05'
 results=[]
-for name in ['camera_rail','camera_rail_end','camera_end_left','camera_end_right']:
+for name in ['camera_rail','camera_end_left','camera_end_right']:
     with zipfile.ZipFile(OUT/(name+'_0p08mm.3mf')) as archive:
         config=json.loads(archive.read('Metadata/project_settings.config'))
         lines=archive.read('Metadata/plate_1.gcode').decode().splitlines()

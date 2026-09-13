@@ -2,7 +2,8 @@
 
 L’appui caméra reste à **8 mm**, au niveau des jonctions ; les glissières
 et les butées conservent la correction de hauteur. Les trois caméras sont
-au même niveau. Les anciennes versions sont conservées.
+au même niveau. Seuls ce banc V5 et le support camera_mount_v2_pi25 sont
+maintenus ; les anciennes variantes restent accessibles dans l’historique Git.
 
 Les **supports manuels ont été retirés du source et des STL**. Un STL stocke
 la géométrie, pas les options d’impression. Les projets **3MF** fournis
@@ -22,29 +23,27 @@ Si tu importes le STL seul, active ces options dans Bambu Studio.
 | rail.stl | 4 |
 | cradle_key.stl | 3 |
 
-L’ancien camera_rail_end.stl reste disponible comme copie de camera_end_right.stl :
-ne pas l’imprimer en plus. Les extrémités gauche/droite désignent le repère
+Les extrémités gauche/droite désignent le repère
 de la vue assemblée ; les trois caméras visent toujours dans le même sens.
 
 ![Extrémité gauche : bord fermé et raccord mâle à droite](modular_rig_v05/camera_end_left.png)
 
-Les rails simples et cales V4 sont réutilisables. Les fichiers *_clean.stl
-sont désormais identiques aux STL caméra et restent disponibles pour les
-scripts de contrôle. Pour deux caméras, laisser le berceau central vide
+Les doublons *_clean.stl et camera_rail_end.stl ont été supprimés.
+Pour deux caméras, laisser le berceau central vide
 et utiliser deux cales.
 
 Le dessous plat reste sur le plateau. Encombrement maximal :
 **162,86 × 160 × 18 mm** (terminal : 142,86 × 160 × 18 mm).
-Les douze STL exportés, copies de compatibilité comprises, sont fermés et
+Les neuf STL exportés, éprouvettes comprises, sont fermés et
 tiennent dans 170 × 170 × 170 mm.
 
 ## Projets Bambu Studio
 
 Ouvrir camera_end_left_0p08mm.3mf, camera_rail_0p08mm.3mf ou
 camera_end_right_0p08mm.3mf **comme projet**
-pour récupérer les réglages. Ils reprennent le profil du fichier utilisateur
-mounts/camera_rail_end.3mf, qui n’a pas été modifié, avec les supports
-automatiques activés : A1 mini, buse 0,4 mm, Generic PLA, couche 0,08 mm,
+pour récupérer les réglages. Les profils autonomes user_machine.json,
+user_process.json et user_filament.json conservent les réglages utilisateur
+avec les supports automatiques activés : A1 mini, buse 0,4 mm, Generic PLA, couche 0,08 mm,
 première couche 0,20 mm, deux parois, remplissage 15 %.
 
 | Pièce | Durée estimée | Filament estimé |
@@ -54,8 +53,7 @@ première couche 0,20 mm, deux parois, remplissage 15 %.
 | Extrémité droite | 2 h 50 min 39 s | 67,53 g |
 
 Les durées viennent du trancheur, pas d’impressions chronométrées.
-Elles ne sont pas directement comparables au benchmark V4 à 0,20 mm
-et cinq parois. Vérifier l’aperçu après toute modification des réglages.
+Vérifier l’aperçu après toute modification des réglages.
 
 ## Montage
 
@@ -85,7 +83,7 @@ réelles seront déterminées par calibration.
 
 verification.json vérifie les maillages et leur encombrement.
 insertion_checks.json contrôle le mouvement continu du bas du support V2
-sur 160 mm et reproduit le blocage V4. Le nouveau bord fermé gauche
+sur 160 mm. Le bord fermé gauche
 est inclus dans ce contrôle.
 support_toolpath_checks.json vérifie les réglages automatiques enregistrés
 et les extrusions de support et d’interface dans les G-code fournis.
@@ -103,9 +101,8 @@ python mounts/export_modular_rig_v05.py
 python mounts/check_modular_rig_v05.py
 ```
 
-Pour retrancher : Bambu Studio installé, benchmark_rig.py à côté du script
-et projet utilisateur mounts/camera_rail_end.3mf présent (non dupliqué
-dans l’archive).
+Pour retrancher : Bambu Studio installé et les trois profils JSON présents
+dans modular_rig_v05. Aucun ancien projet ni script de benchmark n’est requis.
 
 ```powershell
 python mounts/slice_rig_v05.py

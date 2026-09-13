@@ -72,9 +72,6 @@ def main():
     common = {"rig_width": args.width, "fit": args.fit}
     if not args.images_only:
         jobs = [(p, {"view": "part", "part": p}) for p in PARTS]
-        jobs.append(("camera_rail_end", {"view": "part", "part": "camera_end_right"}))
-        for p in ["camera_rail", "camera_rail_end"]:
-            jobs.append((p+"_clean", {"view": "part", "part": p}))
         jobs.append(("coupon_tongue", {"view": "part", "part": "coupon_tongue"}))
         for gap in (0.05, 0.10, 0.15):
             jobs.append((f"coupon_socket_{round(gap*100):02d}",

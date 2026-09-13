@@ -14,16 +14,6 @@
       "pass": true
     },
     {
-      "part": "camera_rail_end",
-      "automatic_supports": true,
-      "support_extrusion_moves": {
-        "Support interface": 1175,
-        "Support": 2088,
-        "Support transition": 46
-      },
-      "pass": true
-    },
-    {
       "part": "camera_end_left",
       "automatic_supports": true,
       "support_extrusion_moves": {

@@ -1,0 +1,337 @@
+{
+  "prototype": "0.1",
+  "rig_width_mm": 1000,
+  "rise_mm": 300,
+  "fit_per_face_mm": 0.25,
+  "notice": "CAD only. Fit, stiffness and repeatability require printed tests.",
+  "parts": [
+    {
+      "file": "brace.stl",
+      "dimensions_mm": [
+        118.356,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 116.947,
+      "triangles": 120,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 6
+    },
+    {
+      "file": "coupon_socket_15.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 31.369,
+      "triangles": 764,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_socket_25.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 31.332,
+      "triangles": 1120,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_socket_35.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 31.296,
+      "triangles": 1204,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_tongue_15.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 16.182,
+      "triangles": 56,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_tongue_25.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 16.031,
+      "triangles": 56,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "coupon_tongue_35.stl",
+      "dimensions_mm": [
+        32.0,
+        32.0,
+        40.0
+      ],
+      "volume_cm3": 15.882,
+      "triangles": 56,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      }
+    },
+    {
+      "file": "cradle.stl",
+      "dimensions_mm": [
+        40.0,
+        104.0,
+        120.0
+      ],
+      "volume_cm3": 94.491,
+      "triangles": 144,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 2,
+      "quantity_3_cameras": 3
+    },
+    {
+      "file": "cradle_key.stl",
+      "dimensions_mm": [
+        10.4,
+        95.0,
+        5.8
+      ],
+      "volume_cm3": 2.325,
+      "triangles": 40,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 2,
+      "quantity_3_cameras": 3
+    },
+    {
+      "file": "joint_key.stl",
+      "dimensions_mm": [
+        10.0,
+        61.0,
+        9.0
+      ],
+      "volume_cm3": 2.972,
+      "triangles": 28,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 10,
+      "quantity_3_cameras": 24
+    },
+    {
+      "file": "mast_lower.stl",
+      "dimensions_mm": [
+        32.0,
+        148.0,
+        40.0
+      ],
+      "volume_cm3": 139.583,
+      "triangles": 100,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "mast_middle.stl",
+      "dimensions_mm": [
+        32.0,
+        124.0,
+        40.0
+      ],
+      "volume_cm3": 124.171,
+      "triangles": 120,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "mast_top.stl",
+      "dimensions_mm": [
+        79.514,
+        100.0,
+        40.0
+      ],
+      "volume_cm3": 134.772,
+      "triangles": 308,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "rail.stl",
+      "dimensions_mm": [
+        134.0,
+        160.0,
+        36.0
+      ],
+      "volume_cm3": 159.651,
+      "triangles": 216,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 8,
+      "quantity_3_cameras": 8
+    },
+    {
+      "file": "rail_end.stl",
+      "dimensions_mm": [
+        110.0,
+        160.0,
+        36.0
+      ],
+      "volume_cm3": 153.86,
+      "triangles": 172,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 1,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "shoe_left.stl",
+      "dimensions_mm": [
+        64.0,
+        78.892,
+        60.0
+      ],
+      "volume_cm3": 88.263,
+      "triangles": 120,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 1
+    },
+    {
+      "file": "shoe_right.stl",
+      "dimensions_mm": [
+        64.0,
+        78.892,
+        60.0
+      ],
+      "volume_cm3": 88.263,
+      "triangles": 120,
+      "checks": {
+        "closed": true,
+        "consistent_winding": true,
+        "positive_volume": true,
+        "one_component": true,
+        "fits_170mm": true,
+        "on_build_plate": true
+      },
+      "quantity_2_cameras": 0,
+      "quantity_3_cameras": 1
+    }
+  ]
+}

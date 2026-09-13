@@ -1,0 +1,31 @@
+{
+  "status": "unchanged",
+  "verification": "SHA-256 before and after V3 creation",
+  "files": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "5253AE7CBF77AE1E7AE40E390B3B9B1163ACD247BED9A42A240AF197F885BC62",
+      "Path": "C:\\Users\\jeanc\\Documents\\Side-Project\\Pavois\\mounts\\modular_camera_rig.scad"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "681D59A32FE025ACC22B37EB9DDEBAED150EECC6638C4C2D1CC37104E03CC9D4",
+      "Path": "C:\\Users\\jeanc\\Documents\\Side-Project\\Pavois\\mounts\\modular_rig_v02.zip"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "BDA57927FFA33201574322A61EEFFF7E25F761B8AE655C8E5FDF9EC9BA23941A",
+      "Path": "C:\\Users\\jeanc\\Documents\\Side-Project\\Pavois\\mounts\\export_modular_rig.py"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "61EC47E7466DA404B8605C02687D2F5EAA48F8AD77B27415E6958FA38D360A46",
+      "Path": "C:\\Users\\jeanc\\Documents\\Side-Project\\Pavois\\mounts\\check_modular_rig.py"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "6DD80ED0EC6F6BB88DD62769741C79B662ADCD372B58CE4149F69554EC3CA7C9",
+      "Path": "C:\\Users\\jeanc\\Documents\\Side-Project\\Pavois\\mounts\\README_MODULAR_RIG.md"
+    }
+  ]
+}

@@ -17,13 +17,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: vps/package-lock.json
       - name: Test the VPS backend
         working-directory: vps
         run: |
-          npm ci
+          npm i
           npm test
       - uses: actions/setup-node@v4
         with:
@@ -33,7 +33,7 @@ jobs:
       - name: Test the Angular frontend
         working-directory: frontend-angular
         run: |
-          npm ci --legacy-peer-deps
+          npm i --legacy-peer-deps
           npm test
 
   deploy:

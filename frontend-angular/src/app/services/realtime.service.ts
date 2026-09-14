@@ -7,6 +7,12 @@ import { CameraGpsConfig, buildCameraPositions } from '../config/cameras.config'
 import { AuthService } from './auth.service';
 import { ImuSample } from '../models/imu-sample.model';
 import { CameraPreview } from '../models/camera-preview.model';
+import { CameraStats } from '../models/camera-stats.model';
+import { FuseUpdate } from '../models/fuse-update.model';
+import {
+  RailBenchState,
+} from '../config/rail-bench';
+import { AlertEvent } from '../models/alert.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -19,8 +25,13 @@ export class RealtimeService implements OnDestroy {
   readonly cameras = computed(() => buildCameraPositions(this.cameraConfigs()));
   readonly imuByCamera = signal<Record<string, ImuSample>>({});
   readonly previewByCamera = signal<Record<string, CameraPreview>>({});
+  readonly statsByCamera = signal<Record<string, CameraStats>>({});
+  readonly fuseUpdate = signal<FuseUpdate | null>(null);
+  readonly railBench = signal<RailBenchState | null>(null);
+  readonly lastDetectionAt = signal<Record<string, number>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
+  readonly alerts$ = new Subject<AlertEvent>();
 
   // Compteurs KPI — mis à jour en temps réel dans le handler de messages
   readonly totalDetections = signal(0);
@@ -69,6 +80,12 @@ export class RealtimeService implements OnDestroy {
             const det = payload.data as RawDetection;
             this.rawDetections$.next(det);
             this.totalDetections.update((n) => n + 1);
+            if (det?.cameraId) {
+              this.lastDetectionAt.update((current) => ({
+                ...current,
+                [det.cameraId]: Date.now(),
+              }));
+            }
             break;
           }
           case 'camera_positions':
@@ -85,6 +102,35 @@ export class RealtimeService implements OnDestroy {
               timestamp?: number;
             });
             break;
+          case 'camera_stats': {
+            const stats = payload.data as Omit<CameraStats, 'receivedAt'>;
+            if (stats?.cameraId && Number.isFinite(stats.fps)) {
+              this.statsByCamera.update((current) => ({
+                ...current,
+                [stats.cameraId]: {
+                  ...stats,
+                  type: 'camera_stats',
+                  receivedAt: Date.now(),
+                },
+              }));
+            }
+            break;
+          }
+          case 'fuse_update':
+            this.fuseUpdate.set(payload.data as FuseUpdate);
+            break;
+          case 'rail_bench': {
+            const benchPayload = payload.data as {
+              active?: boolean;
+              bench?: RailBenchState | null;
+            };
+            this.railBench.set(
+              benchPayload?.active && benchPayload.bench
+                ? benchPayload.bench
+                : null,
+            );
+            break;
+          }
           case 'track_update': {
             const track = payload.data as TrackUpdate;
             this.trackUpdates$.next(track);
@@ -94,6 +140,9 @@ export class RealtimeService implements OnDestroy {
             }
             break;
           }
+          case 'alert':
+            this.alerts$.next(payload.data as AlertEvent);
+            break;
         }
       } catch {
         console.error('RealtimeService: message WebSocket invalide', event.data);
@@ -125,6 +174,10 @@ export class RealtimeService implements OnDestroy {
 
   previewOf(cameraId: string): CameraPreview | undefined {
     return this.previewByCamera()[cameraId];
+  }
+
+  statsOf(cameraId: string): CameraStats | undefined {
+    return this.statsByCamera()[cameraId];
   }
 
   private storeImuSample(

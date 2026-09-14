@@ -96,3 +96,35 @@ describe('CamerasService.updateAttitude', () => {
     expect(readFileSync(filePath, 'utf8')).toBe(original);
   });
 });
+
+describe('CamerasService rail bench', () => {
+  const originalCamerasFile = process.env.CAMERAS_FILE;
+  let service: CamerasService;
+
+  beforeEach(() => {
+    process.env.CAMERAS_FILE = join(tmpdir(), 'pavois-no-cameras.json');
+    service = new CamerasService();
+  });
+
+  afterEach(() => {
+    if (originalCamerasFile === undefined) {
+      delete process.env.CAMERAS_FILE;
+    } else {
+      process.env.CAMERAS_FILE = originalCamerasFile;
+    }
+  });
+
+  it('overlays metre poses without writing GPS to disk', () => {
+    expect(service.isRailBenchActive()).toBe(false);
+    const bench = service.applyRailBench({ rangeM: 2.5 });
+    expect(bench.cameras[1].id).toBe('jean');
+    expect(service.isRailBenchActive()).toBe(true);
+    const jean = service.list().find((c) => c.id === 'jean');
+    expect(jean?.localX).toBe(0);
+    expect(jean?.localY).toBe(0);
+    expect(jean?.localHeadingDeg).toBe(0);
+    expect(service.localPose('tanel')?.x).toBeCloseTo(-3 / 7);
+    service.clearRailBench();
+    expect(service.list().find((c) => c.id === 'jean')?.localX).toBeUndefined();
+  });
+});

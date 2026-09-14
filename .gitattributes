@@ -1,0 +1,2 @@
+animation/**/*.png filter=lfs diff=lfs merge=lfs -text
+animation/**/*.jpg filter=lfs diff=lfs merge=lfs -text

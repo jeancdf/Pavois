@@ -1,24 +1,28 @@
 # Étape 1: Construction de l'application NestJS
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copie des fichiers de dépendances
+# Le postinstall Prisma a besoin du schéma à côté de package.json.
 COPY package*.json ./
-RUN npm ci
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+RUN npm i
 
 # Copie du code source et compilation
 COPY . .
 RUN npm run build
 
 # Étape 2: Image finale de production
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Copie des dépendances de production uniquement
+# Dépendances de production + client Prisma (généré par postinstall).
 COPY package*.json ./
-RUN npm ci --only=production
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+RUN npm i --omit=dev
 
 # Copie du build compilé depuis l'étape builder (SANS le fichier .env)
 COPY --from=builder /app/dist ./dist
@@ -34,5 +38,7 @@ RUN mkdir -p /app/data && chown node:node /app/data
 # SÉCURITÉ NIVEAU 2 : Basculement vers l'utilisateur non-privilégié 'node' (Principle of Least Privilege)
 USER node
 
-# Démarrage du serveur VPS
-CMD ["node", "dist/main.js"]
+# Applique les migrations en attente puis démarre le serveur. Uniquement du
+# trafic réseau vers Postgres : aucune écriture disque nécessaire malgré le
+# système de fichiers en lecture seule (docker-compose.yml).
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

@@ -12,6 +12,9 @@ dist/
 build/
 pip-wheel-metadata/
 
+# --- Node (root-level catch-all; vps/frontend-angular also have local rules) ---
+node_modules/
+
 # Virtual environments (pip install targets)
 .venv/
 venv/

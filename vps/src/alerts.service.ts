@@ -3,19 +3,12 @@ import { PrismaService } from './prisma.service';
 import { EventsGateway } from './events.gateway';
 import type { Alert } from '@prisma/client';
 
-const HIGH_CONFIDENCE_THRESHOLD = 0.96;
-
 export type AlertType = 'info' | 'warning' | 'alert';
 
 export interface TrackAlertInput {
   trackId: string;
   classification?: string;
   cameraId?: string;
-}
-
-export interface DetectionAlertInput {
-  cameraId: string;
-  confidence: number;
 }
 
 export interface ListAlertsOptions {
@@ -65,16 +58,6 @@ export class AlertsService {
         trackId: track.trackId,
         cameraId: track.cameraId,
       });
-    }
-  }
-
-  onRawDetection(detection: DetectionAlertInput): void {
-    if (detection.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
-      this.fire(
-        'warning',
-        `Haute confiance ${(detection.confidence * 100).toFixed(0)}% — ${detection.cameraId}`,
-        { cameraId: detection.cameraId },
-      );
     }
   }
 

@@ -3,7 +3,7 @@ import { RealtimeService } from './realtime.service';
 import { NotificationService } from './notification.service';
 
 /**
- * Les règles (nouvelle piste, drone confirmé, haute confiance) sont calculées
+ * Les règles (nouvelle piste et drone confirmé) sont calculées
  * côté serveur (AlertsService) et persistées : un onglet fermé au moment de
  * l'événement ne perd plus l'alerte. Ce service ne fait plus que relayer
  * l'événement WS `alert` vers les toasts.

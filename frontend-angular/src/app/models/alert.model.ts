@@ -1,6 +1,6 @@
 export type AlertType = 'info' | 'warning' | 'alert';
 
-/** Notable event pushed by the backend (new track, drone confirmed, high-confidence detection). */
+/** Notable event pushed by the backend (new track or confirmed drone). */
 export interface AlertEvent {
   type: AlertType;
   message: string;

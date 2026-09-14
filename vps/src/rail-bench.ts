@@ -79,7 +79,10 @@ export function railCameraPoses(
   const elevation = options.elevationDeg ?? DEFAULT_ELEVATION_DEG;
   const baseline = adjacentBaselineM(width);
   const ids: RailCameraId[] = ['tanel', 'jean', 'walid'];
-  const xs = [-baseline, 0, baseline];
+  // Physical rail order, seen from behind the cameras, is
+  // walid — jean — tanel. Keeping the API/UI id order stable means the
+  // corresponding X coordinates are right — centre — left here.
+  const xs = [baseline, 0, -baseline];
   return ids.map((id, index) => ({
     id,
     x: xs[index],

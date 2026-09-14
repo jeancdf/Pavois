@@ -92,7 +92,9 @@ jobs:
       - name: Deploy to Achraf OVH VPS over SSH
         env:
           HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
-          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
+          # Always ubuntu on Achraf. Do not read OVH_VPS_USER: PR #127
+          # stored jean there, which is the production VPS account.
+          SSH_USER: ubuntu
           PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
           APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
           BRANCH: ${{ github.ref_name }}

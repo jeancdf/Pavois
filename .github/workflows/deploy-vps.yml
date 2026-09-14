@@ -129,10 +129,17 @@ jobs:
               exit 1
             fi
 
+            git config --global --add safe.directory "$TARGET_DIR" || true
             git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" 2>/dev/null || true
             git fetch --all --prune
-            git checkout "$BRANCH" || git checkout -b "$BRANCH" "origin/$BRANCH"
-            git pull origin "$BRANCH"
+            # Local prisma/alerts work on this VPS: never checkout -f.
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Working tree dirty: skip git checkout/pull"
+              git status -sb
+            else
+              git checkout "$BRANCH" || git checkout -b "$BRANCH" "origin/$BRANCH"
+              git pull origin "$BRANCH"
+            fi
 
             chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh 2>/dev/null || true
             COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" ./scripts/deploy_vps.sh

@@ -78,6 +78,10 @@ function describeAuthError(error: unknown): string {
       return 'jeton refusé';
     case 403:
       return 'adresse IP non autorisée';
+    case 502:
+    case 503:
+    case 504:
+      return 'backend en redémarrage, réessaie dans 10 s';
     default:
       return typeof error.error?.message === 'string'
         ? error.error.message

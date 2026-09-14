@@ -66,24 +66,6 @@ describe('AlertsService', () => {
     expect(gateway.broadcast).toHaveBeenCalledTimes(2);
   });
 
-  it('fires a high-confidence warning at or above the threshold, not below it', () => {
-    service.onRawDetection({ cameraId: 'jean', confidence: 0.95 });
-    expect(gateway.broadcast).not.toHaveBeenCalled();
-
-    service.onRawDetection({ cameraId: 'jean', confidence: 0.96 });
-    expect(gateway.broadcast).toHaveBeenCalledWith('alert', {
-      type: 'warning',
-      message: 'Haute confiance 96% — jean',
-      cameraId: 'jean',
-    });
-  });
-
-  it('high-confidence detections are not deduplicated (fire every time)', () => {
-    service.onRawDetection({ cameraId: 'jean', confidence: 0.99 });
-    service.onRawDetection({ cameraId: 'jean', confidence: 0.99 });
-    expect(gateway.broadcast).toHaveBeenCalledTimes(2);
-  });
-
   it('persists every fired alert without blocking the broadcast', async () => {
     service.onTrackUpdate({ trackId: 'obj4' });
     // persist() is fire-and-forget; flush microtasks before asserting.

@@ -39,7 +39,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         },
         {
           provide: AlertsService,
-          useValue: { onTrackUpdate: jest.fn(), onRawDetection: jest.fn() },
+          useValue: { onTrackUpdate: jest.fn() },
         },
       ],
     }).compile();
@@ -137,7 +137,7 @@ describe('UdpService fused track_update', () => {
         },
         {
           provide: AlertsService,
-          useValue: { onTrackUpdate: jest.fn(), onRawDetection: jest.fn() },
+          useValue: { onTrackUpdate: jest.fn() },
         },
       ],
     }).compile();

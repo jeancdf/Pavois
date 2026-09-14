@@ -41,7 +41,7 @@ enum TrackVerdict {
 }
 
 /// A notable event worth surfacing to an operator (new track, drone
-/// confirmed, high-confidence detection, ...). Persisted so it survives a
+/// confirmed, ...). Persisted so it survives a
 /// page refresh / no browser being open when it fired.
 model Alert {
   id        String   @id @default(cuid())

@@ -233,10 +233,6 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       toFusionObservation(detection, camera, Date.now(), local),
     );
     this.eventsGateway.broadcast('raw_detection', detection);
-    this.alertsService.onRawDetection({
-      cameraId: detection.cameraId,
-      confidence: detection.confidence,
-    });
     const snap = this.fusion.snapshot();
     const fuseUpdate: FuseUpdate = {
       type: 'fuse_update',

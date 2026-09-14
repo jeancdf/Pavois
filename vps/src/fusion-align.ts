@@ -49,20 +49,55 @@ export function timeAlign(
       aligned.push(lerpObservation(lo, hi, f));
     } else if (lo !== undefined && lo === hi) {
       aligned.push({ ...lo });
-    } else if (
-      lo !== undefined &&
-      tRefUs - observationTimeUs(lo) <= windowUs
-    ) {
+    } else if (lo !== undefined && tRefUs - observationTimeUs(lo) <= windowUs) {
       const o = { ...lo };
       o.confidence *= 0.8;
       aligned.push(o);
-    } else if (
-      hi !== undefined &&
-      observationTimeUs(hi) - tRefUs <= windowUs
-    ) {
+    } else if (hi !== undefined && observationTimeUs(hi) - tRefUs <= windowUs) {
       const o = { ...hi };
       o.confidence *= 0.8;
       aligned.push(o);
+    }
+  }
+
+  return aligned;
+}
+
+/**
+ * Select the nearest captured frame from every camera and preserve every blob
+ * emitted for that frame. Raw voxel rendering deliberately keeps all
+ * cross-camera combinations; target association happens elsewhere.
+ */
+export function timeAlignFrameGroups(
+  histories: ReadonlyMap<string, readonly FusionObservation[]>,
+  tRefUs: number,
+  windowMs: number,
+): FusionObservation[] {
+  const windowUs = windowMs * 1000;
+  const aligned: FusionObservation[] = [];
+
+  for (const history of histories.values()) {
+    let nearest: FusionObservation | undefined;
+    let nearestDeltaUs = Number.POSITIVE_INFINITY;
+    for (const observation of history) {
+      const deltaUs = Math.abs(observationTimeUs(observation) - tRefUs);
+      if (deltaUs < nearestDeltaUs) {
+        nearest = observation;
+        nearestDeltaUs = deltaUs;
+      }
+    }
+    if (!nearest || nearestDeltaUs > windowUs) continue;
+
+    for (const observation of history) {
+      if (
+        observation.frameIndex !== nearest.frameIndex ||
+        observation.timestampUs !== nearest.timestampUs
+      ) {
+        continue;
+      }
+      const copy = { ...observation };
+      if (nearestDeltaUs > 0) copy.confidence *= 0.8;
+      aligned.push(copy);
     }
   }
 

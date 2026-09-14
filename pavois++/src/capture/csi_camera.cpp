@@ -136,6 +136,11 @@ bool CsiCamera::open() {
         << " --timeout 0 --nopreview --codec mjpeg --quality 80"
         << " --width " << config_.width << " --height " << config_.height
         << " --framerate " << config_.fps
+        << " --exposure " << config_.exposure_mode
+        << " --shutter " << config_.shutter_us
+        << " --gain " << config_.analogue_gain
+        << " --awb custom --awbgains " << config_.awb_red_gain << ','
+        << config_.awb_blue_gain
         << " --metadata " << metadata_path_ << " --metadata-format txt"
         << " --output -"
         << " | ffmpeg -nostdin -loglevel error -threads 1 -f mjpeg -i pipe:0"

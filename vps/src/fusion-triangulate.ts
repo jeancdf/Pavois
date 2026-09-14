@@ -130,6 +130,7 @@ export function pairIntersections(
   const intersections: PairIntersection[] = [];
   for (let i = 0; i < obs.length; ++i) {
     for (let j = i + 1; j < obs.length; ++j) {
+      if (obs[i].cameraId === obs[j].cameraId) continue;
       const first = pixelToRay(
         obs[i].intrinsics,
         obs[i].pose,

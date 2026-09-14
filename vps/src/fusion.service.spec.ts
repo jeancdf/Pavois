@@ -219,6 +219,30 @@ describe('FusionService', () => {
     expect(snap.tracks).toEqual([]);
   });
 
+  it('keeps every blob from the aligned camera frames for raw voxels', () => {
+    const nowMs = Date.now();
+    const frame = {
+      frameIndex: 44,
+      timestampUs: 1_000_000,
+      receivedAtMs: nowMs,
+    };
+    const jean = posedObservation('jean', EYES.jean, frame);
+    const tanel = posedObservation('tanel', EYES.tanel, frame);
+
+    service.ingest(jean);
+    service.ingest({ ...jean, x: jean.x + 2, size: jean.size + 1 });
+    service.ingest(tanel);
+    service.ingest({ ...tanel, x: tanel.x - 2, size: tanel.size + 1 });
+
+    const raw = service.snapshot(nowMs).rawIntersections;
+    expect(raw).toHaveLength(4);
+    expect(
+      raw.every(
+        (intersection) => intersection.cameras[0] !== intersection.cameras[1],
+      ),
+    ).toBe(true);
+  });
+
   it('rejects two nearly collinear cameras', () => {
     const nowMs = Date.now();
     const extra = { receivedAtMs: nowMs };

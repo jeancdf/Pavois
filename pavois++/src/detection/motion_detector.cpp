@@ -181,8 +181,16 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
     const int b = std::max(0, cfg_.border_ignore_px);
 
-    const Blob* best = nullptr;
-    double best_score = -1.0;
+    struct Candidate {
+        const Blob* blob = nullptr;
+        double cx = 0.0;
+        double cy = 0.0;
+        double fill = 0.0;
+        double snr = 0.0;
+        double score = 0.0;
+    };
+    std::vector<Candidate> candidates;
+    candidates.reserve(blobs.size());
     for (const auto& bl : blobs) {
         const int bw = bl.x1 - bl.x0 + 1;
         const int bh = bl.y1 - bl.y0 + 1;
@@ -204,11 +212,17 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         const double area_score = std::min(1.0, static_cast<double>(bl.area) / 800.0);
         const double energy_score = std::min(1.0, bl.energy / 60.0);
         const double score = 0.35 * area_score + 0.20 * fill + 0.20 * energy_score + 0.25 * continuity;
-        if (score > best_score) {
-            best_score = score;
-            best = &bl;
-        }
+        const std::size_t ci =
+            static_cast<std::size_t>(std::clamp<int>(static_cast<int>(cy), 0, h_ - 1)) * w_ +
+            std::clamp<int>(static_cast<int>(cx), 0, w_ - 1);
+        const double noise_here = std::max(1.0, static_cast<double>(noise_[ci]));
+        candidates.push_back({&bl, cx, cy, fill, bl.energy / noise_here, score});
     }
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const Candidate& a, const Candidate& b) {
+                         return a.score > b.score;
+                     });
+    const Blob* best = candidates.empty() ? nullptr : candidates.front().blob;
 
     // Kalman predict step happens every frame.
     if (centroid_kf_.initialized()) centroid_kf_.predict(dt);
@@ -230,13 +244,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         const int bh = best->y1 - best->y0 + 1;
         out.fill_ratio = static_cast<double>(best->area) / static_cast<double>(std::max(1, bw * bh));
 
-        double noise_here = 0.0;
-        {
-            const std::size_t ci = static_cast<std::size_t>(std::clamp<int>(static_cast<int>(my), 0, h_ - 1)) * w_ +
-                                   std::clamp<int>(static_cast<int>(mx), 0, w_ - 1);
-            noise_here = std::max(1.0, static_cast<double>(noise_[ci]));
-        }
-        out.snr = best->energy / noise_here;
+        out.snr = candidates.front().snr;
 
         if (!centroid_kf_.initialized()) {
             centroid_kf_.init(2, {mx, my}, cfg_.centroid_process_noise, cfg_.centroid_meas_noise);
@@ -254,18 +262,6 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         have_last_ = true;
         confirm_hits_.push_back(1);
 
-        // Freeze the background only over pixels of the chosen blob itself
-        // (dilated a little), so a target that moves on cannot leave a
-        // permanently frozen ghost behind it.
-        const int pad = 2;
-        for (int y = std::max(0, best->y0 - pad); y <= std::min(h_ - 1, best->y1 + pad); ++y) {
-            for (int x = std::max(0, best->x0 - pad); x <= std::min(w_ - 1, best->x1 + pad); ++x) {
-                const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
-                if (mask_[bi]) fg_mask_[bi] = 1;
-            }
-        }
-        // dilate fg_mask_ by `pad` so the blob's soft edge is covered too
-        if (pad > 0) dilate(fg_mask_, w_, h_, pad, executor_);
     } else {
         confirm_hits_.push_back(0);
         if (centroid_kf_.initialized()) {
@@ -274,6 +270,24 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             out.cy = p[1];
         }
     }
+
+    // Preserve every valid component in the slow-update foreground mask. If
+    // only the best one is protected, simultaneous targets are absorbed into
+    // the background before they can be emitted on following frames.
+    constexpr int pad = 2;
+    for (const auto& candidate : candidates) {
+        const Blob& blob = *candidate.blob;
+        for (int y = std::max(0, blob.y0 - pad);
+             y <= std::min(h_ - 1, blob.y1 + pad); ++y) {
+            for (int x = std::max(0, blob.x0 - pad);
+                 x <= std::min(w_ - 1, blob.x1 + pad); ++x) {
+                const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
+                if (mask_[bi]) fg_mask_[bi] = 1;
+            }
+        }
+    }
+    if (!candidates.empty()) dilate(fg_mask_, w_, h_, pad, executor_);
+
     while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
     const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);
     out.confirmed = out.has_blob && hits >= cfg_.confirm_m && frames_seen_ > 3;
@@ -281,12 +295,27 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Quality: temporal support, fill, SNR, filter tightness.
     if (out.has_blob) {
         const double support = static_cast<double>(hits) / static_cast<double>(cfg_.confirm_n);
-        const double snr_score = std::min(1.0, out.snr / 6.0);
-        const double fill_score = std::clamp(out.fill_ratio / 0.6, 0.0, 1.0);
         const double tight = std::clamp(1.0 - centroid_kf_.position_uncertainty() / 12.0, 0.0, 1.0);
-        out.quality = std::clamp(0.15 + 0.35 * support + 0.25 * snr_score +
-                                     0.15 * fill_score + 0.10 * tight,
-                                 0.0, 1.0);
+        out.blobs.reserve(candidates.size());
+        for (std::size_t index = 0; index < candidates.size(); ++index) {
+            const Candidate& candidate = candidates[index];
+            const double snr_score = std::min(1.0, candidate.snr / 6.0);
+            const double fill_score = std::clamp(candidate.fill / 0.6, 0.0, 1.0);
+            const double filter_score = index == 0 ? tight : 0.5;
+            const double quality = std::clamp(
+                0.15 + 0.35 * support + 0.25 * snr_score +
+                    0.15 * fill_score + 0.10 * filter_score,
+                0.0, 1.0);
+            out.blobs.push_back({
+                index == 0 ? out.cx : candidate.cx,
+                index == 0 ? out.cy : candidate.cy,
+                candidate.blob->area,
+                candidate.fill,
+                candidate.snr,
+                quality,
+            });
+        }
+        out.quality = out.blobs.front().quality;
     }
 
     // Background + per-pixel noise update.

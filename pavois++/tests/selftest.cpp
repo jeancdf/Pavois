@@ -682,9 +682,58 @@ void test_detector() {
                          a.cx == b.cx && a.cy == b.cy &&
                          a.raw_cx == b.raw_cx && a.raw_cy == b.raw_cy &&
                          a.fill_ratio == b.fill_ratio && a.snr == b.snr &&
-                         a.quality == b.quality;
+                         a.quality == b.quality &&
+                         a.blobs.size() == b.blobs.size();
+            for (std::size_t blob = 0;
+                 identical && blob < a.blobs.size(); ++blob) {
+                identical &= a.blobs[blob].cx == b.blobs[blob].cx &&
+                             a.blobs[blob].cy == b.blobs[blob].cy &&
+                             a.blobs[blob].area == b.blobs[blob].area &&
+                             a.blobs[blob].quality == b.blobs[blob].quality;
+            }
         }
         check(identical, "parallel detector is result-identical");
+    }
+
+    // Every valid component from a frame survives the 2-of-3 confirmation.
+    {
+        CameraConfig multi;
+        multi.width = 96;
+        multi.height = 64;
+        multi.diff_threshold = 10;
+        multi.blur_radius = 0;
+        multi.morph_open = 0;
+        multi.morph_close = 0;
+        multi.confirm_m = 2;
+        multi.confirm_n = 3;
+        MotionDetector detector(multi);
+        GrayFrame frame;
+        frame.width = multi.width;
+        frame.height = multi.height;
+        frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height), 0);
+        for (int i = 0; i < 12; ++i) {
+            frame.captured_us = 1'000'000 + static_cast<std::uint64_t>(i) * 33'333;
+            detector.process(frame);
+        }
+        auto paint_targets = [&] {
+            std::fill(frame.pixels.begin(), frame.pixels.end(), 0);
+            for (int y = 16; y < 24; ++y)
+                for (int x = 18; x < 26; ++x)
+                    frame.pixels[static_cast<std::size_t>(y) * frame.width + x] = 255;
+            for (int y = 34; y < 42; ++y)
+                for (int x = 64; x < 72; ++x)
+                    frame.pixels[static_cast<std::size_t>(y) * frame.width + x] = 255;
+        };
+        paint_targets();
+        frame.captured_us += 33'333;
+        const auto first = detector.process(frame);
+        paint_targets();
+        frame.captured_us += 33'333;
+        const auto second = detector.process(frame);
+        check(!first.confirmed && second.confirmed,
+              "2-of-3 confirmation emits on the second hit");
+        check(second.blobs.size() == 2,
+              "detector preserves all simultaneous valid blobs");
     }
 
     // Baseline: 2-frame diff + largest blob (the original approach).
@@ -1049,6 +1098,11 @@ void test_imu() {
         file << "imu.i2c_retry_max_ms=3000\n";
         file << "imu.heading_sign=-1\n";
         file << "processing_threads=7\n";
+        file << "camera.0.exposure_mode=sport\n";
+        file << "camera.0.shutter_us=600\n";
+        file << "camera.0.analogue_gain=5.5\n";
+        file << "camera.0.awb_red_gain=1.2\n";
+        file << "camera.0.awb_blue_gain=1.4\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
@@ -1058,6 +1112,14 @@ void test_imu() {
     check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
     check(loaded.imu_heading_sign == -1.0, "config heading sign");
     check(loaded.processing_threads == 7, "config processing thread count");
+    check(loaded.cameras[0].exposure_mode == "sport", "config exposure mode");
+    check(loaded.cameras[0].shutter_us == 600, "config fixed shutter");
+    check_near(loaded.cameras[0].analogue_gain, 5.5, 1e-9,
+               "config fixed analogue gain");
+    check_near(loaded.cameras[0].awb_red_gain, 1.2, 1e-9,
+               "config fixed AWB red gain");
+    check_near(loaded.cameras[0].awb_blue_gain, 1.4, 1e-9,
+               "config fixed AWB blue gain");
 
     std::filesystem::remove_all(dir, ec);
 }

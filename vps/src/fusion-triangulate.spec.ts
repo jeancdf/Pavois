@@ -115,6 +115,19 @@ describe('triangulate', () => {
     expect(r.rejectReason).toBe(NO_SUBSET);
   });
 
+  it('never intersects two blobs originating from the same camera', () => {
+    const rng = mulberry32(7);
+    const obs = makeObs(target, threePoses().slice(0, 2), intrinsics, 0, rng);
+    const secondJeanBlob = { ...obs[0], pixelX: obs[0].pixelX + 30 };
+    const raw = pairIntersections([obs[0], secondJeanBlob, obs[1]], 80);
+    expect(raw).toHaveLength(2);
+    expect(
+      raw.every(
+        (intersection) => intersection.cameras[0] !== intersection.cameras[1],
+      ),
+    ).toBe(true);
+  });
+
   it('rejects an over-range solution', () => {
     const rng = mulberry32(7);
     const obs = makeObs(target, threePoses(), intrinsics, 0, rng);

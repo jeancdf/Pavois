@@ -29,8 +29,8 @@ struct CameraConfig {
     double min_blob_fill_ratio = 0.10;    // area / bbox area (reject thin streaks)
     double max_blob_aspect = 6.0;         // reject long thin artefacts
     int border_ignore_px = 6;             // drop blobs hugging the frame edge
-    int confirm_m = 3;                    // confirmed if seen in M of last N frames
-    int confirm_n = 5;
+    int confirm_m = 2;                    // confirmed if seen in M of last N frames
+    int confirm_n = 3;
     double centroid_process_noise = 600.0;  // 2D Kalman on the centroid (px^2/s^3)
     double centroid_meas_noise = 2.0;       // px
 
@@ -75,6 +75,14 @@ struct CameraConfig {
     // --- capture ---
     int reconnect_max_attempts = 0;   // 0 => unlimited
     int reconnect_backoff_ms = 500;
+
+    // CSI exposure lock. Short shutter limits motion blur; fixed analogue and
+    // white-balance gains avoid auto-control jumps becoming foreground.
+    std::string exposure_mode = "sport";
+    int shutter_us = 750;
+    double analogue_gain = 4.0;
+    double awb_red_gain = 1.0;
+    double awb_blue_gain = 1.0;
 };
 
 struct AppConfig {

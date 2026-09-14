@@ -1,0 +1,43 @@
+{
+  "captions": 7,
+  "duration": 55,
+  "frames": 1320,
+  "fps": 24,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "audio": false,
+  "full_decode": "passed",
+  "blender_compositor_render": "passed",
+  "cue_frames": [
+    [
+      163,
+      288
+    ],
+    [
+      361,
+      432
+    ],
+    [
+      433,
+      504
+    ],
+    [
+      721,
+      792
+    ],
+    [
+      865,
+      960
+    ],
+    [
+      1073,
+      1144
+    ],
+    [
+      1145,
+      1224
+    ]
+  ]
+}

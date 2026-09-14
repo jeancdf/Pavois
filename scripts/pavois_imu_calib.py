@@ -32,7 +32,7 @@ from pathlib import Path
 
 try:
     from adafruit_extended_bus import ExtendedI2C
-    from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
+    from adafruit_bno08x import BNO_REPORT_MAGNETOMETER, BNO_REPORT_ROTATION_VECTOR
     from adafruit_bno08x.i2c import BNO08X_I2C
 except ImportError as exc:
     print(
@@ -84,6 +84,19 @@ def wait_for_enter() -> None:
             return
 
 
+def magnetometer_accuracy(sensor) -> int | None:
+    """Return the accuracy cached from magnetometer reports.
+
+    adafruit-circuitpython-bno08x 1.3.3 implements ``calibration_status`` by
+    issuing a blocking ME command. Repeating that command while rotation
+    reports are streaming can desynchronise SHTP over Linux I2C. The driver
+    already stores the two accuracy bits from every magnetometer report, so
+    use that non-blocking value instead (the production bridge does the same).
+    """
+    status = getattr(sensor, "_magnetometer_accuracy", None)
+    return status if status in (0, 1, 2, 3) else None
+
+
 def live_calibration_loop(sensor) -> None:
     print(
         "\nEffectuez une maneuvre en huit avec la camera (mouvement large,\n"
@@ -99,9 +112,10 @@ def live_calibration_loop(sensor) -> None:
         try:
             x, y, z, w = sensor.quaternion
             yaw = quat_to_yaw_deg(x, y, z, w)
-            status = sensor.calibration_status
+            status = magnetometer_accuracy(sensor)
+            status_text = "--" if status is None else str(status)
             print(
-                f"\rCALIB_STAT: {status}/3   cap actuel: {yaw:6.1f}deg   "
+                f"\rCALIB_STAT: {status_text}/3   cap actuel: {yaw:6.1f}deg   "
                 "(Entree pour continuer)   ",
                 end="",
                 flush=True,
@@ -202,10 +216,13 @@ def main() -> int:
     try:
         i2c = ExtendedI2C(I2C_BUS)
         sensor = BNO08X_I2C(i2c, address=I2C_ADDRESS)
-        sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+        sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, report_interval=100000)
+        sensor.enable_feature(BNO_REPORT_MAGNETOMETER, report_interval=500000)
         time.sleep(0.5)
 
         if not args.skip_chip_calibration:
+            sensor.begin_calibration()
+            time.sleep(0.5)
             live_calibration_loop(sensor)
             try:
                 sensor.save_calibration_data()

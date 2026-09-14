@@ -13,6 +13,12 @@ import { PreviewController } from './preview.controller';
 import { PreviewService } from './preview.service';
 import { FusionController } from './fusion.controller';
 import { FusionService } from './fusion.service';
+import { PrismaService } from './prisma.service';
+import { TracksController } from './tracks.controller';
+import { TracksService } from './tracks.service';
+import { AlertsController } from './alerts.controller';
+import { AlertsService } from './alerts.service';
+import { BenchController } from './bench.controller';
 
 @Module({
   imports: [
@@ -30,6 +36,9 @@ import { FusionService } from './fusion.service';
     AttitudeController,
     PreviewController,
     FusionController,
+    TracksController,
+    AlertsController,
+    BenchController,
   ],
   providers: [
     AppService,
@@ -38,6 +47,9 @@ import { FusionService } from './fusion.service';
     CamerasService,
     PreviewService,
     FusionService,
+    PrismaService,
+    TracksService,
+    AlertsService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

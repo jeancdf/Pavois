@@ -14,6 +14,12 @@ export interface CameraGpsConfig {
   headingDeg: number;
   fovDeg: number;
   rangeM: number;
+  localX?: number;
+  localY?: number;
+  localZ?: number;
+  localHeadingDeg?: number;
+  localElevationDeg?: number;
+  localRollDeg?: number;
 }
 
 export function buildCameraPositions(configs: CameraGpsConfig[]): CameraPosition[] {

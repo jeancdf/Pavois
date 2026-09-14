@@ -1,0 +1,18 @@
+<section class="alert-feed">
+  <header class="feed-header">
+    <span class="feed-title">ALERTES</span>
+  </header>
+
+  @if (items().length === 0) {
+    <p class="feed-empty">Aucune alerte pour l'instant…</p>
+  } @else {
+    <ul class="feed-list">
+      @for (item of items(); track item.id) {
+        <li class="feed-item" [class]="'alert-' + item.type">
+          <span class="alert-msg">{{ item.message }}</span>
+          <span class="alert-time">{{ item.createdAt | date: 'HH:mm:ss' }}</span>
+        </li>
+      }
+    </ul>
+  }
+</section>

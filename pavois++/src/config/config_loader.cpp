@@ -92,6 +92,7 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
 bool apply_global_field(AppConfig& cfg, const std::string& key, const std::string& v) {
     try {
         if (key == "frames") cfg.frames = std::stoi(v);
+        else if (key == "processing_threads") cfg.processing_threads = std::stoi(v);
         else if (key == "fusion_window_ms") cfg.fusion_window_ms = std::stoi(v);
         else if (key == "fusion_emit_interval_ms") cfg.fusion_emit_interval_ms = std::stoi(v);
         else if (key == "fusion_max_range_m") cfg.fusion_max_range_m = std::stod(v);
@@ -264,6 +265,7 @@ AppConfig load_config_file(const std::string& path) {
         }
     }
 
+    config.processing_threads = std::clamp(config.processing_threads, 1, 8);
     for (auto& cam : config.cameras) finalize_camera(cam);
     return config;
 }

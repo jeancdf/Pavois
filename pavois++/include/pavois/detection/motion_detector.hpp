@@ -10,6 +10,8 @@
 
 namespace pavois {
 
+class ParallelExecutor;
+
 struct DetectionResult {
     bool has_blob = false;      // a plausible blob was found this frame
     bool confirmed = false;     // passed M-of-N temporal confirmation
@@ -34,7 +36,8 @@ struct DetectionResult {
 //   2D constant-velocity Kalman on the centroid -> M-of-N confirmation.
 class MotionDetector {
 public:
-    explicit MotionDetector(const CameraConfig& cfg);
+    explicit MotionDetector(const CameraConfig& cfg,
+                            ParallelExecutor* executor = nullptr);
 
     void set_debug(bool on) { want_debug_ = on; }
 
@@ -52,6 +55,7 @@ private:
                                            const std::vector<float>& diff);
 
     CameraConfig cfg_;
+    ParallelExecutor* executor_ = nullptr;
     int w_ = 0;
     int h_ = 0;
     bool want_debug_ = false;

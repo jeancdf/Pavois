@@ -53,6 +53,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
                            std::ostream& log_out, std::mutex& log_mutex,
                            std::shared_ptr<UdpSender> udp_sender,
                            std::shared_ptr<HttpPoster> preview_http,
+                           std::shared_ptr<ParallelExecutor> processing_executor,
                            std::shared_ptr<ImuReader> imu,
                            bool emit_raw_observations)
     : cfg_(cfg),
@@ -62,6 +63,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
       preview_http_(std::move(preview_http)),
+      processing_executor_(std::move(processing_executor)),
       imu_(std::move(imu)),
       emit_raw_observations_(emit_raw_observations) {}
 
@@ -200,7 +202,7 @@ void CameraWorker::operator()() {
         return;
     }
 
-    MotionDetector detector(cfg_);
+    MotionDetector detector(cfg_, processing_executor_.get());
     DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
     detector.set_debug(debug.active());
 

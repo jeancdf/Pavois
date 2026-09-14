@@ -12,7 +12,7 @@ struct CameraConfig {
     std::string device = "/dev/video0";
     int width = 1280;
     int height = 720;
-    int fps = 20;  // CSI capture frame rate
+    int fps = 30;  // CSI capture frame rate
     int frames = -1;
     bool enabled = true;
 
@@ -66,6 +66,10 @@ struct CameraConfig {
 
 struct AppConfig {
     int frames = -1;
+
+    // Total threads participating in full-frame detector passes, including
+    // the camera thread. Three leaves one Pi core for capture and the OS.
+    int processing_threads = 3;
 
     // --- fusion ---
     int fusion_window_ms = 90;

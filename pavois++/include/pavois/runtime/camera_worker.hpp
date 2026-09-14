@@ -17,6 +17,8 @@
 
 namespace pavois {
 
+class ParallelExecutor;
+
 class CameraWorker {
 public:
     CameraWorker(const CameraConfig& cfg,
@@ -26,6 +28,7 @@ public:
                  std::mutex& log_mutex,
                  std::shared_ptr<UdpSender> udp_sender,
                  std::shared_ptr<HttpPoster> preview_http,
+                 std::shared_ptr<ParallelExecutor> processing_executor,
                  std::shared_ptr<ImuReader> imu,
                  bool emit_raw_observations);
 
@@ -55,6 +58,7 @@ private:
     std::mutex& log_mutex_;
     std::shared_ptr<UdpSender> udp_sender_;
     std::shared_ptr<HttpPoster> preview_http_;
+    std::shared_ptr<ParallelExecutor> processing_executor_;
     // Process-wide IMU (opened once in main; may be null).
     std::shared_ptr<ImuReader> imu_;
     bool emit_raw_observations_ = false;

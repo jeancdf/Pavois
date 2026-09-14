@@ -1,8 +1,10 @@
 #include "pavois/detection/motion_detector.hpp"
 
 #include "pavois/detection/image_ops.hpp"
+#include "pavois/util/parallel_executor.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <numeric>
 
@@ -10,9 +12,21 @@ namespace pavois {
 namespace {
 constexpr double kDefaultDt = 1.0 / 30.0;
 constexpr int kWarmupFrames = 12;
+
+template <typename Function>
+void for_each_range(ParallelExecutor* executor, std::size_t begin,
+                    std::size_t end, Function&& function) {
+    if (executor != nullptr && executor->thread_count() > 1) {
+        executor->for_each_range(begin, end, function);
+    } else {
+        function(begin, end);
+    }
+}
 }
 
-MotionDetector::MotionDetector(const CameraConfig& cfg) : cfg_(cfg) {
+MotionDetector::MotionDetector(const CameraConfig& cfg,
+                               ParallelExecutor* executor)
+    : cfg_(cfg), executor_(executor) {
     cfg_.confirm_m = std::max(1, cfg_.confirm_m);
     cfg_.confirm_n = std::max(cfg_.confirm_m, cfg_.confirm_n);
 }
@@ -75,9 +89,14 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     if (w_ != frame.width || h_ != frame.height) {
         w_ = frame.width;
         h_ = frame.height;
-        bg_.assign(frame.size(), 0.0f);
+        bg_.resize(frame.size());
         noise_.assign(frame.size(), 4.0f);
-        for (std::size_t i = 0; i < frame.size(); ++i) bg_[i] = frame.pixels[i];
+        for_each_range(executor_, 0, frame.size(),
+                       [&](std::size_t first, std::size_t last) {
+            for (std::size_t i = first; i < last; ++i) {
+                bg_[i] = frame.pixels[i];
+            }
+        });
         centroid_kf_ = KalmanCV();
         warmup_left_ = kWarmupFrames;
         confirm_hits_.clear();
@@ -92,19 +111,24 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     last_us_ = frame.captured_us;
     ++frames_seen_;
 
-    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius));
+    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
+             executor_);
 
     // Warm-up: build the background from a short temporal mean before detecting.
     // Seeding from a single frame would bake any object present at t=0 into the
     // model as a permanent negative ghost; averaging washes a moving target out.
     if (warmup_left_ > 0) {
         const float n = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
-        for (std::size_t i = 0; i < frame.size(); ++i) {
-            bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
-            const float d = std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
-            noise_[i] += 0.1f * (d - noise_[i]);
-            noise_[i] = std::clamp(noise_[i], 1.5f, 18.0f);
-        }
+        for_each_range(executor_, 0, frame.size(),
+                       [&](std::size_t first, std::size_t last) {
+            for (std::size_t i = first; i < last; ++i) {
+                bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
+                const float d =
+                    std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
+                noise_[i] += 0.1f * (d - noise_[i]);
+                noise_[i] = std::clamp(noise_[i], 1.5f, 18.0f);
+            }
+        });
         --warmup_left_;
         return out;
     }
@@ -118,29 +142,39 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     }
     bias /= static_cast<double>(frame.size());
 
-    diff_.assign(frame.size(), 0.0f);
-    mask_.assign(frame.size(), 0);
+    diff_.resize(frame.size());
+    mask_.resize(frame.size());
     const double base = static_cast<double>(cfg_.diff_threshold);
-    std::size_t hot = 0;
-    for (std::size_t i = 0; i < frame.size(); ++i) {
-        const float d = std::fabs((static_cast<float>(blur_[i]) - bg_[i]) - static_cast<float>(bias));
-        diff_[i] = d;
-        const double thr = base + cfg_.adaptive_k * noise_[i];
-        if (d > thr) {
-            mask_[i] = 255;
-            ++hot;
+    std::atomic<std::size_t> hot{0};
+    for_each_range(executor_, 0, frame.size(),
+                   [&](std::size_t first, std::size_t last) {
+        std::size_t local_hot = 0;
+        for (std::size_t i = first; i < last; ++i) {
+            const float d = std::fabs(
+                (static_cast<float>(blur_[i]) - bg_[i]) -
+                static_cast<float>(bias));
+            diff_[i] = d;
+            const double threshold = base + cfg_.adaptive_k * noise_[i];
+            if (d > threshold) {
+                mask_[i] = 255;
+                ++local_hot;
+            } else {
+                mask_[i] = 0;
+            }
         }
-    }
+        hot.fetch_add(local_hot, std::memory_order_relaxed);
+    });
 
     // Global illumination / exposure jump: almost everything moved -> bail,
     // and let the background catch up fast.
-    const double hot_ratio = static_cast<double>(hot) / static_cast<double>(frame.size());
+    const double hot_ratio = static_cast<double>(hot.load(std::memory_order_relaxed)) /
+                             static_cast<double>(frame.size());
     const bool illumination_event = hot_ratio > cfg_.max_blob_area_ratio;
 
     std::vector<Blob> blobs;
     if (!illumination_event) {
-        morph_open(mask_, w_, h_, std::max(0, cfg_.morph_open));
-        morph_close(mask_, w_, h_, std::max(0, cfg_.morph_close));
+        morph_open(mask_, w_, h_, std::max(0, cfg_.morph_open), executor_);
+        morph_close(mask_, w_, h_, std::max(0, cfg_.morph_close), executor_);
         blobs = connected_components(mask_, diff_);
     }
 
@@ -179,7 +213,12 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Kalman predict step happens every frame.
     if (centroid_kf_.initialized()) centroid_kf_.predict(dt);
 
-    fg_mask_.assign(frame.size(), 0);
+    fg_mask_.resize(frame.size());
+    for_each_range(executor_, 0, frame.size(),
+                   [&](std::size_t first, std::size_t last) {
+        std::fill(fg_mask_.begin() + static_cast<std::ptrdiff_t>(first),
+                  fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
+    });
     if (best != nullptr) {
         const double mx = best->wx / std::max(1e-6, best->wsum);
         const double my = best->wy / std::max(1e-6, best->wsum);
@@ -226,7 +265,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             }
         }
         // dilate fg_mask_ by `pad` so the blob's soft edge is covered too
-        if (pad > 0) dilate(fg_mask_, w_, h_, pad);
+        if (pad > 0) dilate(fg_mask_, w_, h_, pad, executor_);
     } else {
         confirm_hits_.push_back(0);
         if (centroid_kf_.initialized()) {
@@ -256,16 +295,22 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const float a_catchup = illumination_event ? 0.25f : a_bg;
     const float a_noise = 0.03f;
     const float noise_cap = 18.0f;
-    for (std::size_t i = 0; i < frame.size(); ++i) {
-        const float rate = (fg_mask_[i] && !illumination_event) ? a_fg : a_catchup;
-        bg_[i] += rate * (static_cast<float>(blur_[i]) - bg_[i]);
-        // Update the noise estimate only from quiet pixels, and only from
-        // small residuals, so it stays a noise floor and never chases signal.
-        if (!fg_mask_[i] && diff_[i] < 3.0f * static_cast<float>(base)) {
-            noise_[i] += a_noise * (diff_[i] - noise_[i]);
-            noise_[i] = std::clamp(noise_[i], 1.5f, noise_cap);
+    for_each_range(executor_, 0, frame.size(),
+                   [&](std::size_t first, std::size_t last) {
+        for (std::size_t i = first; i < last; ++i) {
+            const float rate = (fg_mask_[i] && !illumination_event)
+                                   ? a_fg
+                                   : a_catchup;
+            bg_[i] += rate * (static_cast<float>(blur_[i]) - bg_[i]);
+            // Update the noise estimate only from quiet pixels, and only from
+            // small residuals, so it remains a floor and never chases signal.
+            if (!fg_mask_[i] &&
+                diff_[i] < 3.0f * static_cast<float>(base)) {
+                noise_[i] += a_noise * (diff_[i] - noise_[i]);
+                noise_[i] = std::clamp(noise_[i], 1.5f, noise_cap);
+            }
         }
-    }
+    });
 
     if (want_debug_) {
         out.mask = mask_;

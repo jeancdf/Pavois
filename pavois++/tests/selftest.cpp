@@ -21,6 +21,7 @@
 #include "pavois/runtime/camera_worker.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/util/jpeg_gray.hpp"
+#include "pavois/util/parallel_executor.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -204,6 +205,47 @@ void test_image_ops() {
     holed[10 * w + 12] = 0;  // 1px hole
     morph_close(holed, w, h, 1);
     check(holed[10 * w + 12] == 255, "close fills a 1px hole");
+
+    // The multithreaded path must remain byte-for-byte identical, including
+    // dimensions that do not divide evenly between workers.
+    constexpr int pw = 127, ph = 91;
+    std::mt19937 rng(42);
+    std::vector<std::uint8_t> random_image(pw * ph);
+    for (auto& pixel : random_image) {
+        pixel = static_cast<std::uint8_t>(rng() & 0xffU);
+    }
+    ParallelExecutor executor(3);
+    std::vector<std::uint8_t> serial_blur, parallel_blur;
+    box_blur(random_image, serial_blur, pw, ph, 2);
+    box_blur(random_image, parallel_blur, pw, ph, 2, &executor);
+    check(parallel_blur == serial_blur, "parallel blur is byte-identical");
+
+    std::vector<std::uint8_t> serial_mask(pw * ph), parallel_mask;
+    for (std::size_t i = 0; i < serial_mask.size(); ++i) {
+        serial_mask[i] = random_image[i] > 180 ? 255 : 0;
+    }
+    parallel_mask = serial_mask;
+    morph_open(serial_mask, pw, ph, 1);
+    morph_close(serial_mask, pw, ph, 2);
+    morph_open(parallel_mask, pw, ph, 1, &executor);
+    morph_close(parallel_mask, pw, ph, 2, &executor);
+    check(parallel_mask == serial_mask,
+          "parallel morphology is byte-identical");
+
+    auto merged_erode = parallel_mask;
+    auto repeated_erode = parallel_mask;
+    erode(merged_erode, pw, ph, 2);
+    erode(repeated_erode, pw, ph, 1);
+    erode(repeated_erode, pw, ph, 1);
+    check(merged_erode == repeated_erode,
+          "merged erosion iterations are byte-identical");
+
+    auto merged_dilate = serial_mask;
+    auto repeated_dilate = serial_mask;
+    dilate(merged_dilate, pw, ph, 3);
+    for (int i = 0; i < 3; ++i) dilate(repeated_dilate, pw, ph, 1);
+    check(merged_dilate == repeated_dilate,
+          "merged dilation iterations are byte-identical");
 }
 
 // ===========================================================================
@@ -620,6 +662,31 @@ void test_detector() {
     SceneConfig sc = SceneConfig::nominal();
     Simulator sim(sc, lissajous({4, 26, 12}, {6, 3, 2.5}));
 
+    {
+        CameraConfig equivalence_config;
+        equivalence_config.width = sc.w;
+        equivalence_config.height = sc.h;
+        ParallelExecutor executor(3);
+        MotionDetector serial(equivalence_config);
+        MotionDetector parallel(equivalence_config, &executor);
+        GrayFrame frame;
+        bool identical = true;
+        for (int i = 0; i < 50; ++i) {
+            sim.render(0, i, frame);
+            frame.captured_us =
+                1'000'000 + static_cast<std::uint64_t>(i) * 33'000;
+            const auto a = serial.process(frame);
+            const auto b = parallel.process(frame);
+            identical &= a.has_blob == b.has_blob &&
+                         a.confirmed == b.confirmed && a.area == b.area &&
+                         a.cx == b.cx && a.cy == b.cy &&
+                         a.raw_cx == b.raw_cx && a.raw_cy == b.raw_cy &&
+                         a.fill_ratio == b.fill_ratio && a.snr == b.snr &&
+                         a.quality == b.quality;
+        }
+        check(identical, "parallel detector is result-identical");
+    }
+
     // Baseline: 2-frame diff + largest blob (the original approach).
     GrayFrame prev, cur;
     double base_sum = 0;
@@ -884,7 +951,7 @@ void test_imu() {
         std::ostringstream sink;
         std::mutex log_mu;
         CameraWorker injected(cam, file_cfg, fusion, sink, log_mu,
-                              nullptr, nullptr, shared_imu, false);
+                              nullptr, nullptr, nullptr, shared_imu, false);
         (void)injected;
     }
     std::atomic<int> ok_reads{0};
@@ -973,6 +1040,7 @@ void test_imu() {
         file << "imu.i2c_fail_threshold=7\n";
         file << "imu.i2c_retry_min_ms=100\n";
         file << "imu.i2c_retry_max_ms=3000\n";
+        file << "processing_threads=7\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
@@ -980,6 +1048,7 @@ void test_imu() {
     check(loaded.imu_i2c_fail_threshold == 7, "config i2c fail threshold");
     check(loaded.imu_i2c_retry_min_ms == 100, "config i2c retry min");
     check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
+    check(loaded.processing_threads == 7, "config processing thread count");
 
     std::filesystem::remove_all(dir, ec);
 }

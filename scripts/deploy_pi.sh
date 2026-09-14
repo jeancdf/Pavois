@@ -19,13 +19,27 @@ fi
 # An independent build directory avoids stale CMake state between releases.
 build_dir=$(mktemp -d /tmp/pavois-build.XXXXXX)
 staged_binary=
+previous_binary=
 cleanup() {
   rm -rf -- "$build_dir"
   if [[ -n $staged_binary ]]; then
     rm -f -- "$staged_binary"
   fi
+  if [[ -n $previous_binary ]]; then
+    rm -f -- "$previous_binary"
+  fi
 }
 trap cleanup EXIT
+
+rollback_binary() {
+  if [[ -n $previous_binary && -f $previous_binary ]]; then
+    echo "New detector failed its service check; restoring previous binary." >&2
+    mv -f -- "$previous_binary" "$install_dir/pavois_detect"
+    previous_binary=
+    sudo -n systemctl restart pavois.service || true
+  fi
+}
+trap rollback_binary ERR
 
 cmake -S "$repo_dir/pavois++" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build_dir" --target pavois_detect --parallel "$build_jobs"
@@ -33,13 +47,27 @@ cmake --build "$build_dir" --target pavois_detect --parallel "$build_jobs"
 # Replace the executable atomically after compilation; preserve per-Pi config.
 staged_binary=$(mktemp "$install_dir/.pavois_detect.XXXXXX")
 install -m 0755 "$build_dir/pavois_detect" "$staged_binary"
+if [[ -f $install_dir/pavois_detect ]]; then
+  previous_binary=$(mktemp "$install_dir/.pavois_detect.previous.XXXXXX")
+  cp -p -- "$install_dir/pavois_detect" "$previous_binary"
+fi
 mv -f -- "$staged_binary" "$install_dir/pavois_detect"
 staged_binary=
-sudo -n systemctl restart pavois.service
+if ! sudo -n systemctl restart pavois.service; then
+  rollback_binary
+  exit 1
+fi
 
 # A live systemd unit does not prove that its camera is delivering frames.
 sleep 3
-systemctl is-active --quiet pavois.service
+if ! systemctl is-active --quiet pavois.service; then
+  rollback_binary
+  exit 1
+fi
+if [[ -n $previous_binary ]]; then
+  rm -f -- "$previous_binary"
+  previous_binary=
+fi
 echo "Pavois binary deployed; pavois.service is active."
 journalctl -u pavois.service -n 20 --no-pager || true
 echo "Check camera output: sudo journalctl -u pavois.service -n 50 --no-pager"

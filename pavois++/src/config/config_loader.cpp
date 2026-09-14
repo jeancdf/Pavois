@@ -91,6 +91,11 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "elevation_deg") c.elevation_deg = std::stod(v);
         else if (f == "reconnect_max_attempts") c.reconnect_max_attempts = std::stoi(v);
         else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
+        else if (f == "exposure_mode") c.exposure_mode = v;
+        else if (f == "shutter_us") c.shutter_us = std::stoi(v);
+        else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
+        else if (f == "awb_red_gain") c.awb_red_gain = std::stod(v);
+        else if (f == "awb_blue_gain") c.awb_blue_gain = std::stod(v);
         else if (f == "gps_lat") { c.gps_lat = std::stod(v); c.has_gps_pose = true; }
         else if (f == "gps_lon") { c.gps_lon = std::stod(v); c.has_gps_pose = true; }
         else if (f == "gps_alt") { c.gps_alt = std::stod(v); c.has_gps_pose = true; }
@@ -198,6 +203,13 @@ void finalize_camera(CameraConfig& c) {
         c.yaw_deg = c.heading_deg;
     }
     c.confirm_n = std::max(c.confirm_n, c.confirm_m);
+    if (c.exposure_mode != "normal" && c.exposure_mode != "sport") {
+        c.exposure_mode = "sport";
+    }
+    c.shutter_us = std::clamp(c.shutter_us, 100, 1'000'000);
+    c.analogue_gain = std::clamp(c.analogue_gain, 1.0, 32.0);
+    c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);
+    c.awb_blue_gain = std::clamp(c.awb_blue_gain, 0.1, 8.0);
 }
 
 }  // namespace

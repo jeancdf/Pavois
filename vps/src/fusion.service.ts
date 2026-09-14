@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { timeAlign } from './fusion-align';
+import { timeAlign, timeAlignFrameGroups } from './fusion-align';
 import {
   enuToGps,
   gpsToEnu,
@@ -225,9 +225,29 @@ export class FusionService {
     const intervalUs = this.fusionWindowMs * 1000;
     const fusionDue =
       this.lastFuseUs === 0 || tRefUs >= this.lastFuseUs + intervalUs;
+
+    const rawAligned = timeAlignFrameGroups(
+      this.deques,
+      tRefUs,
+      this.fusionWindowMs,
+    );
+    const rawTriObs: TriangulateObservation[] = [];
+    for (const item of rawAligned) {
+      const mapped = this.toTriObs(item);
+      if (mapped) rawTriObs.push(mapped);
+    }
+    this.rawIntersections =
+      rawTriObs.length >= 2
+        ? pairIntersections(rawTriObs, this.maxRangeM).map((intersection) => ({
+            ...intersection,
+            timestampUs: tRefUs,
+          }))
+        : [];
+
+    // The production tracker still receives one best candidate per camera.
+    // Multi-target association is intentionally not inferred from raw voxels.
     const aligned = timeAlign(this.deques, tRefUs, this.fusionWindowMs);
     if (aligned.length < 2) {
-      this.rawIntersections = [];
       if (fusionDue) this.lastFuse = needTwoFuse();
       return;
     }
@@ -239,16 +259,9 @@ export class FusionService {
       }
     }
     if (triObs.length < 2) {
-      this.rawIntersections = [];
       if (fusionDue) this.lastFuse = needTwoFuse();
       return;
     }
-    this.rawIntersections = pairIntersections(triObs, this.maxRangeM).map(
-      (intersection) => ({
-        ...intersection,
-        timestampUs: tRefUs,
-      }),
-    );
     if (!fusionDue) return;
 
     this.lastFuseUs = tRefUs;

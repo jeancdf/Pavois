@@ -28,16 +28,20 @@ void DebugSink::dump(const GrayFrame& frame, const DetectionResult& det) {
         write_pgm(stem + "_mask.pgm", det.mask.data(), det.mask_w, det.mask_h);
     }
 
-    // Overlay: raw frame with a bright cross-hair at the filtered centroid.
-    if (det.has_blob) {
+    // Overlay: one bright cross-hair for every valid component.
+    if (!det.blobs.empty()) {
         std::vector<std::uint8_t> ov = frame.pixels;
-        const int cx = static_cast<int>(det.cx + 0.5);
-        const int cy = static_cast<int>(det.cy + 0.5);
-        for (int d = -12; d <= 12; ++d) {
-            const int x = std::clamp(cx + d, 0, frame.width - 1);
-            const int y = std::clamp(cy + d, 0, frame.height - 1);
-            ov[static_cast<std::size_t>(cy) * frame.width + x] = 255;
-            ov[static_cast<std::size_t>(y) * frame.width + cx] = 255;
+        for (const auto& blob : det.blobs) {
+            const int cx = std::clamp(static_cast<int>(blob.cx + 0.5), 0,
+                                      frame.width - 1);
+            const int cy = std::clamp(static_cast<int>(blob.cy + 0.5), 0,
+                                      frame.height - 1);
+            for (int d = -12; d <= 12; ++d) {
+                const int x = std::clamp(cx + d, 0, frame.width - 1);
+                const int y = std::clamp(cy + d, 0, frame.height - 1);
+                ov[static_cast<std::size_t>(cy) * frame.width + x] = 255;
+                ov[static_cast<std::size_t>(y) * frame.width + cx] = 255;
+            }
         }
         write_pgm(stem + "_overlay.pgm", ov.data(), frame.width, frame.height);
     }

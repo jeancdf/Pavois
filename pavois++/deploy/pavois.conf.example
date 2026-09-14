@@ -19,6 +19,15 @@ camera.0.height=720
 # The 1280x720 detector is designed and benchmarked for at least 30 FPS.
 camera.0.fps=30
 camera.0.fov_deg=65.0
+# Short, fully locked capture for fast targets. Increase light before gain.
+camera.0.exposure_mode=sport
+camera.0.shutter_us=750
+camera.0.analogue_gain=4.0
+camera.0.awb_red_gain=1.0
+camera.0.awb_blue_gain=1.0
+# Low-latency test confirmation; all valid blobs are sent.
+camera.0.confirm_m=2
+camera.0.confirm_n=3
 # Filled by /opt/pavois/bin/camera-calib.py intrinsics.
 # camera.0.fx=...
 # camera.0.fy=...

@@ -1,5 +1,5 @@
 import { FusionObservation } from './fusion.types';
-import { timeAlign } from './fusion-align';
+import { timeAlign, timeAlignFrameGroups } from './fusion-align';
 
 function observation(
   cameraId: string,
@@ -75,5 +75,41 @@ describe('timeAlign', () => {
 
   it('returns [] for an empty map', () => {
     expect(timeAlign(new Map(), 0, 90)).toEqual([]);
+  });
+
+  it('keeps every blob from the nearest frame of each camera', () => {
+    const jeanA = observation('jean', {
+      frameIndex: 20,
+      timestampUs: 1_000_000,
+      x: 100,
+    });
+    const jeanB = observation('jean', {
+      frameIndex: 20,
+      timestampUs: 1_000_000,
+      x: 500,
+    });
+    const stale = observation('jean', {
+      frameIndex: 19,
+      timestampUs: 966_667,
+    });
+    const tanel = observation('tanel', {
+      frameIndex: 21,
+      timestampUs: 1_008_000,
+    });
+    const out = timeAlignFrameGroups(
+      new Map([
+        ['jean', [stale, jeanA, jeanB]],
+        ['tanel', [tanel]],
+      ]),
+      1_000_000,
+      20,
+    );
+    expect(out).toHaveLength(3);
+    expect(
+      out.filter((item) => item.cameraId === 'jean').map((item) => item.x),
+    ).toEqual([100, 500]);
+    expect(
+      out.find((item) => item.cameraId === 'tanel')?.confidence,
+    ).toBeCloseTo(0.64);
   });
 });

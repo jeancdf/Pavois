@@ -12,6 +12,15 @@ namespace pavois {
 
 class ParallelExecutor;
 
+struct BlobDetection {
+    double cx = 0.0;            // sub-pixel centroid (distorted px)
+    double cy = 0.0;
+    std::size_t area = 0;
+    double fill_ratio = 0.0;
+    double snr = 0.0;
+    double quality = 0.0;       // [0,1]
+};
+
 struct DetectionResult {
     bool has_blob = false;      // a plausible blob was found this frame
     bool confirmed = false;     // passed M-of-N temporal confirmation
@@ -23,6 +32,11 @@ struct DetectionResult {
     double fill_ratio = 0.0;
     double snr = 0.0;           // blob energy / background noise
     double quality = 0.0;       // [0,1]
+
+    // Every component that passed the spatial/shape filters, best candidate
+    // first. Temporal confirmation is frame-wide so fast targets are not lost
+    // by a restrictive per-blob association gate.
+    std::vector<BlobDetection> blobs;
 
     // Debug artefacts (filled only when want_debug was set on the detector).
     std::vector<std::uint8_t> mask;

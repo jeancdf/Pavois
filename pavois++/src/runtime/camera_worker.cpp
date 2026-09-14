@@ -239,62 +239,63 @@ void CameraWorker::operator()() {
                          stats_window_frames);
 
         if (det.confirmed) {
-            Observation obs;
-            obs.camera_id = cfg_.id;
-            obs.frame_id = frame_id;
-            obs.timestamp_us = frame.captured_us;
-            obs.captured_us = frame.captured_us;
-            obs.image_width = frame.width;
-            obs.image_height = frame.height;
-            obs.centroid_x = det.cx;
-            obs.centroid_y = det.cy;
-            obs.blob_area = det.area;
-            obs.quality = det.quality;
-            obs.confidence = det.quality;
-            obs.intrinsics = intr;
-            obs.intrinsics.image_width = frame.width;
-            obs.intrinsics.image_height = frame.height;
-            obs.pose = pose;
-            obs.cam_x = pose.x;
-            obs.cam_y = pose.y;
-            obs.cam_z = pose.z;
-            obs.yaw_deg = pose.heading_deg;
-            obs.roll_deg = pose.roll_deg;
-            obs.fov_deg = cfg_.fov_deg;
+            for (const auto& blob : det.blobs) {
+                Observation obs;
+                obs.camera_id = cfg_.id;
+                obs.frame_id = frame_id;
+                obs.timestamp_us = frame.captured_us;
+                obs.captured_us = frame.captured_us;
+                obs.image_width = frame.width;
+                obs.image_height = frame.height;
+                obs.centroid_x = blob.cx;
+                obs.centroid_y = blob.cy;
+                obs.blob_area = blob.area;
+                obs.quality = blob.quality;
+                obs.confidence = blob.quality;
+                obs.intrinsics = intr;
+                obs.intrinsics.image_width = frame.width;
+                obs.intrinsics.image_height = frame.height;
+                obs.pose = pose;
+                obs.cam_x = pose.x;
+                obs.cam_y = pose.y;
+                obs.cam_z = pose.z;
+                obs.yaw_deg = pose.heading_deg;
+                obs.roll_deg = pose.roll_deg;
+                obs.fov_deg = cfg_.fov_deg;
 
-            for (const auto& update : fusion_.submit(obs)) {
-                emit(update);
-                ++emitted;
-            }
-
-            if (emit_raw_observations_ && udp_sender_ && udp_sender_->valid()) {
-                // Pose of THIS frame (att is on its own cadence) plus the
-                // pinhole fields the VPS parser already expects:
-                // raw,...,quality,heading,elev,roll,fx,fy,cx,cy,fov,
-                // k1,k2,p1,p2,k3[,rail_x,rail_y,rail_z,rail_heading,
-                // rail_elevation,rail_roll]
-                std::ostringstream line;
-                line << "raw," << obs.camera_id << ',' << obs.frame_id << ','
-                     << obs.captured_us << ',' << std::fixed
-                     << std::setprecision(2) << obs.centroid_x << ','
-                     << obs.centroid_y << ',' << obs.blob_area << ','
-                     << std::setprecision(3) << obs.quality << ','
-                     << std::setprecision(2) << obs.pose.heading_deg << ','
-                     << obs.pose.elevation_deg << ',' << obs.pose.roll_deg
-                     << ',' << std::setprecision(3) << obs.intrinsics.fx << ','
-                     << obs.intrinsics.fy << ',' << obs.intrinsics.cx << ','
-                     << obs.intrinsics.cy << ',' << obs.intrinsics.fov_deg << ','
-                     << std::setprecision(8) << obs.intrinsics.k1 << ','
-                     << obs.intrinsics.k2 << ',' << obs.intrinsics.p1 << ','
-                     << obs.intrinsics.p2 << ',' << obs.intrinsics.k3;
-                if (cfg_.rail_pose_enabled) {
-                    line << ',' << std::setprecision(5) << cfg_.rail_x << ','
-                         << cfg_.rail_y << ',' << cfg_.rail_z << ','
-                         << cfg_.rail_heading_deg << ','
-                         << cfg_.rail_elevation_deg << ','
-                         << cfg_.rail_roll_deg;
+                for (const auto& update : fusion_.submit(obs)) {
+                    emit(update);
+                    ++emitted;
                 }
-                udp_sender_->send_line(line.str());
+
+                if (emit_raw_observations_ && udp_sender_ &&
+                    udp_sender_->valid()) {
+                    // Same capture timestamp/frame id for every valid blob.
+                    // The VPS keeps the whole frame group for raw intersections.
+                    std::ostringstream line;
+                    line << "raw," << obs.camera_id << ',' << obs.frame_id << ','
+                         << obs.captured_us << ',' << std::fixed
+                         << std::setprecision(2) << obs.centroid_x << ','
+                         << obs.centroid_y << ',' << obs.blob_area << ','
+                         << std::setprecision(3) << obs.quality << ','
+                         << std::setprecision(2) << obs.pose.heading_deg << ','
+                         << obs.pose.elevation_deg << ',' << obs.pose.roll_deg
+                         << ',' << std::setprecision(3) << obs.intrinsics.fx
+                         << ',' << obs.intrinsics.fy << ',' << obs.intrinsics.cx
+                         << ',' << obs.intrinsics.cy << ','
+                         << obs.intrinsics.fov_deg << ',' << std::setprecision(8)
+                         << obs.intrinsics.k1 << ',' << obs.intrinsics.k2 << ','
+                         << obs.intrinsics.p1 << ',' << obs.intrinsics.p2 << ','
+                         << obs.intrinsics.k3;
+                    if (cfg_.rail_pose_enabled) {
+                        line << ',' << std::setprecision(5) << cfg_.rail_x << ','
+                             << cfg_.rail_y << ',' << cfg_.rail_z << ','
+                             << cfg_.rail_heading_deg << ','
+                             << cfg_.rail_elevation_deg << ','
+                             << cfg_.rail_roll_deg;
+                    }
+                    udp_sender_->send_line(line.str());
+                }
             }
         }
 

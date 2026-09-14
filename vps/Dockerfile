@@ -1,34 +1,28 @@
 # Étape 1: Construction de l'application NestJS
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copie des fichiers de dépendances
+# Le postinstall Prisma a besoin du schéma à côté de package.json.
 COPY package*.json ./
-RUN npm ci
-
-# Schéma Prisma : nécessaire pour générer le client (pas de connexion DB requise ici)
 COPY prisma.config.ts ./
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm i
 
 # Copie du code source et compilation
 COPY . .
 RUN npm run build
 
 # Étape 2: Image finale de production
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Copie des dépendances de production uniquement
+# Dépendances de production + client Prisma (généré par postinstall).
 COPY package*.json ./
-RUN npm ci --only=production
-
-# Client Prisma pour cette image + migrations pour `prisma migrate deploy` au démarrage
 COPY prisma.config.ts ./
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm i --omit=dev
 
 # Copie du build compilé depuis l'étape builder (SANS le fichier .env)
 COPY --from=builder /app/dist ./dist

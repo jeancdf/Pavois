@@ -882,6 +882,13 @@ void test_imu() {
     check_near(out.heading_deg, 10.0, 1e-9, "offset wrap");
     check_near(out.elevation_deg, 5.0, 1e-9, "elevation passthrough");
 
+    AppConfig reversed_heading;
+    reversed_heading.imu_heading_sign = -1.0;
+    reversed_heading.imu_heading_offset_deg = 20.0;
+    const ImuSample reversed =
+        apply_imu_offsets({350.0, 5.0, 1.0, true}, reversed_heading);
+    check_near(reversed.heading_deg, 30.0, 1e-9, "reversed heading sign");
+
     AppConfig off;
     off.imu_enabled = false;
     check(!open_imu(off), "disabled imu");
@@ -1040,6 +1047,7 @@ void test_imu() {
         file << "imu.i2c_fail_threshold=7\n";
         file << "imu.i2c_retry_min_ms=100\n";
         file << "imu.i2c_retry_max_ms=3000\n";
+        file << "imu.heading_sign=-1\n";
         file << "processing_threads=7\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
@@ -1048,6 +1056,7 @@ void test_imu() {
     check(loaded.imu_i2c_fail_threshold == 7, "config i2c fail threshold");
     check(loaded.imu_i2c_retry_min_ms == 100, "config i2c retry min");
     check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
+    check(loaded.imu_heading_sign == -1.0, "config heading sign");
     check(loaded.processing_threads == 7, "config processing thread count");
 
     std::filesystem::remove_all(dir, ec);

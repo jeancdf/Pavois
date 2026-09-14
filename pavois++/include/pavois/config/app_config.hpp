@@ -111,6 +111,7 @@ struct AppConfig {
     std::string imu_calib_file = "/var/lib/pavois/imu_calib.bin";
     int imu_emit_interval_ms = 200;
     double imu_heading_offset_deg = 0.0;
+    double imu_heading_sign = 1.0;
     double imu_elevation_offset_deg = 0.0;
     double imu_roll_offset_deg = 0.0;
     double imu_elevation_sign = 1.0;

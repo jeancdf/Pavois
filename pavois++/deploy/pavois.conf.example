@@ -39,6 +39,8 @@ imu.i2c_retry_max_ms=5000
 imu.calib_file=/var/lib/pavois/imu_calib.bin
 imu.emit_interval_ms=200
 imu.heading_offset_deg=0.0
+# Set to -1 only when turning the camera right makes its map cone turn left.
+imu.heading_sign=1.0
 imu.elevation_offset_deg=0.0
 imu.roll_offset_deg=0.0
 # 1 = as reported. -1 = flip pitch on an inverted mount.

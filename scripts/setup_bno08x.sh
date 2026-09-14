@@ -14,12 +14,16 @@ install -m 0755 "$repo_dir/scripts/pavois_imu_calib.py" /opt/pavois/pavois_imu_c
 install -m 0755 "$repo_dir/scripts/pavois_imu_calib.py" /opt/pavois/bin/calib.py
 install -m 0644 "$repo_dir/pavois++/deploy/pavois-imu.service" /etc/systemd/system/pavois-imu.service
 cp -a /etc/pavois/pavois.conf "/etc/pavois/pavois.conf.before-bno08x-$(date +%s)"
-sed -i '/^imu.enabled=/d; /^imu.kind=/d; /^imu.file=/d' /etc/pavois/pavois.conf
+sed -i '/^imu.enabled=/d; /^imu.kind=/d; /^imu.file=/d; /^imu.heading_sign=/d' \
+  /etc/pavois/pavois.conf
 cat >> /etc/pavois/pavois.conf <<'EOF'
 
 imu.enabled=true
 imu.kind=file
 imu.file=/run/pavois-imu/orientation
+# BNO08x quaternion yaw is mathematical (counter-clockwise); Pavois headings
+# are compass bearings (clockwise).
+imu.heading_sign=-1.0
 EOF
 systemctl daemon-reload
 systemctl enable --now pavois-imu.service

@@ -478,10 +478,13 @@ bool save_imu_calib_offsets(const std::string& path,
 ImuSample apply_imu_offsets(const ImuSample& raw, const AppConfig& cfg) {
     ImuSample out = raw;
     if (!raw.valid) return out;
-    out.heading_deg = wrap360(raw.heading_deg + cfg.imu_heading_offset_deg);
-    const double sign = cfg.imu_elevation_sign < 0.0 ? -1.0 : 1.0;
+    const double heading_sign = cfg.imu_heading_sign < 0.0 ? -1.0 : 1.0;
+    out.heading_deg = wrap360(
+        heading_sign * raw.heading_deg + cfg.imu_heading_offset_deg);
+    const double elevation_sign = cfg.imu_elevation_sign < 0.0 ? -1.0 : 1.0;
     out.elevation_deg = std::clamp(
-        sign * raw.elevation_deg + cfg.imu_elevation_offset_deg, -90.0, 90.0);
+        elevation_sign * raw.elevation_deg + cfg.imu_elevation_offset_deg,
+        -90.0, 90.0);
     out.roll_deg = raw.roll_deg + cfg.imu_roll_offset_deg;
     out.valid = true;
     return out;

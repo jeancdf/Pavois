@@ -13,6 +13,8 @@ export const DEFAULT_HOVER_M = 0.4;
 export const DEFAULT_HEADING_DEG = 0;
 export const DEFAULT_ELEVATION_DEG = 20;
 export const DEFAULT_ROLL_DEG = 0;
+export const RAIL_VOXEL_SIZE_M = 0.05;
+export const MAX_RAIL_VOXELS = 10_000;
 
 export interface Vec3m {
   x: number;
@@ -54,6 +56,11 @@ export interface RailVolumePoint {
   x: number;
   y: number;
   z: number;
+}
+
+export interface RailVoxel extends Vec3m {
+  key: string;
+  hits: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -135,6 +142,32 @@ export function buildRailBenchState(
 
 export function distanceM(a: Vec3m, b: Vec3m): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+/** Quantizes a raw ray intersection into a display-only grid cell. */
+export function railVoxelOf(
+  point: Vec3m,
+  sizeM = RAIL_VOXEL_SIZE_M,
+): RailVoxel | null {
+  if (
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y) ||
+    !Number.isFinite(point.z) ||
+    !Number.isFinite(sizeM) ||
+    sizeM <= 0
+  ) {
+    return null;
+  }
+  const ix = Math.round(point.x / sizeM);
+  const iy = Math.round(point.y / sizeM);
+  const iz = Math.round(point.z / sizeM);
+  return {
+    key: `${ix}:${iy}:${iz}`,
+    x: ix === 0 ? 0 : ix * sizeM,
+    y: iy === 0 ? 0 : iy * sizeM,
+    z: iz === 0 ? 0 : iz * sizeM,
+    hits: 1,
+  };
 }
 
 /** Points drawn in the 3D volume (metres, jean at origin). */

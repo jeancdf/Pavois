@@ -3,8 +3,10 @@ import {
   OnDestroy,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { RailVolume } from '../rail-volume/rail-volume';
 import { NotificationService } from '../../services/notification.service';
@@ -12,9 +14,10 @@ import { RailBenchService } from '../../services/rail-bench.service';
 import { RealtimeService } from '../../services/realtime.service';
 import {
   DEFAULT_RANGE_M,
+  MAX_RAIL_VOXELS,
   RAIL_CAMERA_IDS,
-  distanceM,
-  type Vec3m,
+  railVoxelOf,
+  type RailVoxel,
 } from '../../config/rail-bench';
 
 @Component({
@@ -30,30 +33,44 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly now = signal(Date.now());
   readonly rangeM = signal(DEFAULT_RANGE_M);
   readonly busy = signal(false);
+  readonly voxels = signal<RailVoxel[]>([]);
   readonly cameraIds = RAIL_CAMERA_IDS;
   readonly ranges = [2, 2.5, 3];
 
   readonly bench = this.realtime.railBench;
-  readonly estimated = computed<Vec3m | null>(() => {
-    const fuse = this.realtime.fuseUpdate()?.lastFuse;
-    if (fuse?.ok && fuse.point) return fuse.point;
-    const track = this.realtime.fuseUpdate()?.tracks[0];
-    return track ? { x: track.x, y: track.y, z: track.z } : null;
-  });
   readonly seeing = computed(
     () => this.realtime.fuseUpdate()?.lastFuse?.cameras ?? [],
   );
-  readonly errorM = computed(() => {
-    const bench = this.bench();
-    const estimated = this.estimated();
-    if (!bench || !estimated) return null;
-    return distanceM(bench.expected, estimated);
-  });
+  readonly rayResidualM = computed(
+    () => this.realtime.fuseUpdate()?.lastFuse?.residualM ?? null,
+  );
 
   private tick: ReturnType<typeof setInterval> | null = null;
+  private readonly voxelCells = new Map<string, RailVoxel>();
+  private lastFuse: object | null = null;
 
   constructor() {
     this.tick = setInterval(() => this.now.set(Date.now()), 250);
+    effect(() => {
+      const bench = this.bench();
+      const fuse = this.realtime.fuseUpdate()?.lastFuse ?? null;
+      if (fuse === this.lastFuse) return;
+      this.lastFuse = fuse;
+      if (!bench || !fuse?.ok || !fuse.point) return;
+
+      const voxel = railVoxelOf(fuse.point);
+      if (!voxel) return;
+      const previous = this.voxelCells.get(voxel.key);
+      if (previous) voxel.hits = previous.hits + 1;
+      this.voxelCells.set(voxel.key, voxel);
+      if (this.voxelCells.size > MAX_RAIL_VOXELS) {
+        const oldest = this.voxelCells.keys().next().value as
+          | string
+          | undefined;
+        if (oldest !== undefined) this.voxelCells.delete(oldest);
+      }
+      untracked(() => this.voxels.set([...this.voxelCells.values()]));
+    });
   }
 
   ngOnInit(): void {
@@ -66,6 +83,7 @@ export class RailTestPage implements OnInit, OnDestroy {
 
   async start(): Promise<void> {
     this.busy.set(true);
+    this.resetVoxels();
     try {
       await this.railBenchApi.start({
         rangeM: this.rangeM(),
@@ -80,6 +98,12 @@ export class RailTestPage implements OnInit, OnDestroy {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  private resetVoxels(): void {
+    this.voxelCells.clear();
+    this.voxels.set([]);
+    this.lastFuse = this.realtime.fuseUpdate()?.lastFuse ?? null;
   }
 
   async stop(): Promise<void> {

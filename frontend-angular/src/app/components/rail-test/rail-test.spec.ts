@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
-import { Component, signal } from '@angular/core';
+import { Component, input, signal } from '@angular/core';
 import { routes } from '../../app.routes';
 import { RailTestPage } from './rail-test';
 import { RailVolume } from '../rail-volume/rail-volume';
@@ -14,7 +14,11 @@ import { buildRailBenchState } from '../../config/rail-bench';
   selector: 'app-rail-volume',
   template: '<div class="volume-stub"></div>',
 })
-class RailVolumeStub {}
+class RailVolumeStub {
+  readonly bench = input<unknown>();
+  readonly voxels = input<unknown>();
+  readonly seeing = input<unknown>();
+}
 
 describe('RailTestPage', () => {
   const bench = buildRailBenchState({ rangeM: 2.5 });
@@ -81,13 +85,25 @@ describe('RailTestPage', () => {
       .compileComponents();
   });
 
-  it('shows Pi fps and the live 3D error on /test-rail', async () => {
+  it('shows Pi fps and accumulates raw intersection voxels', async () => {
     const fixture = TestBed.createComponent(RailTestPage);
     fixture.detectChanges();
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    let text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('TEST RAIL');
     expect(text).toContain('18.2 fps');
     expect(text).toContain('jean');
-    expect(text).toContain('0.10 m');
+    expect(text).toContain('Voxels 1');
+    expect(text).toContain('Résidu rayons 0.05 m');
+
+    fuseUpdate.set({
+      ...fuseUpdate(),
+      lastFuse: {
+        ...fuseUpdate().lastFuse,
+        point: { x: 0.11, y: 2.6, z: 0.4 },
+      },
+    });
+    fixture.detectChanges();
+    text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Voxels 2');
   });
 });

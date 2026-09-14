@@ -3,6 +3,7 @@ import {
   buildRailBenchState,
   distanceM,
   expectedTarget,
+  railVoxelOf,
   railPitchMm,
   railVolumePoints,
 } from './rail-bench';
@@ -34,5 +35,17 @@ describe('rail bench volume points', () => {
     expect(distanceM(bench.expected, estimated)).toBeCloseTo(
       Math.hypot(0.1, 0.1, 0.05),
     );
+  });
+
+  it('quantizes raw intersections into 5 cm display voxels', () => {
+    const voxel = railVoxelOf({ x: 0.024, y: 2.526, z: 0.401 });
+    expect(voxel).toMatchObject({
+      key: '0:51:8',
+      x: 0,
+      z: 0.4,
+      hits: 1,
+    });
+    expect(voxel?.y).toBeCloseTo(2.55);
+    expect(railVoxelOf({ x: Number.NaN, y: 0, z: 0 })).toBeNull();
   });
 });

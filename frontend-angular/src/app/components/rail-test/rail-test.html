@@ -35,15 +35,18 @@
       Banc {{ bench() ? 'actif' : 'éteint' }}
     </span>
     <span>
-      Écart
-      {{ errorM() === null ? '—' : errorM()!.toFixed(2) + ' m' }}
+      Voxels {{ voxels().length }}
+    </span>
+    <span>
+      Résidu rayons
+      {{ rayResidualM() === null ? '—' : rayResidualM()!.toFixed(2) + ' m' }}
     </span>
   </div>
 
   <div class="rail-body">
     <app-rail-volume
       [bench]="bench()"
-      [estimated]="estimated()"
+      [voxels]="voxels()"
       [seeing]="seeing()"
     ></app-rail-volume>
 

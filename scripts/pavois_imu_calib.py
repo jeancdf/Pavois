@@ -61,6 +61,7 @@ IMU_SERVICE = "pavois-imu.service"
 DETECT_SERVICE = "pavois.service"
 DEFAULT_CONF = Path("/etc/pavois/pavois.conf")
 HEADING_KEY = "imu.heading_offset_deg"
+HEADING_SIGN_KEY = "imu.heading_sign"
 SENSOR_OPEN_ATTEMPTS = 5
 
 
@@ -261,7 +262,7 @@ def begin_chip_calibration(sensor, attempts: int = 3) -> None:
     raise RuntimeError("le BNO08x n'a pas confirme le demarrage de sa calibration")
 
 
-def live_calibration_loop(sensor) -> None:
+def live_calibration_loop(sensor, heading_sign: float) -> None:
     print(
         "\nTournez lentement la camera autour de chacun des axes X, Y et Z.\n"
         "Les pourcentages confirment en direct les mouvements recus ; ils ne\n"
@@ -280,7 +281,7 @@ def live_calibration_loop(sensor) -> None:
         try:
             x, y, z, w = sensor.quaternion
             coverage.update((x, y, z, w))
-            yaw = quat_to_yaw_deg(x, y, z, w)
+            yaw = (heading_sign * quat_to_yaw_deg(x, y, z, w)) % 360.0
             try:
                 magnetic = sensor.magnetic
                 if magnetic is not None:
@@ -351,6 +352,20 @@ def prompt_known_bearing() -> float:
         print("Entrer un nombre entre 0 et 360.")
 
 
+def read_heading_sign(conf_path: Path) -> float:
+    """Read the per-Pi heading direction used by the detector."""
+    if not conf_path.exists():
+        raise FileNotFoundError(f"{conf_path} introuvable.")
+    for line in conf_path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{HEADING_SIGN_KEY}=") or stripped.startswith(
+            f"{HEADING_SIGN_KEY} ="
+        ):
+            value = float(stripped.split("=", 1)[1].strip())
+            return -1.0 if value < 0.0 else 1.0
+    return 1.0
+
+
 def write_heading_offset(conf_path: Path, offset_deg: float) -> None:
     if not conf_path.exists():
         raise FileNotFoundError(f"{conf_path} introuvable.")
@@ -406,11 +421,12 @@ def main() -> int:
     known_bearing: float | None = None
     i2c = None
     try:
+        heading_sign = read_heading_sign(args.conf)
         sensor, i2c = open_sensor(enable_magnetometer=not args.skip_chip_calibration)
 
         if not args.skip_chip_calibration:
             begin_chip_calibration(sensor)
-            live_calibration_loop(sensor)
+            live_calibration_loop(sensor, heading_sign)
             try:
                 sensor.save_calibration_data()
                 print("Calibration de la puce sauvegardee en memoire flash.")
@@ -425,10 +441,12 @@ def main() -> int:
 
         known_bearing = prompt_known_bearing()
         print("Mesure du cap en cours (~1s)...")
-        measured = measure_heading(sensor)
-        offset = wrap_offset_180(known_bearing - measured)
+        measured_raw = measure_heading(sensor)
+        measured_oriented = (heading_sign * measured_raw) % 360.0
+        offset = wrap_offset_180(known_bearing - measured_oriented)
         print(
-            f"Cap mesure: {measured:.1f}deg  Relevement vise: {known_bearing:.1f}deg  "
+            f"Cap mesure: {measured_oriented:.1f}deg  "
+            f"Relevement vise: {known_bearing:.1f}deg  "
             f"Offset a appliquer: {offset:+.1f}deg"
         )
 

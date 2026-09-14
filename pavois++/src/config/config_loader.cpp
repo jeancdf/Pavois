@@ -136,6 +136,9 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "imu.heading_offset_deg") {
             cfg.imu_heading_offset_deg = std::stod(v);
         }
+        else if (key == "imu.heading_sign") {
+            cfg.imu_heading_sign = std::stod(v);
+        }
         else if (key == "imu.elevation_offset_deg") {
             cfg.imu_elevation_offset_deg = std::stod(v);
         }

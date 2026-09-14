@@ -16,19 +16,30 @@ the map, repeat" workflow with a guided procedure:
      first), then restarts pavois-imu.service and pavois.service.
 
 Run as root, with the same venv as bno08x_bridge.py:
-  sudo /opt/pavois/imu-venv/bin/python /opt/pavois/pavois_imu_calib.py
+  sudo /opt/pavois/imu-venv/bin/python /opt/pavois/bin/calib.py
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import math
 import os
 import select
 import subprocess
 import sys
 import time
+import warnings
 from pathlib import Path
+
+# Blinka emits this warning on every Linux I2C open even though the requested
+# frequency is irrelevant here. It hides the useful field-calibration output.
+warnings.filterwarnings(
+    "ignore",
+    message=r"I2C frequency is not settable in python, ignoring!",
+    category=RuntimeWarning,
+)
 
 try:
     from adafruit_extended_bus import ExtendedI2C
@@ -48,6 +59,35 @@ IMU_SERVICE = "pavois-imu.service"
 DETECT_SERVICE = "pavois.service"
 DEFAULT_CONF = Path("/etc/pavois/pavois.conf")
 HEADING_KEY = "imu.heading_offset_deg"
+SENSOR_OPEN_ATTEMPTS = 5
+
+
+class CalibrationBNO08X(BNO08X_I2C):
+    """BNO08x driver tolerant of unsolicited/malformed SHTP batches.
+
+    Some BNO08x firmware revisions occasionally put an unknown report in a
+    batched PRODUCT_ID_RESPONSE. Version 1.3.3 of the Adafruit driver raises a
+    bare KeyError (for example ``120`` for report 0x78) and dumps the complete
+    packet to stdout. Ignoring that one bad batch is safe: feature setup waits
+    for its own acknowledgement and will time out normally if communication is
+    genuinely broken.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.ignored_packet_count = 0
+        super().__init__(*args, **kwargs)
+
+    def _handle_packet(self, packet) -> None:
+        # The upstream handler prints the full packet before re-raising parse
+        # errors. Capture that debug dump so the operator keeps a readable UI.
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                super()._handle_packet(packet)
+            except Exception:
+                # All transport I/O happens before this handler. Exceptions
+                # here are therefore decoding failures in the pinned driver.
+                self._packet_slices.clear()
+                self.ignored_packet_count += 1
 
 
 def quat_to_yaw_deg(x: float, y: float, z: float, w: float) -> float:
@@ -76,12 +116,64 @@ def systemctl(action: str, service: str, *, check: bool = True) -> None:
         print(f"Avertissement : 'systemctl {action} {service}' a echoue.", file=sys.stderr)
 
 
-def wait_for_enter() -> None:
-    while True:
-        ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-        if ready:
-            sys.stdin.readline()
-            return
+def close_i2c(i2c) -> None:
+    if i2c is None:
+        return
+    try:
+        i2c.deinit()
+    except Exception:
+        pass
+
+
+def wait_for_quaternion(sensor, timeout: float = 4.0) -> None:
+    """Require one valid rotation report before presenting the UI."""
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            quaternion = sensor.quaternion
+            if quaternion is not None:
+                quat_to_yaw_deg(*quaternion)
+                return
+        except (OSError, KeyError, RuntimeError, ValueError) as exc:
+            last_error = exc
+        time.sleep(0.1)
+    detail = f" ({last_error})" if last_error else ""
+    raise RuntimeError(f"aucun quaternion valide apres {timeout:.0f}s{detail}")
+
+
+def open_sensor(*, enable_magnetometer: bool):
+    """Open/configure the sensor, retrying transient Linux I2C/SHTP failures."""
+    last_error: Exception | None = None
+    for attempt in range(1, SENSOR_OPEN_ATTEMPTS + 1):
+        i2c = None
+        try:
+            i2c = ExtendedI2C(I2C_BUS)
+            sensor = CalibrationBNO08X(i2c, address=I2C_ADDRESS)
+            sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, report_interval=100000)
+            if enable_magnetometer:
+                sensor.enable_feature(BNO_REPORT_MAGNETOMETER, report_interval=500000)
+            wait_for_quaternion(sensor)
+            if sensor.ignored_packet_count:
+                print(
+                    f"Connexion IMU etablie ({sensor.ignored_packet_count} paquet(s) "
+                    "parasite(s) ignore(s))."
+                )
+            return sensor, i2c
+        except (OSError, KeyError, RuntimeError, ValueError) as exc:
+            last_error = exc
+            close_i2c(i2c)
+            if attempt < SENSOR_OPEN_ATTEMPTS:
+                print(
+                    f"Initialisation IMU instable, nouvelle tentative "
+                    f"({attempt}/{SENSOR_OPEN_ATTEMPTS})..."
+                )
+                time.sleep(1.0)
+
+    raise RuntimeError(
+        f"impossible d'initialiser le BNO08x apres {SENSOR_OPEN_ATTEMPTS} tentatives: "
+        f"{type(last_error).__name__}: {last_error}"
+    )
 
 
 def magnetometer_accuracy(sensor) -> int | None:
@@ -124,24 +216,29 @@ def live_calibration_loop(sensor) -> None:
             print("\rCALIB_STAT: --/3   (lecture capteur en cours...)          ", end="", flush=True)
 
 
-def measure_heading(sensor, samples: int = 20, interval: float = 0.05) -> float:
+def measure_heading(
+    sensor, samples: int = 20, interval: float = 0.05, timeout: float = 5.0
+) -> float:
     """Cap moyen sur ~1s (moyenne circulaire) pour reduire le bruit capteur."""
     sin_sum = 0.0
     cos_sum = 0.0
     got = 0
-    for _ in range(samples):
+    deadline = time.monotonic() + timeout
+    while got < samples and time.monotonic() < deadline:
         try:
             x, y, z, w = sensor.quaternion
             yaw = quat_to_yaw_deg(x, y, z, w)
-        except Exception:
+        except (OSError, KeyError, RuntimeError, ValueError):
             time.sleep(interval)
             continue
         sin_sum += math.sin(math.radians(yaw))
         cos_sum += math.cos(math.radians(yaw))
         got += 1
         time.sleep(interval)
-    if got == 0:
-        raise RuntimeError("Aucune lecture de cap valide recue du capteur.")
+    if got < samples:
+        raise RuntimeError(
+            f"Seulement {got}/{samples} lectures de cap valides en {timeout:.0f}s."
+        )
     return math.degrees(math.atan2(sin_sum, cos_sum)) % 360.0
 
 
@@ -211,14 +308,12 @@ def main() -> int:
 
     print(f"Arret de {IMU_SERVICE} pour liberer le bus I2C...")
     systemctl("stop", IMU_SERVICE)
+    time.sleep(1.0)
 
     known_bearing: float | None = None
+    i2c = None
     try:
-        i2c = ExtendedI2C(I2C_BUS)
-        sensor = BNO08X_I2C(i2c, address=I2C_ADDRESS)
-        sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, report_interval=100000)
-        sensor.enable_feature(BNO_REPORT_MAGNETOMETER, report_interval=500000)
-        time.sleep(0.5)
+        sensor, i2c = open_sensor(enable_magnetometer=not args.skip_chip_calibration)
 
         if not args.skip_chip_calibration:
             sensor.begin_calibration()
@@ -251,9 +346,13 @@ def main() -> int:
         print("\nInterrompu par l'operateur.", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"\nErreur pendant la calibration : {exc}", file=sys.stderr)
+        print(
+            f"\nErreur pendant la calibration : {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 1
     finally:
+        close_i2c(i2c)
         print(f"Redemarrage de {IMU_SERVICE}...")
         systemctl("start", IMU_SERVICE, check=False)
 

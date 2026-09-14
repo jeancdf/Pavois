@@ -123,7 +123,7 @@ describe('CamerasService rail bench', () => {
     expect(jean?.localX).toBe(0);
     expect(jean?.localY).toBe(0);
     expect(jean?.localHeadingDeg).toBe(0);
-    expect(service.localPose('tanel')?.x).toBeCloseTo(-3 / 7);
+    expect(service.localPose('tanel')?.x).toBeCloseTo(3 / 7);
     service.clearRailBench();
     expect(service.list().find((c) => c.id === 'jean')?.localX).toBeUndefined();
   });

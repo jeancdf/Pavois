@@ -1,0 +1,146 @@
+{
+  "duration_seconds": 55.0,
+  "shots": 15,
+  "network_cameras": 36,
+  "final_cameras_in_frame": 36,
+  "match_map": [
+    0.56592,
+    0.68565,
+    0.215
+  ],
+  "match_drone": [
+    0.56613,
+    0.68573,
+    57.976
+  ],
+  "subject_framing": [
+    {
+      "frame": 1,
+      "drone_uv_depth": [
+        0.5,
+        0.5,
+        12.369
+      ]
+    },
+    {
+      "frame": 60,
+      "drone_uv_depth": [
+        0.5,
+        0.5,
+        12.14
+      ]
+    },
+    {
+      "frame": 120,
+      "drone_uv_depth": [
+        0.5,
+        0.5,
+        11.927
+      ]
+    },
+    {
+      "frame": 139,
+      "drone_uv_depth": [
+        0.79971,
+        0.72169,
+        32.55
+      ]
+    },
+    {
+      "frame": 210,
+      "drone_uv_depth": [
+        0.84894,
+        0.72565,
+        31.54
+      ]
+    },
+    {
+      "frame": 288,
+      "drone_uv_depth": [
+        0.90692,
+        0.72805,
+        30.427
+      ]
+    },
+    {
+      "frame": 337,
+      "drone_uv_depth": [
+        0.54977,
+        0.64887,
+        58.385
+      ]
+    },
+    {
+      "frame": 450,
+      "drone_uv_depth": [
+        0.57774,
+        0.64762,
+        56.922
+      ]
+    },
+    {
+      "frame": 504,
+      "drone_uv_depth": [
+        0.59188,
+        0.64569,
+        56.378
+      ]
+    },
+    {
+      "frame": 817,
+      "drone_uv_depth": [
+        0.56613,
+        0.68573,
+        57.976
+      ]
+    },
+    {
+      "frame": 864,
+      "drone_uv_depth": [
+        0.57615,
+        0.6896,
+        58.065
+      ]
+    },
+    {
+      "frame": 865,
+      "drone_uv_depth": [
+        0.5,
+        0.5,
+        7.826
+      ]
+    },
+    {
+      "frame": 960,
+      "drone_uv_depth": [
+        0.5,
+        0.5,
+        7.297
+      ]
+    },
+    {
+      "frame": 961,
+      "drone_uv_depth": [
+        0.5,
+        0.41654,
+        7.065
+      ]
+    },
+    {
+      "frame": 984,
+      "drone_uv_depth": [
+        0.5,
+        0.41654,
+        7.065
+      ]
+    },
+    {
+      "frame": 985,
+      "drone_uv_depth": [
+        0.41829,
+        0.36777,
+        12.03
+      ]
+    }
+  ]
+}

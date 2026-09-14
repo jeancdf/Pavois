@@ -1,0 +1,92 @@
+[
+  {
+    "name": "01 / Drone tracking",
+    "start": 1,
+    "end": 120,
+    "title": null
+  },
+  {
+    "name": "02 / Lens insert",
+    "start": 121,
+    "end": 138,
+    "title": null
+  },
+  {
+    "name": "03 / One observer",
+    "start": 139,
+    "end": 288,
+    "title": "UN PREMIER REGARD."
+  },
+  {
+    "name": "04 / CAM 02",
+    "start": 289,
+    "end": 312,
+    "title": null
+  },
+  {
+    "name": "05 / CAM 03",
+    "start": 313,
+    "end": 336,
+    "title": null
+  },
+  {
+    "name": "06 / Three viewpoints",
+    "start": 337,
+    "end": 504,
+    "title": "TROIS POINTS DE VUE."
+  },
+  {
+    "name": "07 / Operator portrait",
+    "start": 505,
+    "end": 624,
+    "title": null
+  },
+  {
+    "name": "08 / Over shoulder",
+    "start": 625,
+    "end": 720,
+    "title": "UNE VUE D'ENSEMBLE."
+  },
+  {
+    "name": "09 / Screen insert",
+    "start": 721,
+    "end": 792,
+    "title": null
+  },
+  {
+    "name": "09B / Map insert",
+    "start": 793,
+    "end": 816,
+    "title": null
+  },
+  {
+    "name": "10 / Graphic match overhead",
+    "start": 817,
+    "end": 864,
+    "title": null
+  },
+  {
+    "name": "11 / Drone lateral",
+    "start": 865,
+    "end": 960,
+    "title": null
+  },
+  {
+    "name": "12 / Flight axis",
+    "start": 961,
+    "end": 984,
+    "title": null
+  },
+  {
+    "name": "13 / Reverse and network reveal",
+    "start": 985,
+    "end": 1224,
+    "title": "ET SI L'ON CHANGEAIT D'ECHELLE ?"
+  },
+  {
+    "name": "14 / Signature",
+    "start": 1225,
+    "end": 1320,
+    "title": "P A V O I S"
+  }
+]

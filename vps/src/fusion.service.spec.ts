@@ -3,6 +3,8 @@ import {
   lookAt,
   makeIntrinsics,
   projectWorldToPixel,
+  vNorm,
+  vSub,
   type Vec3,
 } from './fusion-geo';
 import { FusionService } from './fusion.service';
@@ -208,6 +210,12 @@ describe('FusionService', () => {
     const p = fuse!.point!;
     const err = Math.hypot(p.x - TARGET.x, p.y - TARGET.y, p.z - TARGET.z);
     expect(err).toBeLessThan(1);
+    expect(snap.rawIntersections).toHaveLength(3);
+    expect(
+      snap.rawIntersections.every(
+        (intersection) => vNorm(vSub(intersection.point, TARGET)) < 1,
+      ),
+    ).toBe(true);
     expect(snap.tracks).toEqual([]);
   });
 

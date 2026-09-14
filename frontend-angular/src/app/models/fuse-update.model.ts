@@ -25,8 +25,17 @@ export interface FuseTrack {
   classification: string;
 }
 
+export interface FuseRayIntersection {
+  point: FusePoint;
+  residualM: number;
+  parallaxDeg: number;
+  cameras: [string, string];
+  timestampUs: number;
+}
+
 export interface FuseUpdate {
   type: 'fuse_update';
   lastFuse: FuseLast | null;
+  rawIntersections: FuseRayIntersection[];
   tracks: FuseTrack[];
 }

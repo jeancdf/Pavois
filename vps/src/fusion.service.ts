@@ -11,6 +11,7 @@ import {
 } from './fusion-geo';
 import {
   triangulate,
+  pairIntersections,
   type TriangulateObservation,
   type TriangulationResult,
 } from './fusion-triangulate';
@@ -19,6 +20,7 @@ import {
   FusionCameraState,
   FusionLastFuse,
   FusionObservation,
+  FusionRayIntersection,
   FusionSnapshot,
   FusionTrack,
   FusionTrackUpdate,
@@ -151,6 +153,7 @@ export class FusionService {
   // Survivant à la purge du deque : âge / active restent lisibles.
   private readonly lastSeen = new Map<string, CameraLastSeen>();
   private lastFuse: FusionLastFuse | null = null;
+  private rawIntersections: FusionRayIntersection[] = [];
   // 0 = jamais fusionné (sentinelle C++ last_fuse_us_).
   private lastFuseUs = 0;
   private readonly tracker = new Tracker(trackerConfigFromEnv());
@@ -198,6 +201,7 @@ export class FusionService {
       staleAfterMs: this.staleAfterMs,
       cameras,
       lastFuse: this.lastFuse,
+      rawIntersections: this.rawIntersections.slice(),
       tracks: this.tracks.slice(),
     };
   }
@@ -219,12 +223,12 @@ export class FusionService {
 
   private tryFuse(tRefUs: number): void {
     const intervalUs = this.fusionWindowMs * 1000;
-    if (this.lastFuseUs !== 0 && tRefUs < this.lastFuseUs + intervalUs) {
-      return;
-    }
+    const fusionDue =
+      this.lastFuseUs === 0 || tRefUs >= this.lastFuseUs + intervalUs;
     const aligned = timeAlign(this.deques, tRefUs, this.fusionWindowMs);
     if (aligned.length < 2) {
-      this.lastFuse = needTwoFuse();
+      this.rawIntersections = [];
+      if (fusionDue) this.lastFuse = needTwoFuse();
       return;
     }
     const triObs: TriangulateObservation[] = [];
@@ -235,9 +239,18 @@ export class FusionService {
       }
     }
     if (triObs.length < 2) {
-      this.lastFuse = needTwoFuse();
+      this.rawIntersections = [];
+      if (fusionDue) this.lastFuse = needTwoFuse();
       return;
     }
+    this.rawIntersections = pairIntersections(triObs, this.maxRangeM).map(
+      (intersection) => ({
+        ...intersection,
+        timestampUs: tRefUs,
+      }),
+    );
+    if (!fusionDue) return;
+
     this.lastFuseUs = tRefUs;
     const result = triangulate(triObs, {
       minParallaxDeg: this.minParallaxDeg,

@@ -4,8 +4,10 @@ import {
   minPairwiseAngleDeg,
   pixelToRay,
   rayResidual,
+  vAdd,
   vDot,
   vNorm,
+  vScale,
   vSub,
 } from './fusion-geo';
 
@@ -32,6 +34,13 @@ export interface TriangulationResult {
   confidence: number;
   cameras: string[];
   rejectReason: string;
+}
+
+export interface PairIntersection {
+  point: Vec3;
+  residualM: number;
+  parallaxDeg: number;
+  cameras: [string, string];
 }
 
 const DEFAULT_CFG: TriangulationConfig = {
@@ -107,6 +116,72 @@ function solveSubset(
   s.point = p;
   s.ok = true;
   return s;
+}
+
+/**
+ * Unfiltered pairwise ray intersections for the rail debug view. These are
+ * deliberately produced before parallax/residual target gates: they are
+ * geometry samples, not tracks or confirmed objects.
+ */
+export function pairIntersections(
+  obs: TriangulateObservation[],
+  maxRangeM = DEFAULT_CFG.maxRangeM,
+): PairIntersection[] {
+  const intersections: PairIntersection[] = [];
+  for (let i = 0; i < obs.length; ++i) {
+    for (let j = i + 1; j < obs.length; ++j) {
+      const first = pixelToRay(
+        obs[i].intrinsics,
+        obs[i].pose,
+        obs[i].pixelX,
+        obs[i].pixelY,
+      );
+      const second = pixelToRay(
+        obs[j].intrinsics,
+        obs[j].pose,
+        obs[j].pixelX,
+        obs[j].pixelY,
+      );
+      const betweenOrigins = vSub(first.origin, second.origin);
+      const dot = vDot(first.direction, second.direction);
+      const denominator = 1 - dot * dot;
+      if (denominator <= 1e-12) continue;
+
+      const firstDistance =
+        (dot * vDot(second.direction, betweenOrigins) -
+          vDot(first.direction, betweenOrigins)) /
+        denominator;
+      const secondDistance =
+        (vDot(second.direction, betweenOrigins) -
+          dot * vDot(first.direction, betweenOrigins)) /
+        denominator;
+      if (firstDistance <= 0 || secondDistance <= 0) continue;
+      if (
+        maxRangeM > 0 &&
+        (firstDistance > maxRangeM * 1.5 || secondDistance > maxRangeM * 1.5)
+      ) {
+        continue;
+      }
+
+      const firstPoint = vAdd(
+        first.origin,
+        vScale(first.direction, firstDistance),
+      );
+      const secondPoint = vAdd(
+        second.origin,
+        vScale(second.direction, secondDistance),
+      );
+      const point = vScale(vAdd(firstPoint, secondPoint), 0.5);
+      intersections.push({
+        point,
+        residualM:
+          (rayResidual(first, point) + rayResidual(second, point)) * 0.5,
+        parallaxDeg: minPairwiseAngleDeg([first, second]),
+        cameras: [obs[i].cameraId, obs[j].cameraId],
+      });
+    }
+  }
+  return intersections;
 }
 
 export function triangulate(

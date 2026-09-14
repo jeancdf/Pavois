@@ -127,11 +127,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         }
 
         const messageStr = payloadBuffer.toString('utf-8').trim();
-        this.dispatchRouted(
-          routeUdpLine(messageStr),
-          messageStr,
-          rinfo,
-        );
+        this.dispatchRouted(routeUdpLine(messageStr), messageStr, rinfo);
       } catch (error) {
         console.error('[UDP] Erreur de traitement du message :', error);
         // Diffusion de secours en cas d'erreur de traitement
@@ -237,6 +233,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     const fuseUpdate: FuseUpdate = {
       type: 'fuse_update',
       lastFuse: snap.lastFuse,
+      rawIntersections: snap.rawIntersections,
       tracks: snap.tracks,
     };
     this.eventsGateway.broadcast('fuse_update', fuseUpdate);

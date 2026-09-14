@@ -32,9 +32,7 @@ describe('rail bench volume points', () => {
       y: 0,
       z: 0,
     });
-    expect(distanceM(bench.expected, estimated)).toBeCloseTo(
-      Math.hypot(0.1, 0.1, 0.05),
-    );
+    expect(distanceM(bench.expected, estimated)).toBeCloseTo(Math.hypot(0.1, 0.1, 0.05));
   });
 
   it('quantizes raw intersections into 5 cm display voxels', () => {
@@ -44,6 +42,7 @@ describe('rail bench volume points', () => {
       x: 0,
       z: 0.4,
       hits: 1,
+      cameras: [],
     });
     expect(voxel?.y).toBeCloseTo(2.55);
     expect(railVoxelOf({ x: Number.NaN, y: 0, z: 0 })).toBeNull();

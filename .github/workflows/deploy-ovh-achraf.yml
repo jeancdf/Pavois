@@ -42,12 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # Une clé OpenSSH brute dans `env:` est coupée au premier saut de
-      # ligne : OVH_KEY arrivait vide alors que le secret existait.
-      # toJSON garde la clé sur une seule ligne, puis on reconstitue le PEM.
+      # toJSON: secret multiligne sur une ligne. OVH_VPS_SSH_KEY n'existe
+      # pas sur ce dépôt ; la clé de 419 octets est VPS_SSH_KEY.
       - name: Write OVH SSH key
         env:
-          SSH_KEY_JSON: ${{ toJSON(secrets.OVH_VPS_SSH_KEY) }}
+          SSH_KEY_JSON: ${{ toJSON(secrets.OVH_VPS_SSH_KEY || secrets.VPS_SSH_KEY) }}
         run: |
           python3 <<'PY'
           import json
@@ -57,23 +56,24 @@ jobs:
           import sys
 
           raw = os.environ.get("SSH_KEY_JSON") or ""
+          if raw in ("null", "undefined"):
+              raw = ""
           try:
-              key = json.loads(raw) if raw else ""
+              parsed = json.loads(raw) if raw else ""
           except json.JSONDecodeError:
-              key = raw
-          if not isinstance(key, str):
-              key = ""
+              parsed = raw
+          key = parsed if isinstance(parsed, str) else ""
           key = key.replace("\r\n", "\n").replace("\r", "\n").strip()
           if "\n" not in key:
               key = key.replace("\\n", "\n")
           if not key.strip():
               sys.stderr.write(
-                  "Secret OVH_VPS_SSH_KEY vide.\n"
+                  "Clé vide : renseigner OVH_VPS_SSH_KEY ou VPS_SSH_KEY.\n"
               )
               sys.exit(1)
           if "BEGIN" not in key or "PRIVATE KEY" not in key:
               sys.stderr.write(
-                  "OVH_VPS_SSH_KEY n'est pas une clé privée PEM/OpenSSH.\n"
+                  "Le secret n'est pas une clé privée PEM/OpenSSH.\n"
               )
               sys.exit(1)
           if not key.endswith("\n"):

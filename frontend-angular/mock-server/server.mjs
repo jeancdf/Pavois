@@ -7,6 +7,8 @@ const RAW_DETECTION_INTERVAL_MS = 800;
 const TRACK_INTERVAL_MS = 200;
 const IMU_INTERVAL_MS = 200;
 const PREVIEW_INTERVAL_MS = 500;
+const FUSE_INTERVAL_MS = 200;
+const STATS_INTERVAL_MS = 1000;
 const DEV_TOKEN = 'dev-pavois-token';
 const MOCK_MODE = (process.env.MOCK_MODE || 'demo').trim().toLowerCase();
 const IS_TERRAIN = MOCK_MODE === 'terrain';
@@ -29,6 +31,34 @@ const TERRAIN_CAMERAS = [
 ];
 
 const cameras = IS_TERRAIN ? TERRAIN_CAMERAS : DEMO_CAMERAS;
+const RAIL_BASELINE_M = 3 / 7;
+let railBench = null;
+
+function mockRailBench(rangeM = 2.5) {
+  return {
+    active: true,
+    rigWidthMm: 1000,
+    rangeM,
+    targetSizeM: 0.2,
+    hoverM: 0.4,
+    headingDeg: 0,
+    elevationDeg: 20,
+    cameras: [
+      { id: 'tanel', x: -RAIL_BASELINE_M, y: 0, z: 0, headingDeg: 0, elevationDeg: 20, rollDeg: 0 },
+      { id: 'jean', x: 0, y: 0, z: 0, headingDeg: 0, elevationDeg: 20, rollDeg: 0 },
+      { id: 'walid', x: RAIL_BASELINE_M, y: 0, z: 0, headingDeg: 0, elevationDeg: 20, rollDeg: 0 },
+    ],
+    expected: { x: 0, y: rangeM, z: 0.4 },
+  };
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => resolve(body));
+  });
+}
 
 const server = createServer(handleHttpRequest);
 const wss = new WebSocketServer({ server });
@@ -58,7 +88,7 @@ function broadcast(event, data) {
 
 function handleHttpRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   if (req.method === 'OPTIONS') {
     res.writeHead(204).end();
@@ -78,15 +108,41 @@ function handleHttpRequest(req, res) {
     return;
   }
 
+  if (urlPath === '/bench/rail') {
+    if (req.method === 'GET') {
+      sendJson(res, 200, { active: railBench !== null, bench: railBench });
+      return;
+    }
+    if (req.method === 'DELETE') {
+      railBench = null;
+      broadcast('rail_bench', { active: false, bench: null });
+      sendJson(res, 200, { active: false, bench: null });
+      return;
+    }
+    if (req.method === 'POST') {
+      readBody(req).then((raw) => {
+        let rangeM = 2.5;
+        try {
+          const parsed = JSON.parse(raw || '{}');
+          if (Number.isFinite(parsed.rangeM)) rangeM = parsed.rangeM;
+        } catch {
+          rangeM = 2.5;
+        }
+        railBench = mockRailBench(rangeM);
+        broadcast('rail_bench', { active: true, bench: railBench });
+        sendJson(res, 201, railBench);
+      });
+      return;
+    }
+  }
+
   const match = req.url?.match(/^\/cameras\/([^/]+)\/position$/);
   if (req.method !== 'PUT' || !match) {
     sendJson(res, 404, { message: `Cannot ${req.method} ${req.url}` });
     return;
   }
 
-  let body = '';
-  req.on('data', (chunk) => (body += chunk));
-  req.on('end', () => {
+  readBody(req).then((body) => {
     const camera = cameras.find((cam) => cam.id === decodeURIComponent(match[1]));
     if (!camera) {
       sendJson(res, 404, { message: `Caméra inconnue : ${match[1]}` });
@@ -216,8 +272,59 @@ function simulatedPreview(cameraId, tickValue) {
   };
 }
 
-function sendEvent(socket, event, data) {
-  socket.send(JSON.stringify({ event, data }));
+function simulatedFuseUpdate() {
+  const t = Date.now() / 1000;
+  const range = railBench?.rangeM ?? 2.5;
+  const point = {
+    x: Math.sin(t) * 0.08,
+    y: range + Math.sin(t * 0.7) * 0.12,
+    z: 0.4 + Math.cos(t * 0.5) * 0.05,
+  };
+  return {
+    type: 'fuse_update',
+    lastFuse: {
+      ok: true,
+      rejectReason: null,
+      residualM: 0.04,
+      parallaxDeg: 10.2,
+      confidence: 0.86,
+      cameras: ['jean', 'tanel', 'walid'],
+      point,
+    },
+    tracks: [
+      {
+        objectId: 1,
+        timestampUs: Date.now() * 1000,
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        confidence: 0.86,
+        cameras: ['jean', 'tanel', 'walid'],
+        classification: 'drone',
+      },
+    ],
+  };
+}
+
+function simulatedStats(cameraId, fps) {
+  return {
+    type: 'camera_stats',
+    cameraId,
+    fps,
+    frameIndex: frameIndex,
+    timestamp: Date.now(),
+  };
+}
+
+function startRailSim(socket, timers) {
+  timers.push(setInterval(() => {
+    sendEvent(socket, 'fuse_update', simulatedFuseUpdate());
+  }, FUSE_INTERVAL_MS));
+  timers.push(setInterval(() => {
+    sendEvent(socket, 'camera_stats', simulatedStats('jean', 18.4));
+    sendEvent(socket, 'camera_stats', simulatedStats('tanel', 10.1));
+    sendEvent(socket, 'camera_stats', simulatedStats('walid', 9.6));
+  }, STATS_INTERVAL_MS));
 }
 
 function startDemoStream(socket, timers) {
@@ -249,6 +356,7 @@ function startDemoStream(socket, timers) {
     sendEvent(socket, 'camera_preview', simulatedPreview('pi-inconnu', previewTick + 16));
     sendEvent(socket, 'camera_preview', simulatedPreview('preview-orpheline', previewTick + 24));
   }, PREVIEW_INTERVAL_MS));
+  startRailSim(socket, timers);
 }
 
 function startTerrainStream(socket, timers) {
@@ -267,11 +375,15 @@ function startTerrainStream(socket, timers) {
       ));
     }
   }, IMU_INTERVAL_MS));
+  startRailSim(socket, timers);
 }
 
 wss.on('connection', (socket) => {
   console.log(`Client connected (mode=${MOCK_MODE})`);
   sendEvent(socket, 'camera_positions', cameras);
+  if (railBench) {
+    sendEvent(socket, 'rail_bench', { active: true, bench: railBench });
+  }
   const timers = [];
   if (IS_TERRAIN) {
     startTerrainStream(socket, timers);

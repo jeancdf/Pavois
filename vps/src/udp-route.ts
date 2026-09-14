@@ -1,5 +1,6 @@
 import { parseAttitudeLine, type AttitudePacket } from './udp-attitude';
 import { parseRawDetectionLine, type RawDetection } from './udp-raw';
+import { parseCameraStatsLine, type CameraStats } from './udp-stats';
 
 /** GPS track from an `obj*` CSV line, broadcast as track_update. */
 export type UdpObjTrack = {
@@ -20,6 +21,7 @@ export type UdpObjTrack = {
 export type RoutedUdp =
   | { kind: 'att'; attitude: AttitudePacket }
   | { kind: 'raw'; detection: RawDetection }
+  | { kind: 'stats'; stats: CameraStats }
   | { kind: 'obj'; track: UdpObjTrack }
   | { kind: 'unknown'; raw: string; data: unknown }
   | { kind: 'drop' };
@@ -82,6 +84,11 @@ export function routeUdpLine(line: string): RoutedUdp {
       return { kind: 'drop' };
     }
     return { kind: 'att', attitude };
+  }
+
+  const stats = parseCameraStatsLine(trimmed);
+  if (stats) {
+    return { kind: 'stats', stats };
   }
 
   const detection = parseRawDetectionLine(trimmed);

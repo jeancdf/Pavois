@@ -1,0 +1,13 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 20px;
+}
+
+.feeds-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}

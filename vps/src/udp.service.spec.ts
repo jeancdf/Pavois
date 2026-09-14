@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UdpService } from './udp.service';
+import { UdpService, toFusionObservation } from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import { FusionService } from './fusion.service';
@@ -24,7 +24,14 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         },
         {
           provide: FusionService,
-          useValue: { ingest: jest.fn(), pullTrackUpdates: jest.fn().mockReturnValue([]) },
+          useValue: {
+            ingest: jest.fn(),
+            pullTrackUpdates: jest.fn().mockReturnValue([]),
+            snapshot: jest.fn().mockReturnValue({
+              lastFuse: null,
+              tracks: [],
+            }),
+          },
         },
         {
           provide: TracksService,
@@ -115,12 +122,13 @@ describe('UdpService fused track_update', () => {
       providers: [
         UdpService,
         { provide: EventsGateway, useValue: { broadcast } },
-        { provide: CamerasService, useValue: { list: () => [] } },
+        { provide: CamerasService, useValue: { list: () => [], localPose: () => null } },
         {
           provide: FusionService,
           useValue: {
             ingest,
             pullTrackUpdates: () => [track],
+            snapshot: () => ({ lastFuse: null, tracks: [] }),
           },
         },
         {
@@ -147,6 +155,59 @@ describe('UdpService fused track_update', () => {
     udp.ingestRawDetection(detection);
     expect(ingest).toHaveBeenCalled();
     expect(broadcast).toHaveBeenCalledWith('raw_detection', detection);
+    expect(broadcast).toHaveBeenCalledWith('fuse_update', {
+      type: 'fuse_update',
+      lastFuse: null,
+      tracks: [],
+    });
     expect(broadcast).toHaveBeenCalledWith('track_update', track);
+  });
+});
+
+describe('toFusionObservation rail pose', () => {
+  const detection = {
+    type: 'raw_detection' as const,
+    cameraId: 'jean',
+    frameIndex: 1,
+    timestamp: 1_000_000,
+    x: 640,
+    y: 360,
+    size: 20,
+    confidence: 0.9,
+    headingDeg: 164,
+    elevationDeg: 1,
+    rollDeg: 2,
+  };
+  const camera = {
+    id: 'jean',
+    lat: 48.8,
+    lon: 2.3,
+    alt: 50,
+    headingDeg: 164,
+    fovDeg: 65,
+    rangeM: 60,
+  };
+
+  it('uses metre rail pose and frozen look, not GPS heading', () => {
+    const obs = toFusionObservation(detection, camera, 10, {
+      id: 'jean',
+      x: 0,
+      y: 0,
+      z: 0,
+      headingDeg: 0,
+      elevationDeg: 20,
+      rollDeg: 0,
+    });
+    expect(obs.camX).toBe(0);
+    expect(obs.camY).toBe(0);
+    expect(obs.headingDeg).toBe(0);
+    expect(obs.elevationDeg).toBe(20);
+    expect(obs.lat).toBe(48.8);
+  });
+
+  it('keeps IMU heading when the rail bench is off', () => {
+    const obs = toFusionObservation(detection, camera, 10, null);
+    expect(obs.camX).toBeUndefined();
+    expect(obs.headingDeg).toBe(164);
   });
 });

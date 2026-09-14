@@ -79,3 +79,10 @@ export interface FusionSnapshot {
   lastFuse: FusionLastFuse | null;
   tracks: FusionTrack[];
 }
+
+/** WebSocket `fuse_update`: 3D point in metres (rail frame during bench). */
+export interface FuseUpdate {
+  type: 'fuse_update';
+  lastFuse: FusionLastFuse | null;
+  tracks: FusionTrack[];
+}

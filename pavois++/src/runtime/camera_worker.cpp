@@ -126,6 +126,30 @@ void CameraWorker::maybe_send_preview(const GrayFrame& frame,
     preview_http_->post_jpeg(cfg_.id, std::move(jpeg));
 }
 
+void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
+                                    std::uint64_t frame_id,
+                                    std::uint64_t& window_start_us,
+                                    std::uint64_t& window_frames) {
+    if (!udp_sender_ || !udp_sender_->valid()) return;
+    if (window_start_us == 0) {
+        window_start_us = now_us;
+        window_frames = 0;
+    }
+    ++window_frames;
+    if (now_us < window_start_us + 1'000'000ULL) return;
+    const double dt_s =
+        static_cast<double>(now_us - window_start_us) / 1'000'000.0;
+    const double fps = dt_s > 0.0
+                           ? static_cast<double>(window_frames) / dt_s
+                           : 0.0;
+    std::ostringstream line;
+    line << "stats," << cfg_.id << ',' << std::fixed << std::setprecision(2)
+         << fps << ',' << frame_id << ',' << now_us;
+    udp_sender_->send_line(line.str());
+    window_start_us = now_us;
+    window_frames = 0;
+}
+
 // No reader: the config pose is authoritative and streams as valid.
 // A failed read keeps the last pose and reports false (frozen heading).
 bool CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose,
@@ -185,6 +209,8 @@ void CameraWorker::operator()() {
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;
     std::uint64_t last_preview_us = 0;
+    std::uint64_t stats_window_start_us = 0;
+    std::uint64_t stats_window_frames = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         if (!source->read_frame(frame)) {
@@ -204,6 +230,8 @@ void CameraWorker::operator()() {
 
         const DetectionResult det = detector.process(frame);
         if (debug.active()) debug.dump(frame, det);
+        maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
+                         stats_window_frames);
 
         if (det.confirmed) {
             Observation obs;

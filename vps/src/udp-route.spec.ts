@@ -77,4 +77,13 @@ describe('routeUdpLine', () => {
     const line = 'att,jean,1775312345678,not-a-number,0,0';
     expect(routeUdpLine(line)).toEqual({ kind: 'drop' });
   });
+
+  it('routes a Pi stats line', () => {
+    const routed = routeUdpLine('stats,walid,9.8,80,123');
+    expect(routed.kind).toBe('stats');
+    if (routed.kind !== 'stats') return;
+    expect(routed.stats.cameraId).toBe('walid');
+    expect(routed.stats.fps).toBeCloseTo(9.8);
+    expect(routed.stats.frameIndex).toBe(80);
+  });
 });

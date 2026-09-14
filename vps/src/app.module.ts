@@ -18,6 +18,7 @@ import { TracksController } from './tracks.controller';
 import { TracksService } from './tracks.service';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
+import { BenchController } from './bench.controller';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AlertsService } from './alerts.service';
     FusionController,
     TracksController,
     AlertsController,
+    BenchController,
   ],
   providers: [
     AppService,

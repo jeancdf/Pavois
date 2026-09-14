@@ -1,0 +1,67 @@
+<section class="rail-page">
+  <header class="rail-header">
+    <div>
+      <h1 class="rail-title">TEST RAIL</h1>
+      <p class="rail-sub">
+        Volume en mètres, jean au centre. La carte GPS n’est pas utilisée.
+      </p>
+    </div>
+    <div class="rail-actions">
+      <label class="range-label">
+        Distance
+        <select
+          [value]="rangeM()"
+          (change)="setRange($event)"
+        >
+          @for (r of ranges; track r) {
+            <option [value]="r">{{ r }} m</option>
+          }
+        </select>
+      </label>
+      <button class="rail-btn" (click)="start()" [disabled]="busy()">
+        Lancer le test
+      </button>
+      <button class="rail-btn ghost" (click)="stop()" [disabled]="busy()">
+        Arrêter
+      </button>
+    </div>
+  </header>
+
+  <div class="rail-status">
+    <span [class.ok]="realtime.connected()">
+      WS {{ realtime.connected() ? 'connecté' : 'hors ligne' }}
+    </span>
+    <span [class.ok]="bench()">
+      Banc {{ bench() ? 'actif' : 'éteint' }}
+    </span>
+    <span>
+      Écart
+      {{ errorM() === null ? '—' : errorM()!.toFixed(2) + ' m' }}
+    </span>
+  </div>
+
+  <div class="rail-body">
+    <app-rail-volume
+      [bench]="bench()"
+      [estimated]="estimated()"
+      [seeing]="seeing()"
+    ></app-rail-volume>
+
+    <aside class="pi-panel">
+      <h2>Raspberry Pi</h2>
+      @for (id of cameraIds; track id) {
+        <article class="pi-card">
+          <header>
+            <strong>{{ id }}</strong>
+            <span class="fps">{{ fpsOf(id) }} fps</span>
+          </header>
+          <p>Miniature {{ previewAge(id) }}</p>
+          <p>Détection {{ detectionAge(id) }}</p>
+        </article>
+      }
+      <p class="hint">
+        Le FPS est le rythme réel de capture, pas la miniature à 2 img/s.
+      </p>
+    </aside>
+  </div>
+</section>

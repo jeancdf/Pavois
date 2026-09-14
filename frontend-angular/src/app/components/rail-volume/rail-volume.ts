@@ -10,13 +10,7 @@ import {
 } from '@angular/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import {
-  MAX_RAIL_VOXELS,
-  RAIL_VOXEL_SIZE_M,
-  RailBenchState,
-  RailVoxel,
-  Vec3m,
-} from '../../config/rail-bench';
+import { RailBenchState, Vec3m } from '../../config/rail-bench';
 
 @Component({
   selector: 'app-rail-volume',
@@ -25,7 +19,8 @@ import {
 })
 export class RailVolume implements AfterViewInit, OnDestroy {
   readonly bench = input<RailBenchState | null>(null);
-  readonly voxels = input<RailVoxel[]>([]);
+  readonly estimated = input<Vec3m | null>(null);
+  readonly seeing = input<string[]>([]);
   readonly host = viewChild<ElementRef<HTMLDivElement>>('host');
 
   private renderer: THREE.WebGLRenderer | null = null;
@@ -33,7 +28,8 @@ export class RailVolume implements AfterViewInit, OnDestroy {
   private camera: THREE.PerspectiveCamera | null = null;
   private controls: OrbitControls | null = null;
   private frame = 0;
-  private voxelMesh: THREE.InstancedMesh | null = null;
+  private estimatedMesh: THREE.Mesh | null = null;
+  private expectedMesh: THREE.Mesh | null = null;
   private rayLines: THREE.Line[] = [];
   private renderedBench: RailBenchState | null = null;
   readonly failed = signal(false);
@@ -41,7 +37,8 @@ export class RailVolume implements AfterViewInit, OnDestroy {
   constructor() {
     effect(() => {
       this.bench();
-      this.voxels();
+      this.estimated();
+      this.seeing();
       this.syncScene();
     });
   }
@@ -59,13 +56,10 @@ export class RailVolume implements AfterViewInit, OnDestroy {
       line.geometry.dispose();
       disposeMaterial(line.material);
     }
-    this.voxelMesh?.geometry.dispose();
-    const voxelMaterial = this.voxelMesh?.material;
-    if (Array.isArray(voxelMaterial)) {
-      for (const material of voxelMaterial) material.dispose();
-    } else {
-      voxelMaterial?.dispose();
-    }
+    this.estimatedMesh?.geometry.dispose();
+    if (this.estimatedMesh) disposeMaterial(this.estimatedMesh.material);
+    this.expectedMesh?.geometry.dispose();
+    if (this.expectedMesh) disposeMaterial(this.expectedMesh.material);
     this.scene = null;
   }
 
@@ -152,33 +146,37 @@ export class RailVolume implements AfterViewInit, OnDestroy {
       this.renderedBench = bench;
     }
 
-    if (!this.voxelMesh) {
-      this.voxelMesh = new THREE.InstancedMesh(
-        new THREE.BoxGeometry(
-          RAIL_VOXEL_SIZE_M * 0.9,
-          RAIL_VOXEL_SIZE_M * 0.9,
-          RAIL_VOXEL_SIZE_M * 0.9,
-        ),
+    if (!this.expectedMesh) {
+      this.expectedMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 16),
         new THREE.MeshStandardMaterial({
-          color: 0xf59e0b,
+          color: 0x22c55e,
           transparent: true,
-          opacity: 0.75,
+          opacity: 0.55,
         }),
-        MAX_RAIL_VOXELS,
       );
-      this.voxelMesh.name = 'raw-intersection-voxels';
-      this.voxelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      scene.add(this.voxelMesh);
+      this.expectedMesh.name = 'expected-target';
+      scene.add(this.expectedMesh);
     }
-    const voxels = this.voxels().slice(-MAX_RAIL_VOXELS);
-    const matrix = new THREE.Matrix4();
-    for (let i = 0; i < voxels.length; ++i) {
-      const point = toThree(voxels[i]);
-      matrix.makeTranslation(point.x, point.y, point.z);
-      this.voxelMesh.setMatrixAt(i, matrix);
+    const radius = Math.max(0.06, bench.targetSizeM / 2);
+    this.expectedMesh.scale.setScalar(radius / 0.1);
+    this.expectedMesh.position.copy(toThree(bench.expected));
+
+    const estimated = this.estimated();
+    if (estimated) {
+      if (!this.estimatedMesh) {
+        this.estimatedMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.09, 16, 16),
+          new THREE.MeshStandardMaterial({ color: 0xf59e0b }),
+        );
+        this.estimatedMesh.name = 'tracked-target';
+        scene.add(this.estimatedMesh);
+      }
+      this.estimatedMesh.visible = true;
+      this.estimatedMesh.position.copy(toThree(estimated));
+    } else if (this.estimatedMesh) {
+      this.estimatedMesh.visible = false;
     }
-    this.voxelMesh.count = voxels.length;
-    this.voxelMesh.instanceMatrix.needsUpdate = true;
 
     for (const line of this.rayLines) {
       scene.remove(line);
@@ -186,12 +184,11 @@ export class RailVolume implements AfterViewInit, OnDestroy {
       disposeMaterial(line.material);
     }
     this.rayLines = [];
-    const end = voxels[voxels.length - 1];
-    if (!end) return;
-    const seeing = new Set(end.cameras);
+    if (!estimated) return;
+    const seeing = new Set(this.seeing());
     for (const cam of bench.cameras) {
       if (!seeing.has(cam.id)) continue;
-      const geom = new THREE.BufferGeometry().setFromPoints([toThree(cam), toThree(end)]);
+      const geom = new THREE.BufferGeometry().setFromPoints([toThree(cam), toThree(estimated)]);
       const line = new THREE.Line(
         geom,
         new THREE.LineBasicMaterial({ color: cameraColor(cam.id) }),

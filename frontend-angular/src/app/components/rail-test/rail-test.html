@@ -23,15 +23,19 @@
       WS {{ realtime.connected() ? 'connecté' : 'hors ligne' }}
     </span>
     <span [class.ok]="bench()"> Banc {{ bench() ? 'actif' : 'éteint' }} </span>
-    <span> Voxels {{ voxels().length }} </span>
+    <span [class.ok]="estimated()"> Cible {{ estimated() ? 'suivie' : 'absente' }} </span>
     <span>
-      Résidu rayons
-      {{ rayResidualM() === null ? '—' : rayResidualM()!.toFixed(2) + ' m' }}
+      Écart
+      {{ errorM() === null ? '—' : errorM()!.toFixed(2) + ' m' }}
     </span>
   </div>
 
   <div class="rail-body">
-    <app-rail-volume [bench]="bench()" [voxels]="voxels()"></app-rail-volume>
+    <app-rail-volume
+      [bench]="bench()"
+      [estimated]="estimated()"
+      [seeing]="seeing()"
+    ></app-rail-volume>
 
     <aside class="pi-panel">
       <h2>Raspberry Pi</h2>

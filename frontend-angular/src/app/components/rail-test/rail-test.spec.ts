@@ -17,7 +17,8 @@ import type { FuseUpdate } from '../../models/fuse-update.model';
 })
 class RailVolumeStub {
   readonly bench = input<unknown>();
-  readonly voxels = input<unknown>();
+  readonly estimated = input<unknown>();
+  readonly seeing = input<unknown>();
 }
 
 describe('RailTestPage', () => {
@@ -94,39 +95,14 @@ describe('RailTestPage', () => {
       .compileComponents();
   });
 
-  it('shows Pi fps and accumulates raw intersection voxels', async () => {
+  it('shows Pi fps and the fused target error', async () => {
     const fixture = TestBed.createComponent(RailTestPage);
     fixture.detectChanges();
-    let text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('TEST RAIL');
     expect(text).toContain('18.2 fps');
     expect(text).toContain('jean');
-    expect(text).toContain('Voxels 1');
-    expect(text).toContain('Résidu rayons 0.05 m');
-
-    fuseUpdate.set({
-      ...fuseUpdate(),
-      lastFuse: {
-        ok: false,
-        rejectReason: 'no subset passed parallax/residual gates',
-        residualM: null,
-        parallaxDeg: null,
-        confidence: null,
-        cameras: [],
-        point: null,
-      },
-      rawIntersections: [
-        {
-          point: { x: 0.11, y: 2.6, z: 0.4 },
-          residualM: 0.08,
-          parallaxDeg: 7,
-          cameras: ['jean', 'walid'],
-          timestampUs: 1_100_000,
-        },
-      ],
-    });
-    fixture.detectChanges();
-    text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('Voxels 2');
+    expect(text).toContain('Cible suivie');
+    expect(text).toContain('Écart 0.10 m');
   });
 });

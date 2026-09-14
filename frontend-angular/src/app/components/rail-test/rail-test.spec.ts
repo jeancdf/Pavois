@@ -9,6 +9,7 @@ import { RailBenchService } from '../../services/rail-bench.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { NotificationService } from '../../services/notification.service';
 import { buildRailBenchState } from '../../config/rail-bench';
+import type { FuseUpdate } from '../../models/fuse-update.model';
 
 @Component({
   selector: 'app-rail-volume',
@@ -17,13 +18,12 @@ import { buildRailBenchState } from '../../config/rail-bench';
 class RailVolumeStub {
   readonly bench = input<unknown>();
   readonly voxels = input<unknown>();
-  readonly seeing = input<unknown>();
 }
 
 describe('RailTestPage', () => {
   const bench = buildRailBenchState({ rangeM: 2.5 });
   const railBench = signal(bench);
-  const fuseUpdate = signal({
+  const fuseUpdate = signal<FuseUpdate>({
     type: 'fuse_update' as const,
     lastFuse: {
       ok: true,
@@ -34,6 +34,15 @@ describe('RailTestPage', () => {
       cameras: ['jean', 'tanel'],
       point: { x: 0, y: 2.6, z: 0.4 },
     },
+    rawIntersections: [
+      {
+        point: { x: 0, y: 2.6, z: 0.4 },
+        residualM: 0.05,
+        parallaxDeg: 8,
+        cameras: ['jean', 'tanel'],
+        timestampUs: 1_000_000,
+      },
+    ],
     tracks: [],
   });
   const lastDetectionAt = signal<Record<string, number>>({
@@ -98,9 +107,23 @@ describe('RailTestPage', () => {
     fuseUpdate.set({
       ...fuseUpdate(),
       lastFuse: {
-        ...fuseUpdate().lastFuse,
-        point: { x: 0.11, y: 2.6, z: 0.4 },
+        ok: false,
+        rejectReason: 'no subset passed parallax/residual gates',
+        residualM: null,
+        parallaxDeg: null,
+        confidence: null,
+        cameras: [],
+        point: null,
       },
+      rawIntersections: [
+        {
+          point: { x: 0.11, y: 2.6, z: 0.4 },
+          residualM: 0.08,
+          parallaxDeg: 7,
+          cameras: ['jean', 'walid'],
+          timestampUs: 1_100_000,
+        },
+      ],
     });
     fixture.detectChanges();
     text = (fixture.nativeElement as HTMLElement).textContent ?? '';

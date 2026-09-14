@@ -26,7 +26,6 @@ import {
 export class RailVolume implements AfterViewInit, OnDestroy {
   readonly bench = input<RailBenchState | null>(null);
   readonly voxels = input<RailVoxel[]>([]);
-  readonly seeing = input<string[]>([]);
   readonly host = viewChild<ElementRef<HTMLDivElement>>('host');
 
   private renderer: THREE.WebGLRenderer | null = null;
@@ -43,7 +42,6 @@ export class RailVolume implements AfterViewInit, OnDestroy {
     effect(() => {
       this.bench();
       this.voxels();
-      this.seeing();
       this.syncScene();
     });
   }
@@ -188,15 +186,12 @@ export class RailVolume implements AfterViewInit, OnDestroy {
       disposeMaterial(line.material);
     }
     this.rayLines = [];
-    const seeing = new Set(this.seeing());
     const end = voxels[voxels.length - 1];
     if (!end) return;
+    const seeing = new Set(end.cameras);
     for (const cam of bench.cameras) {
       if (!seeing.has(cam.id)) continue;
-      const geom = new THREE.BufferGeometry().setFromPoints([
-        toThree(cam),
-        toThree(end),
-      ]);
+      const geom = new THREE.BufferGeometry().setFromPoints([toThree(cam), toThree(end)]);
       const line = new THREE.Line(
         geom,
         new THREE.LineBasicMaterial({ color: cameraColor(cam.id) }),
@@ -207,9 +202,7 @@ export class RailVolume implements AfterViewInit, OnDestroy {
   }
 }
 
-function disposeMaterial(
-  material: THREE.Material | THREE.Material[],
-): void {
+function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
   if (Array.isArray(material)) {
     for (const item of material) item.dispose();
   } else {

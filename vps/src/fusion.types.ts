@@ -59,6 +59,15 @@ export interface FusionTrack {
   classification: string;
 }
 
+/** Raw closest-point sample for one camera pair; never a tracked object. */
+export interface FusionRayIntersection {
+  point: { x: number; y: number; z: number };
+  residualM: number;
+  parallaxDeg: number;
+  cameras: [string, string];
+  timestampUs: number;
+}
+
 /** WebSocket `track_update` payload (same shape as the UDP objN frame). */
 export interface FusionTrackUpdate {
   type: 'track_update';
@@ -77,6 +86,7 @@ export interface FusionSnapshot {
   staleAfterMs: number;
   cameras: FusionCameraState[];
   lastFuse: FusionLastFuse | null;
+  rawIntersections: FusionRayIntersection[];
   tracks: FusionTrack[];
 }
 
@@ -84,5 +94,6 @@ export interface FusionSnapshot {
 export interface FuseUpdate {
   type: 'fuse_update';
   lastFuse: FusionLastFuse | null;
+  rawIntersections: FusionRayIntersection[];
   tracks: FusionTrack[];
 }

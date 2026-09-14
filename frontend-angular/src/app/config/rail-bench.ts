@@ -61,6 +61,7 @@ export interface RailVolumePoint {
 export interface RailVoxel extends Vec3m {
   key: string;
   hits: number;
+  cameras: string[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -71,22 +72,15 @@ export function railPitchMm(rigWidthMm = DEFAULT_RIG_WIDTH_MM): number {
   return rigWidthMm / 7;
 }
 
-export function adjacentBaselineM(
-  rigWidthMm = DEFAULT_RIG_WIDTH_MM,
-): number {
+export function adjacentBaselineM(rigWidthMm = DEFAULT_RIG_WIDTH_MM): number {
   return (3 * railPitchMm(rigWidthMm)) / 1000;
 }
 
-export function expectedTarget(
-  rangeM = DEFAULT_RANGE_M,
-  hoverM = DEFAULT_HOVER_M,
-): Vec3m {
+export function expectedTarget(rangeM = DEFAULT_RANGE_M, hoverM = DEFAULT_HOVER_M): Vec3m {
   return { x: 0, y: rangeM, z: hoverM };
 }
 
-export function railCameraPoses(
-  options: RailBenchOptions = {},
-): RailLocalPose[] {
+export function railCameraPoses(options: RailBenchOptions = {}): RailLocalPose[] {
   const width = options.rigWidthMm ?? DEFAULT_RIG_WIDTH_MM;
   const heading = options.headingDeg ?? DEFAULT_HEADING_DEG;
   const elevation = options.elevationDeg ?? DEFAULT_ELEVATION_DEG;
@@ -106,20 +100,10 @@ export function railCameraPoses(
   }));
 }
 
-export function buildRailBenchState(
-  options: RailBenchOptions = {},
-): RailBenchState {
-  const rigWidthMm = clamp(
-    options.rigWidthMm ?? DEFAULT_RIG_WIDTH_MM,
-    840,
-    1050,
-  );
+export function buildRailBenchState(options: RailBenchOptions = {}): RailBenchState {
+  const rigWidthMm = clamp(options.rigWidthMm ?? DEFAULT_RIG_WIDTH_MM, 840, 1050);
   const rangeM = clamp(options.rangeM ?? DEFAULT_RANGE_M, 0.5, 20);
-  const targetSizeM = clamp(
-    options.targetSizeM ?? DEFAULT_TARGET_SIZE_M,
-    0.05,
-    2,
-  );
+  const targetSizeM = clamp(options.targetSizeM ?? DEFAULT_TARGET_SIZE_M, 0.05, 2);
   const hoverM = clamp(options.hoverM ?? DEFAULT_HOVER_M, 0, 5);
   const headingDeg = options.headingDeg ?? DEFAULT_HEADING_DEG;
   const elevationDeg = options.elevationDeg ?? DEFAULT_ELEVATION_DEG;
@@ -147,6 +131,7 @@ export function distanceM(a: Vec3m, b: Vec3m): number {
 /** Quantizes a raw ray intersection into a display-only grid cell. */
 export function railVoxelOf(
   point: Vec3m,
+  cameras: string[] = [],
   sizeM = RAIL_VOXEL_SIZE_M,
 ): RailVoxel | null {
   if (
@@ -167,6 +152,7 @@ export function railVoxelOf(
     y: iy === 0 ? 0 : iy * sizeM,
     z: iz === 0 ? 0 : iz * sizeM,
     hits: 1,
+    cameras: cameras.slice(),
   };
 }
 

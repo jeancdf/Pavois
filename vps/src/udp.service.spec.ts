@@ -29,6 +29,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
             pullTrackUpdates: jest.fn().mockReturnValue([]),
             snapshot: jest.fn().mockReturnValue({
               lastFuse: null,
+              rawIntersections: [],
               tracks: [],
             }),
           },
@@ -47,7 +48,11 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
     service = module.get<UdpService>(UdpService);
   });
 
-  function createSignedPacket(payloadStr: string, secretKey: string, timestampMsOverride?: number): Buffer {
+  function createSignedPacket(
+    payloadStr: string,
+    secretKey: string,
+    timestampMsOverride?: number,
+  ): Buffer {
     const timestampMs = BigInt(timestampMsOverride ?? Date.now());
     const timestampBuf = Buffer.alloc(8);
     timestampBuf.writeBigInt64BE(timestampMs, 0);
@@ -85,7 +90,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
     it('should reject a packet with an invalid HMAC signature', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
       const packet = createSignedPacket(payload, secretKey);
-      
+
       // Corrupt the HMAC bytes (index 8 to 39)
       packet[10] ^= 0xff;
 
@@ -97,7 +102,11 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
     it('should reject a replayed packet with a timestamp older than 2000 ms (Anti-Replay)', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
       const oldTimestamp = Date.now() - 5000; // 5 seconds ago
-      const expiredPacket = createSignedPacket(payload, secretKey, oldTimestamp);
+      const expiredPacket = createSignedPacket(
+        payload,
+        secretKey,
+        oldTimestamp,
+      );
 
       const result = (service as any).verifyUdpPacket(expiredPacket, secretKey);
       expect(result.valid).toBe(false);
@@ -122,13 +131,20 @@ describe('UdpService fused track_update', () => {
       providers: [
         UdpService,
         { provide: EventsGateway, useValue: { broadcast } },
-        { provide: CamerasService, useValue: { list: () => [], localPose: () => null } },
+        {
+          provide: CamerasService,
+          useValue: { list: () => [], localPose: () => null },
+        },
         {
           provide: FusionService,
           useValue: {
             ingest,
             pullTrackUpdates: () => [track],
-            snapshot: () => ({ lastFuse: null, tracks: [] }),
+            snapshot: () => ({
+              lastFuse: null,
+              rawIntersections: [],
+              tracks: [],
+            }),
           },
         },
         {
@@ -158,6 +174,7 @@ describe('UdpService fused track_update', () => {
     expect(broadcast).toHaveBeenCalledWith('fuse_update', {
       type: 'fuse_update',
       lastFuse: null,
+      rawIntersections: [],
       tracks: [],
     });
     expect(broadcast).toHaveBeenCalledWith('track_update', track);

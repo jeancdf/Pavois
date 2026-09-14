@@ -38,36 +38,39 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly ranges = [2, 2.5, 3];
 
   readonly bench = this.realtime.railBench;
-  readonly seeing = computed(
-    () => this.realtime.fuseUpdate()?.lastFuse?.cameras ?? [],
-  );
-  readonly rayResidualM = computed(
-    () => this.realtime.fuseUpdate()?.lastFuse?.residualM ?? null,
-  );
+  readonly rayResidualM = computed(() => {
+    const update = this.realtime.fuseUpdate();
+    const residuals = update?.rawIntersections?.map((intersection) => intersection.residualM);
+    return residuals?.length ? Math.min(...residuals) : (update?.lastFuse?.residualM ?? null);
+  });
 
   private tick: ReturnType<typeof setInterval> | null = null;
   private readonly voxelCells = new Map<string, RailVoxel>();
-  private lastFuse: object | null = null;
+  private lastFuseUpdate: object | null = null;
 
   constructor() {
     this.tick = setInterval(() => this.now.set(Date.now()), 250);
     effect(() => {
       const bench = this.bench();
-      const fuse = this.realtime.fuseUpdate()?.lastFuse ?? null;
-      if (fuse === this.lastFuse) return;
-      this.lastFuse = fuse;
-      if (!bench || !fuse?.ok || !fuse.point) return;
+      const update = this.realtime.fuseUpdate();
+      if (update === this.lastFuseUpdate) return;
+      this.lastFuseUpdate = update;
+      if (!bench || !update) return;
 
-      const voxel = railVoxelOf(fuse.point);
-      if (!voxel) return;
-      const previous = this.voxelCells.get(voxel.key);
-      if (previous) voxel.hits = previous.hits + 1;
-      this.voxelCells.set(voxel.key, voxel);
-      if (this.voxelCells.size > MAX_RAIL_VOXELS) {
-        const oldest = this.voxelCells.keys().next().value as
-          | string
-          | undefined;
-        if (oldest !== undefined) this.voxelCells.delete(oldest);
+      const intersections = update.rawIntersections ?? [];
+      for (const intersection of intersections) {
+        const voxel = railVoxelOf(intersection.point, intersection.cameras);
+        if (!voxel) continue;
+        const previous = this.voxelCells.get(voxel.key);
+        if (previous) {
+          voxel.hits = previous.hits + 1;
+          this.voxelCells.delete(voxel.key);
+        }
+        this.voxelCells.set(voxel.key, voxel);
+        if (this.voxelCells.size > MAX_RAIL_VOXELS) {
+          const oldest = this.voxelCells.keys().next().value as string | undefined;
+          if (oldest !== undefined) this.voxelCells.delete(oldest);
+        }
       }
       untracked(() => this.voxels.set([...this.voxelCells.values()]));
     });
@@ -103,7 +106,7 @@ export class RailTestPage implements OnInit, OnDestroy {
   private resetVoxels(): void {
     this.voxelCells.clear();
     this.voxels.set([]);
-    this.lastFuse = this.realtime.fuseUpdate()?.lastFuse ?? null;
+    this.lastFuseUpdate = this.realtime.fuseUpdate();
   }
 
   async stop(): Promise<void> {
@@ -111,10 +114,7 @@ export class RailTestPage implements OnInit, OnDestroy {
     try {
       await this.railBenchApi.stop();
     } catch (error) {
-      this.notifications.push(
-        'alert',
-        error instanceof Error ? error.message : 'arrêt impossible',
-      );
+      this.notifications.push('alert', error instanceof Error ? error.message : 'arrêt impossible');
     } finally {
       this.busy.set(false);
     }

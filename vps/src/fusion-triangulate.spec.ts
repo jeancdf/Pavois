@@ -7,6 +7,7 @@ import {
   vSub,
 } from './fusion-geo';
 import {
+  pairIntersections,
   triangulate,
   type TriangulateObservation,
   type TriangulationConfig,
@@ -96,6 +97,13 @@ describe('triangulate', () => {
     const r = triangulate(obs, cfg);
     expect(r.ok).toBe(false);
     expect(r.rejectReason).toBe(NO_SUBSET);
+    const raw = pairIntersections(obs, 80);
+    expect(raw).toHaveLength(1);
+    expect(raw[0].cameras).toEqual(['cam0', 'cam1']);
+    expect(raw[0].parallaxDeg).toBeLessThan(cfg.minParallaxDeg!);
+    expect(Number.isFinite(raw[0].point.x)).toBe(true);
+    expect(Number.isFinite(raw[0].point.y)).toBe(true);
+    expect(Number.isFinite(raw[0].point.z)).toBe(true);
   });
 
   it('rejects identical poses', () => {

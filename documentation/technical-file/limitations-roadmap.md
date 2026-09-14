@@ -1,7 +1,7 @@
 # Limites et feuille de route
 
-Dernière vérification dans le code : **11 septembre 2026** (scorecard
-cinématique SCRUM-70, fusion Kalman, IMU partagée, transport CSV/WS).
+Dernière vérification dans le code : **15 septembre 2026** (timestamps capteur,
+fenêtre de fusion 20 ms et calibration ChArUco complète).
 
 Chaque limite ci-dessous doit rester vérifiable dans le dépôt. Les phrases
 périmées (frontend sur `pavoisSim.ts`, « pas de flux backend », « pas de
@@ -12,7 +12,10 @@ Kalman ») ont été retirées.
 ### Détection et localisation
 
 - Une seule caméra ne résout pas la profondeur. La triangulation VPS exige
-  au moins deux observations alignées dans `FUSION_WINDOW_MS` (90 ms).
+  au moins deux observations alignées dans `FUSION_WINDOW_MS` (20 ms).
+- Les caméras CSI transmettent le `FrameWallClock` libcamera pris à la capture,
+  et non un timestamp ajouté après le décodage MJPEG. La précision entre Pi
+  dépend donc encore de leur synchronisation NTP.
 - Le détecteur C++ est une différence d’images. Ombres, vibrations et
   arrière-plan mobile restent des sources de faux positifs.
 - Les positions GPS des Pi sont encore des valeurs de site, à recaler depuis
@@ -31,6 +34,9 @@ Kalman ») ont été retirées.
   remonte en général que le niveau mag (`S- G- A- M3`).
 - L’outil `pavois_imu_calib` écrit `imu.heading_offset_deg`. La qualité IMU
   arrive jusqu’à l’écran (SCRUM-62).
+- L’outil `/opt/pavois/bin/camera-calib.py` mesure les intrinsèques et la pose
+  rail avec une mire ChArUco. Ces mesures restent à refaire après tout déplacement
+  d’une caméra ou changement de mode vidéo.
 
 ### Suivi
 

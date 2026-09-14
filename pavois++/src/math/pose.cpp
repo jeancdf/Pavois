@@ -85,13 +85,20 @@ void undistort_pixel(const CameraIntrinsics& in, double px, double py,
     const double yd = (py - in.cy) / in.fy;
     xn = xd;
     yn = yd;
-    if (in.k1 == 0.0 && in.k2 == 0.0) return;
-    // Iterative inverse of x_d = x_u (1 + k1 r^2 + k2 r^4).
+    if (in.k1 == 0.0 && in.k2 == 0.0 && in.p1 == 0.0 &&
+        in.p2 == 0.0 && in.k3 == 0.0) return;
+    // Iterative inverse of OpenCV's Brown-Conrady model.
     for (int i = 0; i < 8; ++i) {
         const double r2 = xn * xn + yn * yn;
-        const double f = 1.0 + in.k1 * r2 + in.k2 * r2 * r2;
-        xn = xd / f;
-        yn = yd / f;
+        const double radial = 1.0 + in.k1 * r2 + in.k2 * r2 * r2 +
+                              in.k3 * r2 * r2 * r2;
+        const double dx = 2.0 * in.p1 * xn * yn +
+                          in.p2 * (r2 + 2.0 * xn * xn);
+        const double dy = in.p1 * (r2 + 2.0 * yn * yn) +
+                          2.0 * in.p2 * xn * yn;
+        if (std::fabs(radial) < 1e-12) break;
+        xn = (xd - dx) / radial;
+        yn = (yd - dy) / radial;
     }
 }
 
@@ -115,10 +122,13 @@ std::optional<std::array<double, 2>> project_world_to_pixel(
     const double yc = -v_dot(rel, b.up);
     double xn = xc / zc, yn = yc / zc;
     const double r2 = xn * xn + yn * yn;
-    const double f = 1.0 + in.k1 * r2 + in.k2 * r2 * r2;
-    xn *= f;
-    yn *= f;
-    return std::array<double, 2>{in.cx + in.fx * xn, in.cy + in.fy * yn};
+    const double radial = 1.0 + in.k1 * r2 + in.k2 * r2 * r2 +
+                          in.k3 * r2 * r2 * r2;
+    const double xd = xn * radial + 2.0 * in.p1 * xn * yn +
+                      in.p2 * (r2 + 2.0 * xn * xn);
+    const double yd = yn * radial + in.p1 * (r2 + 2.0 * yn * yn) +
+                      2.0 * in.p2 * xn * yn;
+    return std::array<double, 2>{in.cx + in.fx * xd, in.cy + in.fy * yd};
 }
 
 Ray pixel_to_world_ray(const Observation& obs) {

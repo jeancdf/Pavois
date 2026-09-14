@@ -145,7 +145,7 @@ export class FusionService {
   private readonly historyWindowMs = envInt('FUSION_HISTORY_MS', 2000);
   private readonly staleAfterMs = envInt('FUSION_STALE_MS', 2000);
   private readonly maxPerCamera = envInt('FUSION_MAX_PER_CAMERA', 256);
-  private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 90);
+  private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 20);
   private readonly minParallaxDeg = envNumber('FUSION_MIN_PARALLAX_DEG', 2);
   private readonly maxResidualM = envNumber('FUSION_MAX_RESIDUAL_M', 3);
   private readonly maxRangeM = envNumber('FUSION_MAX_RANGE_M', 60);
@@ -351,6 +351,11 @@ export class FusionService {
     if (isFiniteNumber(obs.cy) && obs.cy > 0) {
       intrinsics.cy = obs.cy;
     }
+    if (isFiniteNumber(obs.k1)) intrinsics.k1 = obs.k1;
+    if (isFiniteNumber(obs.k2)) intrinsics.k2 = obs.k2;
+    if (isFiniteNumber(obs.p1)) intrinsics.p1 = obs.p1;
+    if (isFiniteNumber(obs.p2)) intrinsics.p2 = obs.p2;
+    if (isFiniteNumber(obs.k3)) intrinsics.k3 = obs.k3;
     return {
       cameraId: obs.cameraId,
       pixelX: obs.x,

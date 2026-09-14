@@ -127,4 +127,38 @@ describe('CamerasService rail bench', () => {
     service.clearRailBench();
     expect(service.list().find((c) => c.id === 'jean')?.localX).toBeUndefined();
   });
+
+  it('persists and uses a measured ChArUco pose instead of the ideal rail', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pavois-rail-calib-'));
+    const filePath = join(dir, 'cameras.json');
+    process.env.CAMERAS_FILE = filePath;
+    const isolated = new CamerasService();
+
+    expect(
+      isolated.updateRailCalibration('jean', {
+        id: 'jean',
+        x: 0.012,
+        y: -0.034,
+        z: 0.71,
+        headingDeg: 359.8,
+        elevationDeg: 18.6,
+        rollDeg: -0.7,
+      }),
+    ).toBe(true);
+
+    const bench = isolated.applyRailBench();
+    expect(bench.cameras.find((camera) => camera.id === 'jean')).toMatchObject({
+      x: 0.012,
+      y: -0.034,
+      z: 0.71,
+      headingDeg: 359.8,
+      elevationDeg: 18.6,
+      rollDeg: -0.7,
+    });
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'jean', railX: 0.012, railZ: 0.71 }),
+      ]),
+    );
+  });
 });

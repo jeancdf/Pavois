@@ -17,6 +17,17 @@ export interface RawDetection {
   cx?: number;
   cy?: number;
   fovDeg?: number;
+  k1?: number;
+  k2?: number;
+  p1?: number;
+  p2?: number;
+  k3?: number;
+  railX?: number;
+  railY?: number;
+  railZ?: number;
+  railHeadingDeg?: number;
+  railElevationDeg?: number;
+  railRollDeg?: number;
 }
 
 function allFinite(values: number[]): boolean {
@@ -25,7 +36,8 @@ function allFinite(values: number[]): boolean {
 
 /**
  * UDP: raw,<id>,<frame>,<ts_us>,<x>,<y>,<size>,<conf>
- * Optionnel (SCRUM-55) : ,<heading>,<elev>,<roll>[,<fx>,<fy>,<cx>,<cy>,<fov>]
+ * Optionnel : ,<heading>,<elev>,<roll>,<fx>,<fy>,<cx>,<cy>,<fov>,
+ * <k1>,<k2>,<p1>,<p2>,<k3>[,<rail x/y/z/heading/elevation/roll>]
  */
 export function parseRawDetectionLine(line: string): RawDetection | null {
   const parts = line.trim().split(',');
@@ -81,6 +93,24 @@ export function parseRawDetectionLine(line: string): RawDetection | null {
     detection.cx = cx;
     detection.cy = cy;
     detection.fovDeg = fovDeg;
+  }
+  if (parts.length < 21) return detection;
+  const distortion = parts.slice(16, 21).map(Number);
+  if (allFinite(distortion)) {
+    [detection.k1, detection.k2, detection.p1, detection.p2, detection.k3] =
+      distortion;
+  }
+  if (parts.length < 27) return detection;
+  const rail = parts.slice(21, 27).map(Number);
+  if (allFinite(rail)) {
+    [
+      detection.railX,
+      detection.railY,
+      detection.railZ,
+      detection.railHeadingDeg,
+      detection.railElevationDeg,
+      detection.railRollDeg,
+    ] = rail;
   }
   return detection;
 }

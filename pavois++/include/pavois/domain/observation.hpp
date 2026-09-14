@@ -6,7 +6,7 @@
 
 namespace pavois {
 
-// Pinhole intrinsics plus a 2-coefficient radial distortion model.
+// Pinhole intrinsics plus the OpenCV Brown-Conrady distortion model.
 // If fx <= 0 the consumer falls back to deriving fx/fy from fov_deg.
 struct CameraIntrinsics {
     double fx = 0.0;
@@ -15,6 +15,9 @@ struct CameraIntrinsics {
     double cy = 0.0;
     double k1 = 0.0;
     double k2 = 0.0;
+    double p1 = 0.0;
+    double p2 = 0.0;
+    double k3 = 0.0;
     double fov_deg = 65.0;
     int image_width = 0;
     int image_height = 0;

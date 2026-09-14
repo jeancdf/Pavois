@@ -133,7 +133,11 @@ describe('UdpService fused track_update', () => {
         { provide: EventsGateway, useValue: { broadcast } },
         {
           provide: CamerasService,
-          useValue: { list: () => [], localPose: () => null },
+          useValue: {
+            list: () => [],
+            localPose: () => null,
+            updateRailCalibration: () => false,
+          },
         },
         {
           provide: FusionService,

@@ -41,7 +41,20 @@ struct CameraConfig {
     double cy = 0.0;
     double k1 = 0.0;
     double k2 = 0.0;
+    double p1 = 0.0;
+    double p2 = 0.0;
+    double k3 = 0.0;
     double fov_deg = 65.0;
+
+    // Calibrated fixed pose used only by the VPS rail bench. The live IMU
+    // remains authoritative outside bench mode.
+    bool rail_pose_enabled = false;
+    double rail_x = 0.0;
+    double rail_y = 0.0;
+    double rail_z = 0.0;
+    double rail_heading_deg = 0.0;
+    double rail_elevation_deg = 0.0;
+    double rail_roll_deg = 0.0;
 
     // --- pose ---
     double x = 0.0;
@@ -72,7 +85,7 @@ struct AppConfig {
     int processing_threads = 3;
 
     // --- fusion ---
-    int fusion_window_ms = 90;
+    int fusion_window_ms = 20;
     int fusion_emit_interval_ms = 60;
     double fusion_max_range_m = 60.0;
     double fusion_min_parallax_deg = 2.0;

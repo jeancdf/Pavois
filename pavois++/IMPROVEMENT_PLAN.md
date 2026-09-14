@@ -20,12 +20,10 @@ possible primitive:
    mirrored in the North axis. `pitch`/`roll` are never set, so every ray is
    forced horizontal and altitude is unconstrained. No intrinsic calibration, no
    lens distortion.
-4. **Fusion has no real tracker and no time sync** (`fusion_engine.cpp`): it
-   triangulates each camera's *latest* blob against other cameras' stale blobs
-   (up to `fusion_window_ms` apart), timestamps are taken at detect time not
-   capture time, the geometry sanity checks were removed, there is no outlier
-   rejection, association gate is 20 m, tracks are never deleted, and it emits
-   once per incoming frame per camera.
+4. **Historical fusion issue (resolved in the current pipeline)**: CSI frames
+   now carry libcamera `FrameWallClock` timestamps from capture and the VPS
+   fusion window is 20 ms. The tracker, geometry gates and stale-track cleanup
+   described below are implemented; NTP quality remains operationally important.
 
 ## Target architecture
 
@@ -63,8 +61,9 @@ event_bus  →  stdout / UDP  (local ENU or GPS CSV)
 
 ### Phase 0 — Foundations & observability
 - [x] `IMPROVEMENT_PLAN.md` (this file)
-- [x] Capture-time timestamps: `GrayFrame::captured_us`, set the instant a frame
-      is produced; carried into `Observation::captured_us`.
+- [x] Capture-time timestamps: `GrayFrame::captured_us` uses the per-frame
+      libcamera `FrameWallClock` before MJPEG decode; carried into
+      `Observation::captured_us`.
 - [x] `FrameSource` abstraction + factory: `V4L2Camera`, network (ffmpeg), and a
       new `ReplaySource` that reads a directory of `.pgm` frames (offline replay
       / deterministic tests).
@@ -90,7 +89,8 @@ event_bus  →  stdout / UDP  (local ENU or GPS CSV)
 - [x] Physically meaningful `Observation::quality` in [0,1].
 
 ### Phase 2 — Camera geometry
-- [x] Intrinsics per camera: `fx, fy, cx, cy` with FOV fallback.
+- [x] Intrinsics per camera: ChArUco `fx, fy, cx, cy` plus Brown-Conrady
+      `k1, k2, p1, p2, k3`, with FOV fallback before field calibration.
 - [x] Radial distortion `k1, k2` with iterative undistortion.
 - [x] Correct world-ray construction from compass `heading_deg` + `elevation_deg`
       (ENU): forward/right/up basis, image-y-down handled explicitly.

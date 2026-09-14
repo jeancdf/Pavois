@@ -24,7 +24,14 @@ int main() {
         // is required to check frame boundaries, pixels and subprocess handling.
         const fs::path root(dir);
         std::ofstream(root / "rpicam-vid")
-            << "#!/bin/sh\nprintf '\\001\\002\\003\\004\\005\\006\\007\\010"
+            << "#!/bin/sh\n"
+               "metadata=\n"
+               "while [ $# -gt 0 ]; do\n"
+               "  if [ \"$1\" = --metadata ]; then metadata=$2; shift 2; else shift; fi\n"
+               "done\n"
+               "{ printf 'FrameWallClock=1700000000000000000\\n\\n'; "
+               "printf 'FrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
+               "printf '\\001\\002\\003\\004\\005\\006\\007\\010"
                "\\011\\012\\013\\014\\015\\016\\017\\020'\n";
         std::ofstream(root / "ffmpeg") << "#!/bin/sh\nexec /bin/cat\n";
         ::chmod((root / "rpicam-vid").c_str(), 0700);
@@ -43,7 +50,9 @@ int main() {
                 require(source->read_frame(frame), "complete frame must be readable");
                 require(frame.width == 4 && frame.height == 2 && frame.size() == 8,
                         "frame dimensions must match capture configuration");
-                require(frame.captured_us > 0, "capture timestamp must be set");
+                require(frame.captured_us == 1700000000000000ULL +
+                                                 static_cast<std::uint64_t>(n) * 33333ULL,
+                        "sensor timestamp must stay aligned with the decoded frame");
                 for (int i = 0; i < 8; ++i)
                     require(frame.pixels[i] == n * 8 + i + 1, "frame boundaries and pixels must be preserved");
             }

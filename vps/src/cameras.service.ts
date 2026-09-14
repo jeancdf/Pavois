@@ -25,6 +25,12 @@ export interface CameraConfig {
   localHeadingDeg?: number;
   localElevationDeg?: number;
   localRollDeg?: number;
+  railX?: number;
+  railY?: number;
+  railZ?: number;
+  railHeadingDeg?: number;
+  railElevationDeg?: number;
+  railRollDeg?: number;
 }
 
 export type CameraPosition = Pick<CameraConfig, 'lat' | 'lon' | 'alt'>;
@@ -54,9 +60,33 @@ const DEFAULT_RANGE_M = 60;
 // Positions provisoires reprises du dernier site de pavois++/pavois++.conf, à placer
 // depuis le frontend. FOV de pavois++/deploy/pavois.conf.example (OV5647).
 const DEFAULT_CAMERAS: CameraConfig[] = [
-  { id: 'jean', lat: 48.826132, lon: 2.365856, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
-  { id: 'tanel', lat: 48.826134, lon: 2.365869, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
-  { id: 'walid', lat: 48.826098, lon: 2.365877, alt: 58.524, headingDeg: 344, fovDeg: 65, rangeM: DEFAULT_RANGE_M },
+  {
+    id: 'jean',
+    lat: 48.826132,
+    lon: 2.365856,
+    alt: 58.524,
+    headingDeg: 164,
+    fovDeg: 65,
+    rangeM: DEFAULT_RANGE_M,
+  },
+  {
+    id: 'tanel',
+    lat: 48.826134,
+    lon: 2.365869,
+    alt: 58.524,
+    headingDeg: 164,
+    fovDeg: 65,
+    rangeM: DEFAULT_RANGE_M,
+  },
+  {
+    id: 'walid',
+    lat: 48.826098,
+    lon: 2.365877,
+    alt: 58.524,
+    headingDeg: 344,
+    fovDeg: 65,
+    rangeM: DEFAULT_RANGE_M,
+  },
 ];
 
 function isFiniteNumber(value: unknown): value is number {
@@ -116,12 +146,104 @@ export class CamerasService {
   }
 
   applyRailBench(options: RailBenchOptions = {}): RailBenchState {
-    this.railBench = buildRailBenchState(options);
+    this.railBench = this.buildCalibratedRailBench(options);
     return this.railBench;
   }
 
   clearRailBench(): void {
     this.railBench = null;
+  }
+
+  /** Persist a pose measured by the Pi's ChArUco field tool. */
+  updateRailCalibration(cameraId: string, pose: RailLocalPose): boolean {
+    const current = this.cameras.find((camera) => camera.id === cameraId);
+    if (!current) return false;
+    const nextValues = [
+      pose.x,
+      pose.y,
+      pose.z,
+      pose.headingDeg,
+      pose.elevationDeg,
+      pose.rollDeg,
+    ];
+    if (!nextValues.every(Number.isFinite)) return false;
+    const previousValues = [
+      current.railX,
+      current.railY,
+      current.railZ,
+      current.railHeadingDeg,
+      current.railElevationDeg,
+      current.railRollDeg,
+    ];
+    const unchanged = previousValues.every(
+      (value, index) =>
+        typeof value === 'number' && Math.abs(value - nextValues[index]) < 1e-4,
+    );
+    if (unchanged) return false;
+
+    const updated: CameraConfig = {
+      ...current,
+      railX: pose.x,
+      railY: pose.y,
+      railZ: pose.z,
+      railHeadingDeg: wrapHeadingDeg(pose.headingDeg),
+      railElevationDeg: pose.elevationDeg,
+      railRollDeg: pose.rollDeg,
+    };
+    this.cameras = this.cameras.map((camera) =>
+      camera.id === cameraId ? updated : camera,
+    );
+    this.save(this.cameras);
+
+    if (this.railBench) {
+      const currentBench = this.railBench;
+      this.railBench = this.buildCalibratedRailBench({
+        rigWidthMm: currentBench.rigWidthMm,
+        rangeM: currentBench.rangeM,
+        targetSizeM: currentBench.targetSizeM,
+        hoverM: currentBench.hoverM,
+        headingDeg: currentBench.headingDeg,
+        elevationDeg: currentBench.elevationDeg,
+      });
+    }
+    return true;
+  }
+
+  private buildCalibratedRailBench(options: RailBenchOptions): RailBenchState {
+    const bench = buildRailBenchState(options);
+    return {
+      ...bench,
+      cameras: bench.cameras.map((fallback) => {
+        const camera = this.cameras.find((item) => item.id === fallback.id);
+        const values = camera
+          ? [
+              camera.railX,
+              camera.railY,
+              camera.railZ,
+              camera.railHeadingDeg,
+              camera.railElevationDeg,
+              camera.railRollDeg,
+            ]
+          : [];
+        if (
+          values.length !== 6 ||
+          !values.every(
+            (value) => typeof value === 'number' && Number.isFinite(value),
+          )
+        ) {
+          return fallback;
+        }
+        return {
+          id: fallback.id,
+          x: camera!.railX!,
+          y: camera!.railY!,
+          z: camera!.railZ!,
+          headingDeg: camera!.railHeadingDeg!,
+          elevationDeg: camera!.railElevationDeg!,
+          rollDeg: camera!.railRollDeg!,
+        };
+      }),
+    };
   }
 
   private withLocalPose(camera: CameraConfig): CameraConfig {
@@ -146,8 +268,15 @@ export class CamerasService {
       throw new NotFoundException(`Caméra inconnue : ${id}`);
     }
 
-    const updated = { ...current, lat: position.lat, lon: position.lon, alt: position.alt };
-    const cameras = this.cameras.map((camera) => (camera.id === id ? updated : camera));
+    const updated = {
+      ...current,
+      lat: position.lat,
+      lon: position.lon,
+      alt: position.alt,
+    };
+    const cameras = this.cameras.map((camera) =>
+      camera.id === id ? updated : camera,
+    );
     this.save(cameras);
     this.cameras = cameras;
     return updated;
@@ -185,7 +314,9 @@ export class CamerasService {
     try {
       cameras = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
     } catch (error) {
-      throw new Error(`Configuration caméras illisible (${this.filePath}) : ${String(error)}`);
+      throw new Error(
+        `Configuration caméras illisible (${this.filePath}) : ${String(error)}`,
+      );
     }
     if (!Array.isArray(cameras) || !cameras.every(isCameraConfig)) {
       throw new Error(`Configuration caméras invalide (${this.filePath})`);
@@ -193,7 +324,10 @@ export class CamerasService {
     // Backfill pour un fichier écrit avant l'ajout de rangeM.
     return cameras.map((camera) => ({
       ...camera,
-      rangeM: isFiniteNumber(camera.rangeM) && camera.rangeM > 0 ? camera.rangeM : DEFAULT_RANGE_M,
+      rangeM:
+        isFiniteNumber(camera.rangeM) && camera.rangeM > 0
+          ? camera.rangeM
+          : DEFAULT_RANGE_M,
     }));
   }
 

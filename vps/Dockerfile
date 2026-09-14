@@ -7,6 +7,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Schéma Prisma : nécessaire pour générer le client (pas de connexion DB requise ici)
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copie du code source et compilation
 COPY . .
 RUN npm run build
@@ -19,6 +24,11 @@ WORKDIR /app
 # Copie des dépendances de production uniquement
 COPY package*.json ./
 RUN npm ci --only=production
+
+# Client Prisma pour cette image + migrations pour `prisma migrate deploy` au démarrage
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+RUN npx prisma generate
 
 # Copie du build compilé depuis l'étape builder (SANS le fichier .env)
 COPY --from=builder /app/dist ./dist
@@ -34,5 +44,7 @@ RUN mkdir -p /app/data && chown node:node /app/data
 # SÉCURITÉ NIVEAU 2 : Basculement vers l'utilisateur non-privilégié 'node' (Principle of Least Privilege)
 USER node
 
-# Démarrage du serveur VPS
-CMD ["node", "dist/main.js"]
+# Applique les migrations en attente puis démarre le serveur. Uniquement du
+# trafic réseau vers Postgres : aucune écriture disque nécessaire malgré le
+# système de fichiers en lecture seule (docker-compose.yml).
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

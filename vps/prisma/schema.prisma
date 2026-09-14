@@ -1,0 +1,55 @@
+// The newer "prisma-client" generator emits import.meta.url, which is
+// ESM-only -- this project's toolchain (Jest, Nest's default build) is
+// CommonJS, and that syntax breaks both `node dist/main.js` and `npm test`
+// at runtime (a real crash, not just a lint nit). "prisma-client-js" is the
+// stable, CJS-compatible generator; stick with it until the project itself
+// moves to ESM.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// One confirmed track_update, from either the fusion pipeline or an `obj*`
+/// passthrough line. Kept so detections can be reviewed after the fact to
+/// calculate accuracy and spot bad detections.
+model Track {
+  id             String    @id @default(cuid())
+  trackId        String
+  lat            Float
+  lng            Float
+  alt            Float
+  classification String?
+  // Device-side timestamp (µs), as carried on the wire. Not wall-clock.
+  timestampUs    Float
+  receivedAt     DateTime  @default(now())
+
+  // Human review for accuracy analysis. Null until someone looks at it.
+  verdict    TrackVerdict?
+  reviewNote String?
+  reviewedAt DateTime?
+
+  @@index([receivedAt])
+  @@index([trackId])
+}
+
+enum TrackVerdict {
+  CONFIRMED
+  FALSE_POSITIVE
+}
+
+/// A notable event worth surfacing to an operator (new track, drone
+/// confirmed, high-confidence detection, ...). Persisted so it survives a
+/// page refresh / no browser being open when it fired.
+model Alert {
+  id        String   @id @default(cuid())
+  type      String
+  message   String
+  trackId   String?
+  cameraId  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

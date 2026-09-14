@@ -46,7 +46,7 @@ jobs:
         env:
           OVH_KEY: ${{ secrets.OVH_VPS_SSH_KEY }}
           HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
-          SSH_USER: ${{ secrets.OVH_VPS_USER || 'jean' }}
+          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
           PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
           APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
           BRANCH: ${{ github.ref_name }}

@@ -56,6 +56,30 @@ describe('udp raw detection packets', () => {
     });
   });
 
+  it('parses calibrated distortion and rail pose', () => {
+    const line =
+      'raw,jean,12,19128667926,551.93,638.21,42,0.9,' +
+      '164.2,-1.5,0.3,800,801,640,360,77.3,' +
+      '-0.21,0.04,0.001,-0.002,0.005,' +
+      '0.012,-0.034,0.71,359.8,18.6,-0.7';
+    expect(parseRawDetectionLine(line)).toMatchObject({
+      cameraId: 'jean',
+      fx: 800,
+      fy: 801,
+      k1: -0.21,
+      k2: 0.04,
+      p1: 0.001,
+      p2: -0.002,
+      k3: 0.005,
+      railX: 0.012,
+      railY: -0.034,
+      railZ: 0.71,
+      railHeadingDeg: 359.8,
+      railElevationDeg: 18.6,
+      railRollDeg: -0.7,
+    });
+  });
+
   it('rejects invented tokens that are not raw packets', () => {
     expect(parseRawDetectionLine('att,jean,12345,164.2,-1.5,0.3')).toBeNull();
   });

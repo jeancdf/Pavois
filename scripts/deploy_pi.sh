@@ -57,6 +57,7 @@ staged_binary=
 # Keep the field calibration helper in sync with the deployed revision. The
 # deployment account owns /opt/pavois/bin, so this needs no additional sudo.
 install -m 0755 "$repo_dir/scripts/pavois_imu_calib.py" "$install_dir/calib.py"
+install -m 0755 "$repo_dir/scripts/pavois_camera_calib.py" "$install_dir/camera-calib.py"
 
 if ! sudo -n systemctl restart pavois.service; then
   rollback_binary

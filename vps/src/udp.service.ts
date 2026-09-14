@@ -221,6 +221,23 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
    * Stocke la détection, fusionne, et pousse les pistes GPS confirmées.
    */
   ingestRawDetection(detection: RawDetection): void {
+    const calibratedRailPose = railPoseFromDetection(detection);
+    if (
+      calibratedRailPose &&
+      this.camerasService.updateRailCalibration(
+        detection.cameraId,
+        calibratedRailPose,
+      )
+    ) {
+      this.eventsGateway.broadcast(
+        'camera_positions',
+        this.camerasService.list(),
+      );
+      const bench = this.camerasService.railBenchState();
+      if (bench) {
+        this.eventsGateway.broadcast('rail_bench', { active: true, bench });
+      }
+    }
     const camera = this.camerasService
       .list()
       .find((item) => item.id === detection.cameraId);
@@ -317,11 +334,45 @@ export function toFusionObservation(
     fy: detection.fy,
     cx: detection.cx,
     cy: detection.cy,
+    k1: detection.k1,
+    k2: detection.k2,
+    p1: detection.p1,
+    p2: detection.p2,
+    k3: detection.k3,
     lat: camera?.lat,
     lon: camera?.lon,
     alt: camera?.alt,
     camX: frozen?.x,
     camY: frozen?.y,
     camZ: frozen?.z,
+  };
+}
+
+export function railPoseFromDetection(
+  detection: RawDetection,
+): RailLocalPose | null {
+  const values = [
+    detection.railX,
+    detection.railY,
+    detection.railZ,
+    detection.railHeadingDeg,
+    detection.railElevationDeg,
+    detection.railRollDeg,
+  ];
+  if (
+    !values.every(
+      (value) => typeof value === 'number' && Number.isFinite(value),
+    )
+  ) {
+    return null;
+  }
+  return {
+    id: detection.cameraId as RailLocalPose['id'],
+    x: detection.railX!,
+    y: detection.railY!,
+    z: detection.railZ!,
+    headingDeg: wrapHeadingDeg(detection.railHeadingDeg!),
+    elevationDeg: detection.railElevationDeg!,
+    rollDeg: detection.railRollDeg!,
   };
 }

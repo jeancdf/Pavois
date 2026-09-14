@@ -33,6 +33,10 @@ graph LR
 
 ### A. Détections 2D brutes (caméras)
 * **Format UDP (CSV)** : `raw,cameraId,frameIndex,timestamp,x,y,size,confidence`
+  suivi optionnellement de `heading,elevation,roll,fx,fy,cx,cy,fov,k1,k2,p1,p2,k3`
+  puis de la pose rail calibrée `x,y,z,heading,elevation,roll`.
+* `timestamp` est en microsecondes Unix. Pour les caméras CSI, il provient du
+  `FrameWallClock` libcamera associé à l'image avant décodage MJPEG.
 * **Exemple** : `raw,cam0,275,19128667926,551.93,638.21,2619,0.986`
 * **Événement WS** : `"raw_detection"`
 

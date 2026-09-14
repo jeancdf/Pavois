@@ -15,6 +15,11 @@ export interface FusionObservation {
   fy?: number;
   cx?: number;
   cy?: number;
+  k1?: number;
+  k2?: number;
+  p1?: number;
+  p2?: number;
+  k3?: number;
   lat?: number;
   lon?: number;
   alt?: number;

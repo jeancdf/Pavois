@@ -25,6 +25,9 @@ export interface CameraIntrinsics {
   cy: number;
   k1: number;
   k2: number;
+  p1: number;
+  p2: number;
+  k3: number;
   fovDeg: number;
   imageWidth: number;
   imageHeight: number;
@@ -127,6 +130,9 @@ export function effectiveIntrinsics(
   let cy = partial.cy ?? 0;
   const k1 = partial.k1 ?? 0;
   const k2 = partial.k2 ?? 0;
+  const p1 = partial.p1 ?? 0;
+  const p2 = partial.p2 ?? 0;
+  const k3 = partial.k3 ?? 0;
 
   if (fx <= 0.0) {
     const half = fovDeg * 0.5 * kDeg;
@@ -151,6 +157,9 @@ export function effectiveIntrinsics(
     cy,
     k1,
     k2,
+    p1,
+    p2,
+    k3,
     fovDeg,
     imageWidth,
     imageHeight,
@@ -166,15 +175,25 @@ export function undistortPixel(
   const yd = (py - intr.cy) / intr.fy;
   let xn = xd;
   let yn = yd;
-  if (intr.k1 === 0.0 && intr.k2 === 0.0) {
+  if (
+    intr.k1 === 0.0 &&
+    intr.k2 === 0.0 &&
+    intr.p1 === 0.0 &&
+    intr.p2 === 0.0 &&
+    intr.k3 === 0.0
+  ) {
     return { xn, yn };
   }
-  // Iterative inverse of x_d = x_u (1 + k1 r^2 + k2 r^4).
+  // Iterative inverse of OpenCV's Brown-Conrady model.
   for (let i = 0; i < 8; i++) {
     const r2 = xn * xn + yn * yn;
-    const f = 1.0 + intr.k1 * r2 + intr.k2 * r2 * r2;
-    xn = xd / f;
-    yn = yd / f;
+    const radial =
+      1.0 + intr.k1 * r2 + intr.k2 * r2 * r2 + intr.k3 * r2 * r2 * r2;
+    const dx = 2.0 * intr.p1 * xn * yn + intr.p2 * (r2 + 2.0 * xn * xn);
+    const dy = intr.p1 * (r2 + 2.0 * yn * yn) + 2.0 * intr.p2 * xn * yn;
+    if (Math.abs(radial) < 1e-12) break;
+    xn = (xd - dx) / radial;
+    yn = (yd - dy) / radial;
   }
   return { xn, yn };
 }
@@ -211,10 +230,13 @@ export function projectWorldToPixel(
   let xn = xc / zc;
   let yn = yc / zc;
   const r2 = xn * xn + yn * yn;
-  const f = 1.0 + intr.k1 * r2 + intr.k2 * r2 * r2;
-  xn *= f;
-  yn *= f;
-  return [intr.cx + intr.fx * xn, intr.cy + intr.fy * yn];
+  const radial =
+    1.0 + intr.k1 * r2 + intr.k2 * r2 * r2 + intr.k3 * r2 * r2 * r2;
+  const xd =
+    xn * radial + 2.0 * intr.p1 * xn * yn + intr.p2 * (r2 + 2.0 * xn * xn);
+  const yd =
+    yn * radial + intr.p1 * (r2 + 2.0 * yn * yn) + 2.0 * intr.p2 * xn * yn;
+  return [intr.cx + intr.fx * xd, intr.cy + intr.fy * yd];
 }
 
 function gaussJordan(A: number[], b: number[]): Vec3 | null {
@@ -320,8 +342,7 @@ export function enuToGps(
   const latRad = originLatR + enu.y / kEarthRadiusM;
   const meanLat = (latRad + originLatR) * 0.5;
   const lonRad =
-    origin.lon * kDeg +
-    enu.x / (Math.cos(meanLat) * kEarthRadiusM);
+    origin.lon * kDeg + enu.x / (Math.cos(meanLat) * kEarthRadiusM);
   return {
     lat: latRad / kDeg,
     lng: lonRad / kDeg,
@@ -383,5 +404,8 @@ export function makeIntrinsics(
     cy: h * 0.5,
     k1,
     k2,
+    p1: 0,
+    p2: 0,
+    k3: 0,
   };
 }

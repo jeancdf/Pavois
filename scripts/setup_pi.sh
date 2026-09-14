@@ -16,7 +16,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/.." && pwd)
 
 apt-get update
-apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg i2c-tools libssl-dev
+apt-get install -y --no-upgrade build-essential cmake git sudo v4l-utils rpicam-apps-lite ffmpeg i2c-tools libssl-dev python3-opencv python3-picamera2 python3-numpy
 
 if ! getent group pavois >/dev/null; then
   groupadd --system pavois

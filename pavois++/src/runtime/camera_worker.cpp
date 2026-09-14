@@ -29,6 +29,9 @@ CameraIntrinsics intrinsics_from(const CameraConfig& c) {
     in.cy = c.cy;
     in.k1 = c.k1;
     in.k2 = c.k2;
+    in.p1 = c.p1;
+    in.p2 = c.p2;
+    in.k3 = c.k3;
     in.fov_deg = c.fov_deg;
     in.image_width = c.width;
     in.image_height = c.height;
@@ -267,7 +270,9 @@ void CameraWorker::operator()() {
             if (emit_raw_observations_ && udp_sender_ && udp_sender_->valid()) {
                 // Pose of THIS frame (att is on its own cadence) plus the
                 // pinhole fields the VPS parser already expects:
-                // raw,...,quality,heading,elev,roll,fx,fy,cx,cy,fov
+                // raw,...,quality,heading,elev,roll,fx,fy,cx,cy,fov,
+                // k1,k2,p1,p2,k3[,rail_x,rail_y,rail_z,rail_heading,
+                // rail_elevation,rail_roll]
                 std::ostringstream line;
                 line << "raw," << obs.camera_id << ',' << obs.frame_id << ','
                      << obs.captured_us << ',' << std::fixed
@@ -278,7 +283,17 @@ void CameraWorker::operator()() {
                      << obs.pose.elevation_deg << ',' << obs.pose.roll_deg
                      << ',' << std::setprecision(3) << obs.intrinsics.fx << ','
                      << obs.intrinsics.fy << ',' << obs.intrinsics.cx << ','
-                     << obs.intrinsics.cy << ',' << obs.intrinsics.fov_deg;
+                     << obs.intrinsics.cy << ',' << obs.intrinsics.fov_deg << ','
+                     << std::setprecision(8) << obs.intrinsics.k1 << ','
+                     << obs.intrinsics.k2 << ',' << obs.intrinsics.p1 << ','
+                     << obs.intrinsics.p2 << ',' << obs.intrinsics.k3;
+                if (cfg_.rail_pose_enabled) {
+                    line << ',' << std::setprecision(5) << cfg_.rail_x << ','
+                         << cfg_.rail_y << ',' << cfg_.rail_z << ','
+                         << cfg_.rail_heading_deg << ','
+                         << cfg_.rail_elevation_deg << ','
+                         << cfg_.rail_roll_deg;
+                }
                 udp_sender_->send_line(line.str());
             }
         }

@@ -70,7 +70,17 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "cy") c.cy = std::stod(v);
         else if (f == "k1") c.k1 = std::stod(v);
         else if (f == "k2") c.k2 = std::stod(v);
+        else if (f == "p1") c.p1 = std::stod(v);
+        else if (f == "p2") c.p2 = std::stod(v);
+        else if (f == "k3") c.k3 = std::stod(v);
         else if (f == "fov_deg") c.fov_deg = std::stod(v);
+        else if (f == "rail_pose_enabled") c.rail_pose_enabled = parse_bool(v);
+        else if (f == "rail_x") c.rail_x = std::stod(v);
+        else if (f == "rail_y") c.rail_y = std::stod(v);
+        else if (f == "rail_z") c.rail_z = std::stod(v);
+        else if (f == "rail_heading_deg") c.rail_heading_deg = std::stod(v);
+        else if (f == "rail_elevation_deg") c.rail_elevation_deg = std::stod(v);
+        else if (f == "rail_roll_deg") c.rail_roll_deg = std::stod(v);
         else if (f == "x") c.x = std::stod(v);
         else if (f == "y") c.y = std::stod(v);
         else if (f == "z") c.z = std::stod(v);

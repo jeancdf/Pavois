@@ -15,7 +15,7 @@
 namespace pavois {
 
 struct FusionSettings {
-    int fusion_window_ms = 90;
+    int fusion_window_ms = 20;
     int fusion_emit_interval_ms = 60;
     TriangulationConfig triangulation;
     TrackerConfig tracker;

@@ -8,8 +8,11 @@ import { FusionService } from './fusion.service';
 import type { FusionObservation } from './fusion.types';
 import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
-import { routeUdpLine, type RoutedUdp } from './udp-route';
+import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';
 import { udpDebug } from './udp-log';
+import { TracksService } from './tracks.service';
+import { AlertsService } from './alerts.service';
+import type { FusionTrackUpdate } from './fusion.types';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -21,6 +24,8 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     private readonly eventsGateway: EventsGateway,
     private readonly camerasService: CamerasService,
     private readonly fusion: FusionService,
+    private readonly tracksService: TracksService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   /**
@@ -169,6 +174,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
         udpDebug('[UDP] Piste 3D GPS :', routed.track);
         this.eventsGateway.broadcast('track_update', routed.track);
+        this.recordAndAlertTrack(routed.track);
         return;
       case 'unknown': {
         const genericPayload = {
@@ -216,9 +222,30 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       .find((item) => item.id === detection.cameraId);
     this.fusion.ingest(toFusionObservation(detection, camera, Date.now()));
     this.eventsGateway.broadcast('raw_detection', detection);
+    this.alertsService.onRawDetection({
+      cameraId: detection.cameraId,
+      confidence: detection.confidence,
+    });
     for (const update of this.fusion.pullTrackUpdates()) {
       this.eventsGateway.broadcast('track_update', update);
+      this.recordAndAlertTrack(update);
     }
+  }
+
+  /** Journalise la piste (accuracy) et déclenche les règles d'alerte. */
+  private recordAndAlertTrack(track: UdpObjTrack | FusionTrackUpdate): void {
+    void this.tracksService.record({
+      trackId: track.trackId,
+      lat: track.lat,
+      lng: track.lng,
+      alt: track.alt,
+      classification: track.classification,
+      timestamp: track.timestamp,
+    });
+    this.alertsService.onTrackUpdate({
+      trackId: track.trackId,
+      classification: track.classification,
+    });
   }
 
   /** IMU from UDP or HTTP: always broadcast, even if cameraId is unknown. */

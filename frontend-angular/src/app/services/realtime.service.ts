@@ -7,6 +7,7 @@ import { CameraGpsConfig, buildCameraPositions } from '../config/cameras.config'
 import { AuthService } from './auth.service';
 import { ImuSample } from '../models/imu-sample.model';
 import { CameraPreview } from '../models/camera-preview.model';
+import { AlertEvent } from '../models/alert.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -21,6 +22,7 @@ export class RealtimeService implements OnDestroy {
   readonly previewByCamera = signal<Record<string, CameraPreview>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
+  readonly alerts$ = new Subject<AlertEvent>();
 
   // Compteurs KPI — mis à jour en temps réel dans le handler de messages
   readonly totalDetections = signal(0);
@@ -94,6 +96,9 @@ export class RealtimeService implements OnDestroy {
             }
             break;
           }
+          case 'alert':
+            this.alerts$.next(payload.data as AlertEvent);
+            break;
         }
       } catch {
         console.error('RealtimeService: message WebSocket invalide', event.data);

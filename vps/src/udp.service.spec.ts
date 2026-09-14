@@ -3,6 +3,8 @@ import { UdpService } from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import { FusionService } from './fusion.service';
+import { TracksService } from './tracks.service';
+import { AlertsService } from './alerts.service';
 import * as crypto from 'crypto';
 
 describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
@@ -23,6 +25,14 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         {
           provide: FusionService,
           useValue: { ingest: jest.fn(), pullTrackUpdates: jest.fn().mockReturnValue([]) },
+        },
+        {
+          provide: TracksService,
+          useValue: { record: jest.fn() },
+        },
+        {
+          provide: AlertsService,
+          useValue: { onTrackUpdate: jest.fn(), onRawDetection: jest.fn() },
         },
       ],
     }).compile();
@@ -112,6 +122,14 @@ describe('UdpService fused track_update', () => {
             ingest,
             pullTrackUpdates: () => [track],
           },
+        },
+        {
+          provide: TracksService,
+          useValue: { record: jest.fn() },
+        },
+        {
+          provide: AlertsService,
+          useValue: { onTrackUpdate: jest.fn(), onRawDetection: jest.fn() },
         },
       ],
     }).compile();

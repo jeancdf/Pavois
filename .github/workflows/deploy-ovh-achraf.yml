@@ -47,12 +47,13 @@ jobs:
       # toJSON garde la clé sur une seule ligne, puis on reconstitue le PEM.
       - name: Write OVH SSH key
         env:
-          SSH_KEY_JSON: ${{ toJSON(secrets.OVH_VPS_SSH_KEY || secrets.VPS_SSH_KEY) }}
+          SSH_KEY_JSON: ${{ toJSON(secrets.OVH_VPS_SSH_KEY) }}
         run: |
           python3 <<'PY'
           import json
           import os
           import pathlib
+          import subprocess
           import sys
 
           raw = os.environ.get("SSH_KEY_JSON") or ""
@@ -62,17 +63,17 @@ jobs:
               key = raw
           if not isinstance(key, str):
               key = ""
-          key = key.replace("\r\n", "\n").replace("\r", "\n")
-          if "\n" not in key.strip():
+          key = key.replace("\r\n", "\n").replace("\r", "\n").strip()
+          if "\n" not in key:
               key = key.replace("\\n", "\n")
           if not key.strip():
               sys.stderr.write(
-                  "Clé SSH vide (OVH_VPS_SSH_KEY ou VPS_SSH_KEY).\n"
+                  "Secret OVH_VPS_SSH_KEY vide.\n"
               )
               sys.exit(1)
           if "BEGIN" not in key or "PRIVATE KEY" not in key:
               sys.stderr.write(
-                  "Le secret n'est pas une clé privée PEM/OpenSSH.\n"
+                  "OVH_VPS_SSH_KEY n'est pas une clé privée PEM/OpenSSH.\n"
               )
               sys.exit(1)
           if not key.endswith("\n"):
@@ -82,22 +83,40 @@ jobs:
           path = ssh_dir / "ovh_deploy"
           path.write_text(key, encoding="utf-8")
           path.chmod(0o600)
-          print(f"Clé SSH écrite ({len(key)} octets).")
+          info = subprocess.check_output(
+              ["ssh-keygen", "-l", "-f", str(path)],
+              text=True,
+          ).strip()
+          print(f"Clé SSH écrite ({len(key)} octets) : {info}")
           PY
       - name: Deploy to Achraf OVH VPS over SSH
         env:
-          HOST: ${{ secrets.OVH_VPS_HOST || secrets.VPS_HOST || '51.91.98.159' }}
-          SSH_USER: ${{ secrets.OVH_VPS_USER || secrets.VPS_USER || 'ubuntu' }}
-          PORT: ${{ secrets.OVH_VPS_PORT || secrets.VPS_PORT || 22 }}
-          APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || secrets.VPS_APP_DIR || '/home/ubuntu/Pavois' }}
+          HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
+          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
+          PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
+          APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
           BRANCH: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Secrets pasted from Windows often carry CR / trailing spaces.
+          HOST="${HOST//$'\r'/}"
+          SSH_USER="${SSH_USER//$'\r'/}"
+          PORT="${PORT//$'\r'/}"
+          APP_DIR="${APP_DIR//$'\r'/}"
+          HOST="${HOST#"${HOST%%[![:space:]]*}"}"
+          HOST="${HOST%"${HOST##*[![:space:]]}"}"
+          SSH_USER="${SSH_USER#"${SSH_USER%%[![:space:]]*}"}"
+          SSH_USER="${SSH_USER%"${SSH_USER##*[![:space:]]}"}"
+          PORT="${PORT#"${PORT%%[![:space:]]*}"}"
+          PORT="${PORT%"${PORT##*[![:space:]]}"}"
+          echo "SSH ${SSH_USER}@${HOST} port=${PORT} (user ${#SSH_USER} chars)"
           ssh -i "${HOME}/.ssh/ovh_deploy" \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
+            -o PreferredAuthentications=publickey \
+            -o PasswordAuthentication=no \
             -o StrictHostKeyChecking=accept-new \
             -p "${PORT}" \
             "${SSH_USER}@${HOST}" \

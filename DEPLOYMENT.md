@@ -69,15 +69,17 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 
 `VPS_APP_DIR` should be the absolute path of the repo on the VPS, for example `/home/deploy/Pavois`.
 
-The Achraf OVH workflow (`deploy-ovh-achraf.yml`) reads, in order:
+The Achraf OVH workflow (`deploy-ovh-achraf.yml`) uses its own secrets, not the
+production `VPS_*` ones:
 
-- `OVH_VPS_SSH_KEY` then `VPS_SSH_KEY`
-- `OVH_VPS_HOST` then `VPS_HOST` (default `51.91.98.159`)
-- `OVH_VPS_USER` then `VPS_USER` (default `ubuntu`)
-- `OVH_VPS_PORT` then `VPS_PORT` (default `22`)
-- `OVH_VPS_APP_DIR` then `VPS_APP_DIR` (default `/home/ubuntu/Pavois`)
+- `OVH_VPS_SSH_KEY` (private key for the Achraf VPS)
+- `OVH_VPS_HOST` (default `51.91.98.159`)
+- `OVH_VPS_USER` (default `ubuntu`)
+- `OVH_VPS_PORT` (default `22`)
+- `OVH_VPS_APP_DIR` (default `/home/ubuntu/Pavois`)
 
-Paste the **private** key (`BEGIN OPENSSH PRIVATE KEY` or `BEGIN RSA PRIVATE KEY`), not the `.pub`.
+The matching public key must be in that user's `~/.ssh/authorized_keys` on
+the Achraf VPS. Password SSH is disabled in the workflow.
 
 ## What auto-deploy does
 

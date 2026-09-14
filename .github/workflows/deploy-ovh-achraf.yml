@@ -52,6 +52,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          STAGING_WS_AUTH_TOKEN: ${{ secrets.STAGING_WS_AUTH_TOKEN }}
+          STAGING_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
         run: |
           set -euo pipefail
           python3 <<'PY'
@@ -94,6 +96,9 @@ jobs:
               BRANCH="${BRANCH}" \
               GH_TOKEN="${GH_TOKEN}" \
               REPO="${REPO}" \
+              WS_AUTH_TOKEN="${STAGING_WS_AUTH_TOKEN}" \
+              POSTGRES_PASSWORD="${STAGING_POSTGRES_PASSWORD}" \
+              PUBLIC_ORIGIN="http://${HOST}:8081" \
               bash -s <<'REMOTE'
           set -euo pipefail
           echo "--> Déploiement de la branche '$BRANCH' sur le VPS OVH..."

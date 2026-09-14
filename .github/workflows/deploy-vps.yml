@@ -59,13 +59,21 @@ jobs:
               exit 1
             fi
 
-            # Déterminer le dossier cible et le fichier compose selon la branche
+            # Déterminer le dossier cible, le fichier compose et les secrets
+            # d'exécution selon la branche -- prod et securite ne doivent
+            # jamais partager le même WS_AUTH_TOKEN / mot de passe Postgres.
             if [ "$BRANCH" = "securite" ]; then
               TARGET_DIR="${BASE_APP_DIR}-securite"
               COMPOSE_FILE="docker-compose.securite.yml"
+              DEPLOY_WS_AUTH_TOKEN="${{ secrets.SECURITE_WS_AUTH_TOKEN }}"
+              DEPLOY_POSTGRES_PASSWORD="${{ secrets.SECURITE_POSTGRES_PASSWORD }}"
+              PUBLIC_ORIGIN="http://${{ secrets.VPS_HOST }}:8081"
             else
               TARGET_DIR="${BASE_APP_DIR}"
               COMPOSE_FILE="docker-compose.yml"
+              DEPLOY_WS_AUTH_TOKEN="${{ secrets.WS_AUTH_TOKEN }}"
+              DEPLOY_POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+              PUBLIC_ORIGIN="http://${{ secrets.VPS_HOST }}:8080"
             fi
 
             echo "--> Déploiement de la branche '$BRANCH' dans '$TARGET_DIR' avec $COMPOSE_FILE"
@@ -90,4 +98,8 @@ jobs:
             git pull origin "$BRANCH"
 
             chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh 2>/dev/null || true
-            COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" ./scripts/deploy_vps.sh
+            COMPOSE_FILE="$COMPOSE_FILE" APP_DIR="$TARGET_DIR" \
+              WS_AUTH_TOKEN="$DEPLOY_WS_AUTH_TOKEN" \
+              POSTGRES_PASSWORD="$DEPLOY_POSTGRES_PASSWORD" \
+              PUBLIC_ORIGIN="$PUBLIC_ORIGIN" \
+              ./scripts/deploy_vps.sh

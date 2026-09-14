@@ -41,6 +41,16 @@ describe('AuthService', () => {
     expect(localStorage.getItem('pavois_token')).toBeNull();
   });
 
+  it('explains a 502 while the backend restarts', async () => {
+    const attempt = service.login('dev-pavois-token');
+    const req = http.expectOne(`${environment.apiUrl}/auth/verify`);
+    req.flush('Bad Gateway', { status: 502, statusText: 'Bad Gateway' });
+    await expect(attempt).rejects.toThrow(
+      'backend en redémarrage, réessaie dans 10 s',
+    );
+    expect(service.isAuthenticated()).toBe(false);
+  });
+
   it('opens the session only after the backend accepts the token', async () => {
     const attempt = service.login('dev-pavois-token');
     const req = http.expectOne(`${environment.apiUrl}/auth/verify`);

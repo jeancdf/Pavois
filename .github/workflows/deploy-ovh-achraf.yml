@@ -46,7 +46,7 @@ jobs:
         env:
           OVH_KEY: ${{ secrets.OVH_VPS_SSH_KEY }}
           HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
-          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
+          SSH_USER: ${{ secrets.OVH_VPS_USER || 'jean' }}
           PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
           APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
           BRANCH: ${{ github.ref_name }}
@@ -107,12 +107,18 @@ jobs:
           fi
 
           cd "$APP_DIR"
+          git config --global --add safe.directory "$APP_DIR" || true
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
           git fetch origin
-          # Force-sync to origin. -f drops tracked local edits.
-          # Untracked files such as .env are left untouched.
-          git checkout -f -B "$BRANCH" "origin/$BRANCH"
+          # Never checkout -f over a dirty VPS tree (local prisma/alerts
+          # work, .env, compose). Rebuild whatever is already on disk.
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Working tree dirty: skip git checkout -f"
+            git status -sb
+          else
+            git checkout -f -B "$BRANCH" "origin/$BRANCH"
+          fi
 
           chmod +x scripts/deploy_staging.sh scripts/deploy_vps.sh \
             2>/dev/null || true

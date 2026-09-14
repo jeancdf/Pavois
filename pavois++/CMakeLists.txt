@@ -31,6 +31,7 @@ add_library(pavois_core STATIC
     src/transport/udp_sender.cpp
     src/util/debug_sink.cpp
     src/util/jpeg_gray.cpp
+    src/util/parallel_executor.cpp
     src/v4l2_camera.cpp
 )
 
@@ -47,6 +48,11 @@ if (MSVC)
     target_compile_options(pavois_core PRIVATE /W4)
 else()
     target_compile_options(pavois_core PRIVATE -Wall -Wextra -Wpedantic)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        # Deployments compile on their target Pi, so native selects Cortex-A72
+        # on Pi 4 and Cortex-A76 on Pi 5 while CI remains architecture-neutral.
+        target_compile_options(pavois_core PRIVATE -mcpu=native)
+    endif()
 endif()
 
 add_executable(pavois_detect src/main.cpp)
@@ -54,6 +60,9 @@ target_link_libraries(pavois_detect PRIVATE pavois_core)
 
 add_executable(pavois_gen_scene tools/gen_scene.cpp)
 target_link_libraries(pavois_gen_scene PRIVATE pavois_core)
+
+add_executable(pavois_detector_bench tools/benchmark_detector.cpp)
+target_link_libraries(pavois_detector_bench PRIVATE pavois_core)
 
 enable_testing()
 

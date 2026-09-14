@@ -1,6 +1,8 @@
 # Local configuration for ONE Pi. The installer sets a unique camera id.
 # Edit /etc/pavois/pavois.conf on each Pi before the first deployment.
 frames=-1
+# Camera thread + two persistent helpers. Keep one Pi core for capture/OS.
+processing_threads=3
 
 # VPS destination (required to send observations).
 # Staging OVH: 41234 (et 41235). Prod: 41234.
@@ -13,8 +15,8 @@ camera.0.device=csi:0
 camera.0.enabled=true
 camera.0.width=1280
 camera.0.height=720
-# Start at 10 on Pi 4; 20 was verified on the Pi 5.
-camera.0.fps=10
+# The 1280x720 detector is designed and benchmarked for at least 30 FPS.
+camera.0.fps=30
 camera.0.fov_deg=65.0
 
 # Temporary manual orientation when the IMU is unavailable.

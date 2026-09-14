@@ -4,6 +4,7 @@
 #include "pavois/sensors/imu.hpp"
 #include "pavois/transport/http_poster.hpp"
 #include "pavois/transport/udp_sender.hpp"
+#include "pavois/util/parallel_executor.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -173,6 +174,11 @@ int run(int argc, char** argv) {
     // would CONFIG→NDOF once per camera and reset fusion on the others.
     std::shared_ptr<ImuReader> imu_reader = open_imu(config);
 
+    auto processing_executor =
+        std::make_shared<ParallelExecutor>(config.processing_threads);
+    std::cerr << "Detector processing threads: "
+              << processing_executor->thread_count() << "\n";
+
     std::mutex output_mutex;
     std::vector<std::thread> threads;
     threads.reserve(config.cameras.size());
@@ -186,6 +192,7 @@ int run(int argc, char** argv) {
             output_mutex,
             udp_sender,
             preview_http,
+            processing_executor,
             imu_reader,
             enabled_cameras == 1));
     }

@@ -7,7 +7,8 @@ Minimal C++ migration for PAVOIS.
 See [DEPLOYMENT_PI.md](DEPLOYMENT_PI.md) for local CSI capture, per-Pi
 configuration, systemd installation and automatic deployment from GitHub Actions.
 Set `camera.0.device=csi:0` to capture camera 0 locally through `rpicam-vid`
-and FFmpeg; `camera.0.fps` sets its capture rate (default 20).
+and FFmpeg; `camera.0.fps` sets its capture rate (default 30). Full-frame
+detector passes use `processing_threads=3` by default.
 
 ## Runtime
 

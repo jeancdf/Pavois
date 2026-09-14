@@ -42,47 +42,59 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Une clé OpenSSH brute dans `env:` est coupée au premier saut de
+      # ligne : OVH_KEY arrivait vide alors que le secret existait.
+      # toJSON garde la clé sur une seule ligne, puis on reconstitue le PEM.
+      - name: Write OVH SSH key
+        env:
+          SSH_KEY_JSON: ${{ toJSON(secrets.OVH_VPS_SSH_KEY || secrets.VPS_SSH_KEY) }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          raw = os.environ.get("SSH_KEY_JSON") or ""
+          try:
+              key = json.loads(raw) if raw else ""
+          except json.JSONDecodeError:
+              key = raw
+          if not isinstance(key, str):
+              key = ""
+          key = key.replace("\r\n", "\n").replace("\r", "\n")
+          if "\n" not in key.strip():
+              key = key.replace("\\n", "\n")
+          if not key.strip():
+              sys.stderr.write(
+                  "Clé SSH vide (OVH_VPS_SSH_KEY ou VPS_SSH_KEY).\n"
+              )
+              sys.exit(1)
+          if "BEGIN" not in key or "PRIVATE KEY" not in key:
+              sys.stderr.write(
+                  "Le secret n'est pas une clé privée PEM/OpenSSH.\n"
+              )
+              sys.exit(1)
+          if not key.endswith("\n"):
+              key += "\n"
+          ssh_dir = pathlib.Path.home() / ".ssh"
+          ssh_dir.mkdir(mode=0o700, exist_ok=True)
+          path = ssh_dir / "ovh_deploy"
+          path.write_text(key, encoding="utf-8")
+          path.chmod(0o600)
+          print(f"Clé SSH écrite ({len(key)} octets).")
+          PY
       - name: Deploy to Achraf OVH VPS over SSH
         env:
-          OVH_KEY: ${{ secrets.OVH_VPS_SSH_KEY }}
-          HOST: ${{ secrets.OVH_VPS_HOST || '51.91.98.159' }}
-          SSH_USER: ${{ secrets.OVH_VPS_USER || 'ubuntu' }}
-          PORT: ${{ secrets.OVH_VPS_PORT || 22 }}
-          APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || '/home/ubuntu/Pavois' }}
+          HOST: ${{ secrets.OVH_VPS_HOST || secrets.VPS_HOST || '51.91.98.159' }}
+          SSH_USER: ${{ secrets.OVH_VPS_USER || secrets.VPS_USER || 'ubuntu' }}
+          PORT: ${{ secrets.OVH_VPS_PORT || secrets.VPS_PORT || 22 }}
+          APP_DIR: ${{ secrets.OVH_VPS_APP_DIR || secrets.VPS_APP_DIR || '/home/ubuntu/Pavois' }}
           BRANCH: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          python3 <<'PY'
-          import os
-          import sys
-
-          raw = os.environ.get("OVH_KEY") or ""
-          if not raw.strip():
-              sys.stderr.write(
-                  "Secret OVH_VPS_SSH_KEY vide.\n"
-                  "Settings → Secrets and variables → Actions :\n"
-                  "coller la clé privée (BEGIN OPENSSH/RSA PRIVATE KEY).\n"
-              )
-              sys.exit(1)
-          text = raw.replace("\r\n", "\n").replace("\r", "\n")
-          if "\n" not in text.strip():
-              text = text.replace("\\n", "\n")
-          if "BEGIN" not in text or "PRIVATE KEY" not in text:
-              sys.stderr.write(
-                  "OVH_VPS_SSH_KEY n'est pas une clé privée PEM/OpenSSH.\n"
-              )
-              sys.exit(1)
-          if not text.endswith("\n"):
-              text += "\n"
-          os.makedirs(os.path.expanduser("~/.ssh"), mode=0o700, exist_ok=True)
-          path = os.path.expanduser("~/.ssh/ovh_deploy")
-          with open(path, "w", encoding="utf-8") as handle:
-              handle.write(text)
-          os.chmod(path, 0o600)
-          print(f"OVH_VPS_SSH_KEY ok ({len(text)} bytes)")
-          PY
           ssh -i "${HOME}/.ssh/ovh_deploy" \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \

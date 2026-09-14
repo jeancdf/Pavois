@@ -1,0 +1,65 @@
+{
+  "version": "V3.1",
+  "fps": 24,
+  "fade_frames": 4,
+  "cues": [
+    {
+      "id": "observation",
+      "start": 163,
+      "end": 288,
+      "text": "Chaque caméra observe une direction.",
+      "x": 116,
+      "y": 188
+    },
+    {
+      "id": "angles",
+      "start": 361,
+      "end": 432,
+      "text": "Un même mouvement, observé sous plusieurs angles.",
+      "x": 116,
+      "y": 188
+    },
+    {
+      "id": "triangulation",
+      "start": 433,
+      "end": 504,
+      "text": "Croiser les directions pour estimer une position en 3D.",
+      "x": 116,
+      "y": 188
+    },
+    {
+      "id": "carte",
+      "start": 721,
+      "end": 792,
+      "text": "Trois vues synchronisées. Une position sur la carte.",
+      "x": 153,
+      "y": 147
+    },
+    {
+      "id": "suivi",
+      "start": 865,
+      "end": 960,
+      "text": "Une trajectoire suivie au fil des observations.",
+      "x": 116,
+      "y": 110
+    },
+    {
+      "id": "perimetre",
+      "start": 1073,
+      "end": 1144,
+      "heading": "PROTÉGER LE PÉRIMÈTRE",
+      "text": "Des caméras réparties autour des bâtiments.",
+      "x": 116,
+      "y": 874
+    },
+    {
+      "id": "alerte",
+      "start": 1145,
+      "end": 1224,
+      "heading": "ANTICIPER L’APPROCHE",
+      "text": "Des capteurs avancés au-delà de la clôture.",
+      "x": 116,
+      "y": 874
+    }
+  ]
+}

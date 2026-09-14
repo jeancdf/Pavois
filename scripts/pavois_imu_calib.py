@@ -22,8 +22,6 @@ Run as root, with the same venv as bno08x_bridge.py:
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import math
 import os
 import select
@@ -43,7 +41,11 @@ warnings.filterwarnings(
 
 try:
     from adafruit_extended_bus import ExtendedI2C
-    from adafruit_bno08x import BNO_REPORT_MAGNETOMETER, BNO_REPORT_ROTATION_VECTOR
+    from adafruit_bno08x import (
+        BNO_REPORT_MAGNETOMETER,
+        BNO_REPORT_ROTATION_VECTOR,
+        _report_length,
+    )
     from adafruit_bno08x.i2c import BNO08X_I2C
 except ImportError as exc:
     print(
@@ -78,25 +80,80 @@ class CalibrationBNO08X(BNO08X_I2C):
         super().__init__(*args, **kwargs)
 
     def _handle_packet(self, packet) -> None:
-        # The upstream handler prints the full packet before re-raising parse
-        # errors. Capture that debug dump so the operator keeps a readable UI.
-        with contextlib.redirect_stdout(io.StringIO()):
+        """Process every valid report before discarding a corrupt remainder."""
+        next_byte = 0
+        data_length = len(packet.data)
+        while next_byte < data_length:
+            report_id = packet.data[next_byte]
             try:
-                super()._handle_packet(packet)
-            except Exception:
-                # All transport I/O happens before this handler. Exceptions
-                # here are therefore decoding failures in the pinned driver.
-                self._packet_slices.clear()
+                required_bytes = _report_length(report_id)
+            except (KeyError, IndexError):
                 self.ignored_packet_count += 1
+                return
+
+            if data_length - next_byte < required_bytes:
+                self.ignored_packet_count += 1
+                return
+
+            report = packet.data[next_byte : next_byte + required_bytes]
+            try:
+                self._process_report(report_id, report)
+            except (KeyError, IndexError, ValueError, RuntimeError):
+                self.ignored_packet_count += 1
+            next_byte += required_bytes
+
+
+def normalize_quaternion(
+    x: float, y: float, z: float, w: float
+) -> tuple[float, float, float, float]:
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    if not math.isfinite(norm) or norm < 1e-6:
+        raise ValueError("quaternion invalide (norme nulle)")
+    return x / norm, y / norm, z / norm, w / norm
+
+
+class MotionCoverage:
+    """Accumulate actual rotation received from the IMU on its three axes."""
+
+    def __init__(self) -> None:
+        self.previous: tuple[float, float, float, float] | None = None
+        self.rotation_deg = [0.0, 0.0, 0.0]
+
+    def update(self, quaternion: tuple[float, float, float, float]) -> None:
+        current = normalize_quaternion(*quaternion)
+        if self.previous is None:
+            self.previous = current
+            return
+
+        px, py, pz, pw = self.previous
+        x, y, z, w = current
+        # Relative rotation: conjugate(previous) * current.
+        rx = pw * x - px * w - py * z + pz * y
+        ry = pw * y + px * z - py * w - pz * x
+        rz = pw * z - px * y + py * x - pz * w
+        rw = pw * w + px * x + py * y + pz * z
+        if rw < 0.0:  # q and -q describe the same orientation.
+            rx, ry, rz, rw = -rx, -ry, -rz, -rw
+
+        vector_norm = math.sqrt(rx * rx + ry * ry + rz * rz)
+        angle_deg = math.degrees(2.0 * math.atan2(vector_norm, max(0.0, rw)))
+        # Ignore numerical noise and impossible single-sample jumps.
+        if 0.1 <= angle_deg <= 60.0 and vector_norm > 1e-6:
+            for axis, component in enumerate((rx, ry, rz)):
+                self.rotation_deg[axis] += angle_deg * abs(component) / vector_norm
+        self.previous = current
+
+    def percentages(self, target_deg: float = 180.0) -> tuple[int, int, int]:
+        return tuple(
+            min(100, round(100.0 * rotation / target_deg))
+            for rotation in self.rotation_deg
+        )
 
 
 def quat_to_yaw_deg(x: float, y: float, z: float, w: float) -> float:
     """Cap en degres [0,360). Meme formule que bno08x_bridge.py (coherence
     obligatoire : c'est ce meme calcul que verra le systeme en production)."""
-    norm = math.sqrt(x * x + y * y + z * z + w * w)
-    if not math.isfinite(norm) or norm < 1e-6:
-        raise ValueError("quaternion invalide (norme nulle)")
-    x, y, z, w = x / norm, y / norm, z / norm, w / norm
+    x, y, z, w = normalize_quaternion(x, y, z, w)
     yaw = math.degrees(math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)))
     return yaw % 360.0
 
@@ -189,12 +246,31 @@ def magnetometer_accuracy(sensor) -> int | None:
     return status if status in (0, 1, 2, 3) else None
 
 
+def begin_chip_calibration(sensor, attempts: int = 3) -> None:
+    """Start ME calibration and require an acknowledgement from the BNO08x."""
+    for attempt in range(1, attempts + 1):
+        command_started = time.monotonic()
+        sensor.begin_calibration()
+        acknowledged_at = getattr(sensor, "_me_calibration_started_at", -1.0)
+        if acknowledged_at >= command_started:
+            print("Calibration interne BNO08x demarree et confirmee.")
+            return
+        if attempt < attempts:
+            print(f"Commande de calibration sans reponse, nouvel essai ({attempt}/{attempts})...")
+            time.sleep(0.5)
+    raise RuntimeError("le BNO08x n'a pas confirme le demarrage de sa calibration")
+
+
 def live_calibration_loop(sensor) -> None:
     print(
-        "\nEffectuez une maneuvre en huit avec la camera (mouvement large,\n"
-        "les trois axes) jusqu'a un CALIB_STAT stable a 2 ou 3.\n"
+        "\nTournez lentement la camera autour de chacun des axes X, Y et Z.\n"
+        "Les pourcentages confirment en direct les mouvements recus ; ils ne\n"
+        "sont pas le niveau de calibration. Visez au moins 100% sur chaque axe.\n"
+        "Un niveau CALIB stable a 2 ou 3 est suffisant.\n"
         "Appuyez sur Entree quand c'est fait.\n"
     )
+    coverage = MotionCoverage()
+    magnetic_strength: float | None = None
     while True:
         ready, _, _ = select.select([sys.stdin], [], [], 0.1)
         if ready:
@@ -203,12 +279,29 @@ def live_calibration_loop(sensor) -> None:
             return
         try:
             x, y, z, w = sensor.quaternion
+            coverage.update((x, y, z, w))
             yaw = quat_to_yaw_deg(x, y, z, w)
+            try:
+                magnetic = sensor.magnetic
+                if magnetic is not None:
+                    magnetic_strength = math.sqrt(sum(value * value for value in magnetic))
+            except (OSError, KeyError, RuntimeError, ValueError):
+                pass
             status = magnetometer_accuracy(sensor)
             status_text = "--" if status is None else str(status)
+            x_pct, y_pct, z_pct = coverage.percentages()
+            field_text = "--"
+            field_quality = ""
+            if magnetic_strength is not None:
+                field_text = f"{magnetic_strength:.0f}uT"
+                field_quality = " OK" if 20.0 <= magnetic_strength <= 80.0 else " PERTURBE"
+            hint = ""
+            if status == 0 and min(x_pct, y_pct, z_pct) == 100:
+                hint = " | mouvements OK: eloigner du metal"
             print(
-                f"\rCALIB_STAT: {status_text}/3   cap actuel: {yaw:6.1f}deg   "
-                "(Entree pour continuer)   ",
+                f"\rCALIB {status_text}/3 | mouvements X:{x_pct:3d}% Y:{y_pct:3d}% "
+                f"Z:{z_pct:3d}% | cap:{yaw:6.1f} | champ:{field_text}{field_quality}"
+                f"{hint}   ",
                 end="",
                 flush=True,
             )
@@ -316,8 +409,7 @@ def main() -> int:
         sensor, i2c = open_sensor(enable_magnetometer=not args.skip_chip_calibration)
 
         if not args.skip_chip_calibration:
-            sensor.begin_calibration()
-            time.sleep(0.5)
+            begin_chip_calibration(sensor)
             live_calibration_loop(sensor)
             try:
                 sensor.save_calibration_data()

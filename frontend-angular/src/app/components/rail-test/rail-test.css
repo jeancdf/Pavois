@@ -1,0 +1,162 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.rail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  color: #e2e8f0;
+}
+
+.rail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rail-title {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: #93c5fd;
+}
+
+.rail-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.rail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.range-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.range-label select,
+.rail-btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+
+.rail-btn {
+  cursor: pointer;
+  color: #93c5fd;
+}
+
+.rail-btn.ghost {
+  color: #94a3b8;
+}
+
+.rail-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rail-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.rail-status .ok {
+  color: #10b981;
+}
+
+.rail-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 460px;
+  align-items: stretch;
+}
+
+.pi-panel {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pi-panel h2 {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #64748b;
+}
+
+.pi-card {
+  padding: 10px 12px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+}
+
+.pi-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.pi-card strong {
+  font-family: 'IBM Plex Mono', monospace;
+  color: #3b82f6;
+}
+
+.fps {
+  font-family: 'IBM Plex Mono', monospace;
+  color: #f59e0b;
+}
+
+.pi-card p {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.hint {
+  font-size: 11px;
+  color: #475569;
+  margin: 4px 0 0;
+}
+
+@media (max-width: 900px) {
+  .rail-body {
+    flex-direction: column;
+  }
+
+  .pi-panel {
+    width: 100%;
+  }
+}

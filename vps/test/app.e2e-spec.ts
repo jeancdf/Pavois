@@ -179,6 +179,30 @@ describe('AppController (e2e)', () => {
     }
   });
 
+  it('/bench/rail starts a metre layout without GPS', async () => {
+    const token = TEST_AUTH_TOKEN;
+    const started = await request(app.getHttpServer())
+      .post('/bench/rail')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rangeM: 2.5, targetSizeM: 0.2 })
+      .expect(201);
+    expect(started.body.active).toBe(true);
+    expect(started.body.expected.y).toBe(2.5);
+    expect(started.body.cameras).toHaveLength(3);
+
+    const status = await request(app.getHttpServer())
+      .get('/bench/rail')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(status.body.active).toBe(true);
+
+    await request(app.getHttpServer())
+      .delete('/bench/rail')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect({ active: false, bench: null });
+  });
+
   afterEach(async () => {
     await app.close();
   });

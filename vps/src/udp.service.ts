@@ -5,14 +5,18 @@ import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
 import { FusionService } from './fusion.service';
-import type { FusionObservation } from './fusion.types';
+import type {
+  FusionObservation,
+  FusionTrackUpdate,
+  FuseUpdate,
+} from './fusion.types';
 import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
 import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';
 import { udpDebug } from './udp-log';
 import { TracksService } from './tracks.service';
 import { AlertsService } from './alerts.service';
-import type { FusionTrackUpdate } from './fusion.types';
+import type { RailLocalPose } from './rail-bench';
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
@@ -170,6 +174,10 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         this.noteFirstFrame(routed.detection.cameraId, 'raw');
         this.ingestRawDetection(routed.detection);
         return;
+      case 'stats':
+        this.noteFirstFrame(routed.stats.cameraId, 'stats');
+        this.eventsGateway.broadcast('camera_stats', routed.stats);
+        return;
       case 'obj':
         udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
         udpDebug('[UDP] Piste 3D GPS :', routed.track);
@@ -220,12 +228,22 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     const camera = this.camerasService
       .list()
       .find((item) => item.id === detection.cameraId);
-    this.fusion.ingest(toFusionObservation(detection, camera, Date.now()));
+    const local = this.camerasService.localPose(detection.cameraId);
+    this.fusion.ingest(
+      toFusionObservation(detection, camera, Date.now(), local),
+    );
     this.eventsGateway.broadcast('raw_detection', detection);
     this.alertsService.onRawDetection({
       cameraId: detection.cameraId,
       confidence: detection.confidence,
     });
+    const snap = this.fusion.snapshot();
+    const fuseUpdate: FuseUpdate = {
+      type: 'fuse_update',
+      lastFuse: snap.lastFuse,
+      tracks: snap.tracks,
+    };
+    this.eventsGateway.broadcast('fuse_update', fuseUpdate);
     for (const update of this.fusion.pullTrackUpdates()) {
       this.eventsGateway.broadcast('track_update', update);
       this.recordAndAlertTrack(update);
@@ -282,11 +300,13 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function toFusionObservation(
+export function toFusionObservation(
   detection: RawDetection,
   camera: CameraConfig | undefined,
   receivedAtMs: number,
+  local?: RailLocalPose | null,
 ): FusionObservation {
+  const frozen = local ?? null;
   return {
     cameraId: detection.cameraId,
     frameIndex: detection.frameIndex,
@@ -296,9 +316,9 @@ function toFusionObservation(
     size: detection.size,
     confidence: detection.confidence,
     receivedAtMs,
-    headingDeg: detection.headingDeg,
-    elevationDeg: detection.elevationDeg,
-    rollDeg: detection.rollDeg,
+    headingDeg: frozen ? frozen.headingDeg : detection.headingDeg,
+    elevationDeg: frozen ? frozen.elevationDeg : detection.elevationDeg,
+    rollDeg: frozen ? frozen.rollDeg : detection.rollDeg,
     fovDeg: detection.fovDeg ?? camera?.fovDeg,
     fx: detection.fx,
     fy: detection.fy,
@@ -307,5 +327,8 @@ function toFusionObservation(
     lat: camera?.lat,
     lon: camera?.lon,
     alt: camera?.alt,
+    camX: frozen?.x,
+    camY: frozen?.y,
+    camZ: frozen?.z,
   };
 }

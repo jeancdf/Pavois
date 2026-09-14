@@ -44,6 +44,9 @@ private:
     void stream_attitude_only(ImuReader* imu, CameraPose pose);
     void maybe_send_preview(const GrayFrame& frame, std::uint64_t now_us,
                             std::uint64_t& last_preview_us);
+    void maybe_emit_stats(std::uint64_t now_us, std::uint64_t frame_id,
+                          std::uint64_t& window_start_us,
+                          std::uint64_t& window_frames);
 
     CameraConfig cfg_;
     const AppConfig& app_;

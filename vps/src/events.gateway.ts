@@ -107,6 +107,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Positions actuelles des caméras ; chaque modification est ensuite diffusée à tous
     client.send(JSON.stringify({ event: 'camera_positions', data: this.camerasService.list() }));
+    const bench = this.camerasService.railBenchState();
+    client.send(
+      JSON.stringify({
+        event: 'rail_bench',
+        data: { active: bench !== null, bench },
+      }),
+    );
 
     // 4. Validation des messages entrants & limitation de débit
     client.on('message', (message) => {

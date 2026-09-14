@@ -1,10 +1,11 @@
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { RealtimeService } from '../../services/realtime.service';
 import { imuQuality } from '../../utils/imu-quality';
 
 @Component({
   selector: 'app-top-bar',
-  imports: [],
+  imports: [RouterLink, RouterLinkActive],
   templateUrl: './top-bar.html',
   styleUrl: './top-bar.css',
 })

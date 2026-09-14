@@ -2,6 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { headingDeltaDeg, wrapHeadingDeg } from './udp-attitude';
+import {
+  buildRailBenchState,
+  localPoseOf,
+  type RailBenchOptions,
+  type RailBenchState,
+  type RailLocalPose,
+} from './rail-bench';
 
 /** Pose d'une caméra, diffusée au frontend par l'événement `camera_positions`. */
 export interface CameraConfig {
@@ -12,6 +19,12 @@ export interface CameraConfig {
   headingDeg: number;
   fovDeg: number;
   rangeM: number;
+  localX?: number;
+  localY?: number;
+  localZ?: number;
+  localHeadingDeg?: number;
+  localElevationDeg?: number;
+  localRollDeg?: number;
 }
 
 export type CameraPosition = Pick<CameraConfig, 'lat' | 'lon' | 'alt'>;
@@ -84,9 +97,47 @@ export class CamerasService {
   );
   private cameras = this.load();
   private readonly imuSeen = new Set<string>();
+  private railBench: RailBenchState | null = null;
 
   list(): CameraConfig[] {
-    return this.cameras;
+    return this.cameras.map((camera) => this.withLocalPose(camera));
+  }
+
+  railBenchState(): RailBenchState | null {
+    return this.railBench;
+  }
+
+  isRailBenchActive(): boolean {
+    return this.railBench !== null;
+  }
+
+  localPose(cameraId: string): RailLocalPose | null {
+    return localPoseOf(this.railBench, cameraId);
+  }
+
+  applyRailBench(options: RailBenchOptions = {}): RailBenchState {
+    this.railBench = buildRailBenchState(options);
+    return this.railBench;
+  }
+
+  clearRailBench(): void {
+    this.railBench = null;
+  }
+
+  private withLocalPose(camera: CameraConfig): CameraConfig {
+    const local = this.localPose(camera.id);
+    if (!local) {
+      return { ...camera };
+    }
+    return {
+      ...camera,
+      localX: local.x,
+      localY: local.y,
+      localZ: local.z,
+      localHeadingDeg: local.headingDeg,
+      localElevationDeg: local.elevationDeg,
+      localRollDeg: local.rollDeg,
+    };
   }
 
   updatePosition(id: string, position: CameraPosition): CameraConfig {

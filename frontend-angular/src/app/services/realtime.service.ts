@@ -9,10 +9,9 @@ import { ImuSample } from '../models/imu-sample.model';
 import { CameraPreview } from '../models/camera-preview.model';
 import { CameraStats } from '../models/camera-stats.model';
 import { FuseUpdate } from '../models/fuse-update.model';
-import {
-  RailBenchState,
-} from '../config/rail-bench';
+import { RailBenchState } from '../config/rail-bench';
 import { AlertEvent } from '../models/alert.model';
+import { TargetClassification } from '../models/target-classification.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -27,6 +26,7 @@ export class RealtimeService implements OnDestroy {
   readonly previewByCamera = signal<Record<string, CameraPreview>>({});
   readonly statsByCamera = signal<Record<string, CameraStats>>({});
   readonly fuseUpdate = signal<FuseUpdate | null>(null);
+  readonly targetClassification = signal<TargetClassification | null>(null);
   readonly railBench = signal<RailBenchState | null>(null);
   readonly lastDetectionAt = signal<Record<string, number>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
@@ -95,12 +95,14 @@ export class RealtimeService implements OnDestroy {
             this.storeImuSample(payload.data as Omit<ImuSample, 'receivedAt'>);
             break;
           case 'camera_preview':
-            this.storePreview(payload.data as {
-              cameraId: string;
-              jpegBase64: string;
-              mime?: string;
-              timestamp?: number;
-            });
+            this.storePreview(
+              payload.data as {
+                cameraId: string;
+                jpegBase64: string;
+                mime?: string;
+                timestamp?: number;
+              },
+            );
             break;
           case 'camera_stats': {
             const stats = payload.data as Omit<CameraStats, 'receivedAt'>;
@@ -119,15 +121,16 @@ export class RealtimeService implements OnDestroy {
           case 'fuse_update':
             this.fuseUpdate.set(payload.data as FuseUpdate);
             break;
+          case 'target_classification':
+            this.targetClassification.set(payload.data as TargetClassification);
+            break;
           case 'rail_bench': {
             const benchPayload = payload.data as {
               active?: boolean;
               bench?: RailBenchState | null;
             };
             this.railBench.set(
-              benchPayload?.active && benchPayload.bench
-                ? benchPayload.bench
-                : null,
+              benchPayload?.active && benchPayload.bench ? benchPayload.bench : null,
             );
             break;
           }

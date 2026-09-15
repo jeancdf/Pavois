@@ -19,6 +19,8 @@ import { TracksService } from './tracks.service';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
 import { BenchController } from './bench.controller';
+import { ClassificationController } from './classification.controller';
+import { ClassificationService } from './classification.service';
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { BenchController } from './bench.controller';
     TracksController,
     AlertsController,
     BenchController,
+    ClassificationController,
   ],
   providers: [
     AppService,
@@ -50,6 +53,7 @@ import { BenchController } from './bench.controller';
     PrismaService,
     TracksService,
     AlertsService,
+    ClassificationService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
@@ -57,4 +61,3 @@ import { BenchController } from './bench.controller';
   ],
 })
 export class AppModule {}
-

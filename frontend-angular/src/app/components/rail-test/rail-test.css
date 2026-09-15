@@ -91,6 +91,10 @@
   color: #10b981;
 }
 
+.rail-status .rejected {
+  color: #f59e0b;
+}
+
 .rail-body {
   display: flex;
   gap: 16px;

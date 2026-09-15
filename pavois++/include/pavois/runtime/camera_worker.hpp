@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pavois/config/app_config.hpp"
+#include "pavois/detection/motion_detector.hpp"
 #include "pavois/domain/frame.hpp"
 #include "pavois/domain/observation.hpp"
 #include "pavois/domain/track_update.hpp"
@@ -28,6 +29,7 @@ public:
                  std::mutex& log_mutex,
                  std::shared_ptr<UdpSender> udp_sender,
                  std::shared_ptr<HttpPoster> preview_http,
+                 std::shared_ptr<HttpPoster> classification_http,
                  std::shared_ptr<ParallelExecutor> processing_executor,
                  std::shared_ptr<ImuReader> imu,
                  bool emit_raw_observations);
@@ -50,6 +52,10 @@ private:
     void maybe_emit_stats(std::uint64_t now_us, std::uint64_t frame_id,
                           std::uint64_t& window_start_us,
                           std::uint64_t& window_frames);
+    void send_classification_capture(
+        const GrayFrame& frame,
+        const DetectionResult& detection,
+        const UdpSender::CaptureRequest& request);
 
     CameraConfig cfg_;
     const AppConfig& app_;
@@ -58,6 +64,7 @@ private:
     std::mutex& log_mutex_;
     std::shared_ptr<UdpSender> udp_sender_;
     std::shared_ptr<HttpPoster> preview_http_;
+    std::shared_ptr<HttpPoster> classification_http_;
     std::shared_ptr<ParallelExecutor> processing_executor_;
     // Process-wide IMU (opened once in main; may be null).
     std::shared_ptr<ImuReader> imu_;

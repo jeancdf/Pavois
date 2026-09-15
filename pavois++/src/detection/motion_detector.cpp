@@ -313,6 +313,10 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
                 candidate.fill,
                 candidate.snr,
                 quality,
+                candidate.blob->x0,
+                candidate.blob->y0,
+                candidate.blob->x1,
+                candidate.blob->y1,
             });
         }
         out.quality = out.blobs.front().quality;

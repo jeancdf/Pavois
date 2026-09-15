@@ -17,12 +17,38 @@ import { udpDebug } from './udp-log';
 import { TracksService } from './tracks.service';
 import { AlertsService } from './alerts.service';
 import type { RailLocalPose } from './rail-bench';
+import { ClassificationService } from './classification.service';
+
+interface CameraEndpoint {
+  address: string;
+  port: number;
+  lastSeenMs: number;
+}
+
+export function buildSignedUdpPacket(
+  payloadText: string,
+  secret: string,
+): Buffer {
+  const payload = Buffer.from(
+    payloadText.endsWith('\n') ? payloadText : `${payloadText}\n`,
+    'utf8',
+  );
+  if (!secret) return payload;
+  const timestamp = Buffer.alloc(8);
+  timestamp.writeBigInt64BE(BigInt(Date.now()));
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(timestamp);
+  hmac.update(payload);
+  return Buffer.concat([timestamp, hmac.digest(), payload]);
+}
 
 @Injectable()
 export class UdpService implements OnModuleInit, OnModuleDestroy {
   private server: dgram.Socket | null = null;
   private readonly seenCameras = new Set<string>();
   private readonly unknownCameras = new Set<string>();
+  private readonly cameraEndpoints = new Map<string, CameraEndpoint>();
+  private hmacSecret = '';
 
   constructor(
     private readonly eventsGateway: EventsGateway,
@@ -30,6 +56,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     private readonly fusion: FusionService,
     private readonly tracksService: TracksService,
     private readonly alertsService: AlertsService,
+    private readonly classification: ClassificationService,
   ) {}
 
   /**
@@ -91,6 +118,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     const host = process.env.UDP_HOST || '0.0.0.0';
     const hmacSecret =
       process.env.UDP_HMAC_SECRET || process.env.UDP_SECRET_KEY || '';
+    this.hmacSecret = hmacSecret;
     const requireHmac = process.env.UDP_REQUIRE_HMAC === 'true';
 
     this.server = dgram.createSocket('udp4');
@@ -161,16 +189,19 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       case 'drop':
         return;
       case 'att':
+        this.noteEndpoint(routed.attitude.cameraId, rinfo);
         this.noteFirstFrame(routed.attitude.cameraId, 'att');
         this.ingestAttitude(routed.attitude);
         return;
       case 'raw':
         udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
         udpDebug('[UDP] Détection 2D brute :', routed.detection);
+        this.noteEndpoint(routed.detection.cameraId, rinfo);
         this.noteFirstFrame(routed.detection.cameraId, 'raw');
         this.ingestRawDetection(routed.detection);
         return;
       case 'stats':
+        this.noteEndpoint(routed.stats.cameraId, rinfo);
         this.noteFirstFrame(routed.stats.cameraId, 'stats');
         this.eventsGateway.broadcast('camera_stats', routed.stats);
         return;
@@ -207,6 +238,50 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     if (!known) {
       this.warnUnknownCamera(cameraId);
     }
+  }
+
+  private noteEndpoint(cameraId: string, rinfo: dgram.RemoteInfo): void {
+    if (!cameraId) return;
+    this.cameraEndpoints.set(cameraId, {
+      address: rinfo.address,
+      port: rinfo.port,
+      lastSeenMs: Date.now(),
+    });
+  }
+
+  private onlineCameraIds(now = Date.now()): string[] {
+    const staleMs =
+      Number(process.env.CLASSIFICATION_ENDPOINT_STALE_MS) || 5000;
+    return [...this.cameraEndpoints.entries()]
+      .filter(([, endpoint]) => now - endpoint.lastSeenMs <= staleMs)
+      .map(([cameraId]) => cameraId);
+  }
+
+  private sendCaptureRequests(trigger: {
+    requestId: string;
+    cameraIds: string[];
+    expiresAt: number;
+  }): void {
+    if (!this.server) return;
+    for (const cameraId of trigger.cameraIds) {
+      const endpoint = this.cameraEndpoints.get(cameraId);
+      if (!endpoint) continue;
+      const packet = buildSignedUdpPacket(
+        `capture,${cameraId},${trigger.requestId},${trigger.expiresAt}`,
+        this.hmacSecret,
+      );
+      this.server.send(packet, endpoint.port, endpoint.address, (error) => {
+        if (error) {
+          console.error(
+            `[CLASSIFICATION] capture command failed for ${cameraId}:`,
+            error,
+          );
+        }
+      });
+    }
+    console.log(
+      `[CLASSIFICATION] requested ${trigger.requestId} from ${trigger.cameraIds.join(',')}`,
+    );
   }
 
   private warnUnknownCamera(cameraId: string): void {
@@ -254,6 +329,11 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       tracks: snap.tracks,
     };
     this.eventsGateway.broadcast('fuse_update', fuseUpdate);
+    const trigger = this.classification.considerFusion(
+      snap.lastFuse,
+      this.onlineCameraIds(),
+    );
+    if (trigger) this.sendCaptureRequests(trigger);
     for (const update of this.fusion.pullTrackUpdates()) {
       this.eventsGateway.broadcast('track_update', update);
       this.recordAndAlertTrack(update);

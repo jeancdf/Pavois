@@ -49,6 +49,7 @@ describe('RailTestPage', () => {
   const lastDetectionAt = signal<Record<string, number>>({
     jean: Date.now(),
   });
+  const targetClassification = signal(null);
   const stats = {
     jean: {
       type: 'camera_stats' as const,
@@ -80,6 +81,7 @@ describe('RailTestPage', () => {
             connected: signal(true),
             railBench,
             fuseUpdate,
+            targetClassification,
             lastDetectionAt,
             statsOf: (id: string) => stats[id as keyof typeof stats],
             previewOf: () => undefined,

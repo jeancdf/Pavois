@@ -19,6 +19,10 @@ struct BlobDetection {
     double fill_ratio = 0.0;
     double snr = 0.0;
     double quality = 0.0;       // [0,1]
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = 0;
+    int y1 = 0;
 };
 
 struct DetectionResult {

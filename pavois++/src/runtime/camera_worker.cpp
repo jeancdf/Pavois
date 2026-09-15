@@ -56,6 +56,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
                            std::ostream& log_out, std::mutex& log_mutex,
                            std::shared_ptr<UdpSender> udp_sender,
                            std::shared_ptr<HttpPoster> preview_http,
+                           std::shared_ptr<HttpPoster> classification_http,
                            std::shared_ptr<ParallelExecutor> processing_executor,
                            std::shared_ptr<ImuReader> imu,
                            bool emit_raw_observations)
@@ -66,6 +67,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
       log_mutex_(log_mutex),
       udp_sender_(std::move(udp_sender)),
       preview_http_(std::move(preview_http)),
+      classification_http_(std::move(classification_http)),
       processing_executor_(std::move(processing_executor)),
       imu_(std::move(imu)),
       emit_raw_observations_(emit_raw_observations) {}
@@ -155,6 +157,33 @@ void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
     window_frames = 0;
 }
 
+void CameraWorker::send_classification_capture(
+    const GrayFrame& frame, const DetectionResult& detection,
+    const UdpSender::CaptureRequest& request) {
+    if (!classification_http_ || !classification_http_->valid() ||
+        frame.empty()) {
+        return;
+    }
+    const BlobDetection* blob =
+        detection.blobs.empty() ? nullptr : &detection.blobs.front();
+    std::ostringstream query;
+    query << "requestId=" << request.request_id
+          << "&capturedUs=" << frame.captured_us
+          << "&frameId=" << frame.frame_id;
+    if (blob) {
+        query << "&cx=" << std::fixed << std::setprecision(2) << blob->cx
+              << "&cy=" << blob->cy
+              << "&x0=" << blob->x0 << "&y0=" << blob->y0
+              << "&x1=" << blob->x1 << "&y1=" << blob->y1
+              << "&area=" << blob->area;
+    }
+    classification_http_->post_gray(cfg_.id, frame,
+                                     app_.classification_quality,
+                                     query.str());
+    log_line("camera " + cfg_.id + " classification capture " +
+             request.request_id);
+}
+
 // No reader: the config pose is authoritative and streams as valid.
 // A failed read keeps the last pose and reports false (frozen heading).
 bool CameraWorker::apply_imu_sample(ImuReader* imu, CameraPose& pose,
@@ -218,6 +247,9 @@ void CameraWorker::operator()() {
     std::uint64_t stats_window_frames = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
+        const auto capture_request =
+            udp_sender_ ? udp_sender_->take_capture_request(cfg_.id)
+                        : std::nullopt;
         if (!source->read_frame(frame)) {
             log_line("camera " + cfg_.id + " read failed: " +
                      source->last_error());
@@ -234,6 +266,9 @@ void CameraWorker::operator()() {
         maybe_send_preview(frame, frame.captured_us, last_preview_us);
 
         const DetectionResult det = detector.process(frame);
+        if (capture_request) {
+            send_classification_capture(frame, det, *capture_request);
+        }
         if (debug.active()) debug.dump(frame, det);
         maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
                          stats_window_frames);

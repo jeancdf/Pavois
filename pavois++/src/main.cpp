@@ -148,6 +148,29 @@ int run(int argc, char** argv) {
         }
     }
 
+    std::shared_ptr<HttpPoster> classification_http;
+    if (config.classification_enabled) {
+        const std::string host = config.classification_host.empty()
+                                     ? (config.preview_host.empty()
+                                            ? config.output_host
+                                            : config.preview_host)
+                                     : config.classification_host;
+        if (!host.empty() && config.classification_http_port > 0) {
+            classification_http = std::make_shared<HttpPoster>();
+            if (classification_http->open(host,
+                                          config.classification_http_port,
+                                          config.classification_http_path)) {
+                std::cerr << "Classification capture HTTP: " << host << ':'
+                          << config.classification_http_port
+                          << config.classification_http_path << "\n";
+            } else {
+                std::cerr << "Classification capture disabled: "
+                          << classification_http->last_error() << "\n";
+                classification_http.reset();
+            }
+        }
+    }
+
     for (auto& camera : config.cameras) {
         if (camera.frames < 0) {
             camera.frames = config.frames;
@@ -192,6 +215,7 @@ int run(int argc, char** argv) {
             output_mutex,
             udp_sender,
             preview_http,
+            classification_http,
             processing_executor,
             imu_reader,
             enabled_cameras == 1));

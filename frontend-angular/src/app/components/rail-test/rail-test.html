@@ -24,6 +24,15 @@
     </span>
     <span [class.ok]="bench()"> Banc {{ bench() ? 'actif' : 'éteint' }} </span>
     <span [class.ok]="estimated()"> Cible {{ estimated() ? 'suivie' : 'absente' }} </span>
+    <span
+      [class.ok]="realtime.targetClassification()?.label === 'drone'"
+      [class.rejected]="
+        realtime.targetClassification()?.status === 'complete' &&
+        realtime.targetClassification()?.label !== 'drone'
+      "
+    >
+      IA {{ classificationText() }}
+    </span>
     <span>
       Écart
       {{ errorM() === null ? '—' : errorM()!.toFixed(2) + ' m' }}

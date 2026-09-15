@@ -1,5 +1,7 @@
 #include "pavois/transport/http_poster.hpp"
 
+#include "pavois/util/jpeg_gray.hpp"
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -68,31 +70,79 @@ bool HttpPoster::valid() const {
 }
 
 void HttpPoster::post_jpeg(const std::string& camera_id,
-                            std::vector<std::uint8_t> jpeg) {
+                            std::vector<std::uint8_t> jpeg,
+                            std::string query) {
     if (!camera_id_ok(camera_id) || jpeg.empty()) return;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!valid_) return;
-        jobs_[camera_id] = std::move(jpeg);
+        Job job;
+        job.camera_id = camera_id;
+        job.query = std::move(query);
+        job.jpeg = std::move(jpeg);
+        jobs_[camera_id] = std::move(job);
+    }
+    cv_.notify_one();
+}
+
+bool send_all(int fd, const void* data, std::size_t size) {
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    std::size_t sent = 0;
+    while (sent < size) {
+        const ssize_t count =
+            ::send(fd, bytes + sent, size - sent, MSG_NOSIGNAL);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return false;
+        sent += static_cast<std::size_t>(count);
+    }
+    return true;
+}
+
+void HttpPoster::post_gray(const std::string& camera_id, GrayFrame frame,
+                           int jpeg_quality, std::string query) {
+    if (!camera_id_ok(camera_id) || frame.empty()) return;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!valid_) return;
+        Job job;
+        job.camera_id = camera_id;
+        job.query = std::move(query);
+        job.frame = std::move(frame);
+        job.jpeg_quality = jpeg_quality;
+        jobs_[camera_id] = std::move(job);
     }
     cv_.notify_one();
 }
 
 void HttpPoster::worker_loop() {
     while (true) {
-        std::map<std::string, std::vector<std::uint8_t>> batch;
+        std::map<std::string, Job> batch;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [&] { return stop_ || !jobs_.empty(); });
             if (stop_ && jobs_.empty()) return;
             batch.swap(jobs_);
         }
-        for (auto& item : batch) send_once(item.first, item.second);
+        for (auto& item : batch) send_once(item.second);
     }
 }
 
-bool HttpPoster::send_once(const std::string& camera_id,
-                            const std::vector<std::uint8_t>& jpeg) {
+bool HttpPoster::send_once(const Job& job) {
+    std::vector<std::uint8_t> encoded;
+    const std::vector<std::uint8_t>* jpeg = &job.jpeg;
+    if (jpeg->empty()) {
+        if (!encode_gray_jpeg(job.frame, job.jpeg_quality, encoded)) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            last_error_ = "JPEG encoding failed";
+            return false;
+        }
+        jpeg = &encoded;
+    }
+    if (jpeg->size() > 1024 * 1024) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_error_ = "JPEG exceeds 1 MiB";
+        return false;
+    }
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -125,17 +175,17 @@ bool HttpPoster::send_once(const std::string& camera_id,
     }
 
     std::ostringstream req;
-    req << "POST " << path_ << "?cameraId=" << camera_id << " HTTP/1.1\r\n"
+    req << "POST " << path_ << "?cameraId=" << job.camera_id;
+    if (!job.query.empty()) req << '&' << job.query;
+    req << " HTTP/1.1\r\n"
         << "Host: " << host_ << ':' << port_ << "\r\n"
         << "Content-Type: image/jpeg\r\n"
-        << "Content-Length: " << jpeg.size() << "\r\n"
+        << "Content-Length: " << jpeg->size() << "\r\n"
         << "Connection: close\r\n\r\n";
     const std::string head = req.str();
-    bool ok = ::send(fd, head.data(), head.size(), MSG_NOSIGNAL) ==
-              static_cast<ssize_t>(head.size());
+    bool ok = send_all(fd, head.data(), head.size());
     if (ok) {
-        ok = ::send(fd, jpeg.data(), jpeg.size(), MSG_NOSIGNAL) ==
-             static_cast<ssize_t>(jpeg.size());
+        ok = send_all(fd, jpeg->data(), jpeg->size());
     }
     char buf[96];
     ::recv(fd, buf, sizeof(buf), 0);

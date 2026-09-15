@@ -1,11 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UdpService, toFusionObservation } from './udp.service';
+import {
+  buildSignedUdpPacket,
+  UdpService,
+  toFusionObservation,
+} from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasService } from './cameras.service';
 import { FusionService } from './fusion.service';
 import { TracksService } from './tracks.service';
 import { AlertsService } from './alerts.service';
 import * as crypto from 'crypto';
+import { ClassificationService } from './classification.service';
+
+const classificationMock = () => ({
+  considerFusion: jest.fn().mockReturnValue(null),
+});
 
 describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
   let service: UdpService;
@@ -42,6 +51,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
           provide: AlertsService,
           useValue: { onTrackUpdate: jest.fn() },
         },
+        { provide: ClassificationService, useValue: classificationMock() },
       ],
     }).compile();
 
@@ -77,6 +87,18 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
       const result = (service as any).verifyUdpPacket(packet, secretKey);
       expect(result.valid).toBe(true);
       expect(result.payload.toString('utf-8')).toBe(payload);
+    });
+
+    it('accepts a capture command signed by the VPS helper', () => {
+      const packet = buildSignedUdpPacket(
+        'capture,jean,request-1,9999999999999',
+        secretKey,
+      );
+      const result = (service as any).verifyUdpPacket(packet, secretKey);
+      expect(result.valid).toBe(true);
+      expect(result.payload.toString('utf-8')).toBe(
+        'capture,jean,request-1,9999999999999\n',
+      );
     });
 
     it('should reject a packet shorter than 40 bytes', () => {
@@ -159,6 +181,7 @@ describe('UdpService fused track_update', () => {
           provide: AlertsService,
           useValue: { onTrackUpdate: jest.fn() },
         },
+        { provide: ClassificationService, useValue: classificationMock() },
       ],
     }).compile();
     const udp = module.get(UdpService);

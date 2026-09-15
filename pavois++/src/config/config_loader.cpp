@@ -176,6 +176,11 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "preview.host") cfg.preview_host = v;
         else if (key == "preview.http_port") cfg.preview_http_port = std::stoi(v);
         else if (key == "preview.http_path") cfg.preview_http_path = v;
+        else if (key == "classification.enabled") cfg.classification_enabled = parse_bool(v);
+        else if (key == "classification.quality") cfg.classification_quality = std::stoi(v);
+        else if (key == "classification.host") cfg.classification_host = v;
+        else if (key == "classification.http_port") cfg.classification_http_port = std::stoi(v);
+        else if (key == "classification.http_path") cfg.classification_http_path = v;
         else if (key == "reference_lat") { cfg.reference_lat = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_lon") { cfg.reference_lon = std::stod(v); cfg.has_reference_gps = true; }
         else if (key == "reference_alt") { cfg.reference_alt = std::stod(v); cfg.has_reference_gps = true; }
@@ -291,6 +296,8 @@ AppConfig load_config_file(const std::string& path) {
     }
 
     config.processing_threads = std::clamp(config.processing_threads, 1, 8);
+    config.classification_quality =
+        std::clamp(config.classification_quality, 50, 95);
     for (auto& cam : config.cameras) finalize_camera(cam);
     return config;
 }

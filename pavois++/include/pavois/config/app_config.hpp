@@ -154,6 +154,14 @@ struct AppConfig {
     int preview_http_port = 8081;
     std::string preview_http_path = "/api/preview";
 
+    // One full-resolution frame is uploaded only when the VPS asks for a
+    // close-target classification. Encoding and HTTP run off the camera loop.
+    bool classification_enabled = true;
+    int classification_quality = 90;
+    std::string classification_host;
+    int classification_http_port = 8081;
+    std::string classification_http_path = "/api/classification/capture";
+
     double reference_lat = 0.0;
     double reference_lon = 0.0;
     double reference_alt = 0.0;

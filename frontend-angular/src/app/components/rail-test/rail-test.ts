@@ -23,6 +23,10 @@ export class RailTestPage implements OnInit, OnDestroy {
 
   readonly bench = this.realtime.railBench;
   readonly estimated = computed<Vec3m | null>(() => {
+    const classification = this.realtime.targetClassification();
+    if (classification?.status === 'complete' && classification.label !== 'drone') {
+      return null;
+    }
     const update = this.realtime.fuseUpdate();
     const fuse = update?.lastFuse;
     if (fuse?.ok && fuse.point) return fuse.point;
@@ -30,6 +34,19 @@ export class RailTestPage implements OnInit, OnDestroy {
     return track ? { x: track.x, y: track.y, z: track.z } : null;
   });
   readonly seeing = computed(() => this.realtime.fuseUpdate()?.lastFuse?.cameras ?? []);
+  readonly classificationText = computed(() => {
+    const classification = this.realtime.targetClassification();
+    if (!classification) return 'en attente';
+    if (classification.status === 'pending') {
+      return `photos ${classification.receivedCameras.length}/3`;
+    }
+    if (classification.status === 'analyzing') return 'analyse OpenCV';
+    if (classification.label === 'drone') {
+      return `drone ${Math.round(classification.confidence * 100)}%`;
+    }
+    if (classification.label === 'human') return 'humain ignoré';
+    return 'inconnu ignoré';
+  });
   readonly errorM = computed(() => {
     const bench = this.bench();
     const estimated = this.estimated();

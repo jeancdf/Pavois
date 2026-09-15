@@ -18,6 +18,9 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
+# OpenCV runs only on the VPS, once per three-photo classification request.
+RUN apk add --no-cache python3 py3-opencv
+
 # Dépendances de production + client Prisma (généré par postinstall).
 COPY package*.json ./
 COPY prisma.config.ts ./
@@ -26,6 +29,7 @@ RUN npm i --omit=dev
 
 # Copie du build compilé depuis l'étape builder (SANS le fichier .env)
 COPY --from=builder /app/dist ./dist
+COPY classifier ./classifier
 
 # Ports HTTP/WebSocket (3002 par défaut) et UDP (41234 par défaut)
 EXPOSE 3002/tcp

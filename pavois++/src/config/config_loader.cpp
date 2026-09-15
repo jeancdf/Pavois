@@ -46,8 +46,6 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "width") c.width = std::stoi(v);
         else if (f == "height") c.height = std::stoi(v);
         else if (f == "fps") c.fps = std::stoi(v);
-        else if (f == "limit_fps") c.limit_fps = (v == "true" || v == "1");
-        else if (f == "startup_calibration_ms") c.startup_calibration_ms = std::stoi(v);
         else if (f == "frames") c.frames = std::stoi(v);
         else if (f == "enabled") c.enabled = parse_bool(v);
         else if (f == "diff_threshold") c.diff_threshold = static_cast<std::uint8_t>(std::stoi(v));
@@ -94,7 +92,6 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "reconnect_max_attempts") c.reconnect_max_attempts = std::stoi(v);
         else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
         else if (f == "exposure_mode") c.exposure_mode = v;
-        else if (f == "manual_exposure") c.manual_exposure = parse_bool(v);
         else if (f == "shutter_us") c.shutter_us = std::stoi(v);
         else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
         else if (f == "awb_red_gain") c.awb_red_gain = std::stod(v);
@@ -111,7 +108,6 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
     try {
         if (key == "frames") cfg.frames = std::stoi(v);
         else if (key == "processing_threads") cfg.processing_threads = std::stoi(v);
-        else if (key == "runtime.pin_threads") cfg.pin_threads = parse_bool(v);
         else if (key == "fusion_window_ms") cfg.fusion_window_ms = std::stoi(v);
         else if (key == "fusion_emit_interval_ms") cfg.fusion_emit_interval_ms = std::stoi(v);
         else if (key == "fusion_max_range_m") cfg.fusion_max_range_m = std::stod(v);
@@ -215,11 +211,10 @@ void finalize_camera(CameraConfig& c) {
     if (c.exposure_mode != "normal" && c.exposure_mode != "sport") {
         c.exposure_mode = "sport";
     }
-    c.shutter_us = c.shutter_us <= 0 ? 0 : std::clamp(c.shutter_us, 100, 1'000'000);
-    c.analogue_gain = c.analogue_gain <= 0.0 ? 0.0 : std::clamp(c.analogue_gain, 1.0, 32.0);
-    c.startup_calibration_ms = std::clamp(c.startup_calibration_ms, 0, 10'000);
-    c.awb_red_gain = c.awb_red_gain <= 0.0 ? 0.0 : std::clamp(c.awb_red_gain, 0.1, 8.0);
-    c.awb_blue_gain = c.awb_blue_gain <= 0.0 ? 0.0 : std::clamp(c.awb_blue_gain, 0.1, 8.0);
+    c.shutter_us = std::clamp(c.shutter_us, 100, 1'000'000);
+    c.analogue_gain = std::clamp(c.analogue_gain, 1.0, 32.0);
+    c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);
+    c.awb_blue_gain = std::clamp(c.awb_blue_gain, 0.1, 8.0);
 }
 
 }  // namespace

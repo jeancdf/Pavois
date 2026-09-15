@@ -4,8 +4,8 @@ import { IsNumber, IsOptional, Max, Min } from 'class-validator';
 export class RailBenchDto {
   @IsOptional()
   @IsNumber()
-  @Min(1080)
-  @Max(1350)
+  @Min(840)
+  @Max(1050)
   rigWidthMm?: number;
 
   @IsOptional()

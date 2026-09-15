@@ -12,7 +12,7 @@
 PORT=8081
 
 while true; do
-  rpicam-vid -t 0 --codec mjpeg --width 1280 --height 720 --framerate 1000 --nopreview -o - \
+  rpicam-vid -t 0 --codec mjpeg --width 1280 --height 720 --framerate 20 --nopreview -o - \
   | ffmpeg -loglevel warning -f mjpeg -i - -c copy -f mpjpeg \
     -content_type "multipart/x-mixed-replace;boundary=ffmpeg" \
     -listen 1 "http://0.0.0.0:${PORT}/stream"

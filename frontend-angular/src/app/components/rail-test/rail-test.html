@@ -54,15 +54,11 @@
             <strong>{{ id }}</strong>
             <span class="fps">{{ fpsOf(id) }} fps</span>
           </header>
-          <p>{{ captureHealth(id) }}</p>
-          @if (loadHealth(id)) {
-            <p>{{ loadHealth(id) }}</p>
-          }
           <p>Miniature {{ previewAge(id) }}</p>
           <p>Détection {{ detectionAge(id) }}</p>
         </article>
       }
-      <p class="hint">Le grand FPS est le traitement. Capture, délai détecteur, images sautées et température permettent d’identifier le goulot.</p>
+      <p class="hint">Le FPS est le rythme réel de capture, pas la miniature à 2 img/s.</p>
     </aside>
   </div>
 

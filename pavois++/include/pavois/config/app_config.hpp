@@ -12,9 +12,7 @@ struct CameraConfig {
     std::string device = "/dev/video0";
     int width = 1280;
     int height = 720;
-    int fps = 0;  // CSI: requested rate only when limit_fps is enabled
-    bool limit_fps = false;  // Also bypass legacy 10/20/30 FPS field configs
-    int startup_calibration_ms = 1500;  // let auto exposure/AWB settle before detection
+    int fps = 30;  // CSI capture frame rate
     int frames = -1;
     bool enabled = true;
 
@@ -78,14 +76,13 @@ struct CameraConfig {
     int reconnect_max_attempts = 0;   // 0 => unlimited
     int reconnect_backoff_ms = 500;
 
-    // Zero shutter/gain lets auto exposure adapt to indoor lighting. Positive
-    // values opt into manual exposure for a sufficiently illuminated scene.
+    // CSI exposure lock. Short shutter limits motion blur; fixed analogue and
+    // white-balance gains avoid auto-control jumps becoming foreground.
     std::string exposure_mode = "sport";
-    bool manual_exposure = false;  // opt-in so legacy locked configs return to auto
-    int shutter_us = 0;
-    double analogue_gain = 0.0;
-    double awb_red_gain = 0.0;
-    double awb_blue_gain = 0.0;
+    int shutter_us = 750;
+    double analogue_gain = 4.0;
+    double awb_red_gain = 1.0;
+    double awb_blue_gain = 1.0;
 };
 
 struct AppConfig {
@@ -94,8 +91,6 @@ struct AppConfig {
     // Total threads participating in full-frame detector passes, including
     // the camera thread. Three leaves one Pi core for capture and the OS.
     int processing_threads = 3;
-    // Pi 4/5 default: capture=CPU0, detector caller=CPU1, helpers=CPU2-3.
-    bool pin_threads = true;
 
     // --- fusion ---
     int fusion_window_ms = 20;

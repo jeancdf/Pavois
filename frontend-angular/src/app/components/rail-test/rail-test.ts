@@ -24,7 +24,7 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly rangeM = signal(DEFAULT_RANGE_M);
   readonly busy = signal(false);
   readonly cameraIds = RAIL_CAMERA_IDS;
-  readonly ranges = [3, 4, 5, 6, 8];
+  readonly ranges = [2, 2.5, 3];
 
   readonly bench = this.realtime.railBench;
   readonly estimated = computed<Vec3m | null>(() => {
@@ -108,32 +108,6 @@ export class RailTestPage implements OnInit, OnDestroy {
     const stats = this.realtime.statsOf(id);
     if (!stats || this.now() - stats.receivedAt > 4000) return '—';
     return stats.fps.toFixed(1);
-  }
-
-  captureHealth(id: string): string {
-    this.now();
-    const stats = this.realtime.statsOf(id);
-    if (!stats || this.now() - stats.receivedAt > 4000) return 'Capture —';
-    const capture = Number.isFinite(stats.captureFps)
-      ? `${stats.captureFps!.toFixed(1)} capture`
-      : `${stats.fps.toFixed(1)} capture`;
-    const detector = Number.isFinite(stats.detectorMs)
-      ? ` · ${stats.detectorMs!.toFixed(1)} ms`
-      : '';
-    return `${capture}${detector}`;
-  }
-
-  loadHealth(id: string): string {
-    this.now();
-    const stats = this.realtime.statsOf(id);
-    if (!stats || this.now() - stats.receivedAt > 4000) return '';
-    const dropped = Number.isFinite(stats.droppedFrames)
-      ? `${stats.droppedFrames} sautées`
-      : '';
-    const temperature = Number.isFinite(stats.temperatureC) && stats.temperatureC! >= 0
-      ? `${stats.temperatureC!.toFixed(0)} °C`
-      : '';
-    return [dropped, temperature].filter(Boolean).join(' · ');
   }
 
   detectionAge(id: string): string {

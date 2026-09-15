@@ -1,10 +1,10 @@
 name: Deploy VPS
 
-# Legacy production recipe kept for an explicit manual rollback only. Main is
-# deployed by deploy-ovh-achraf.yml; running both caused a guaranteed red check
-# because this workflow references the retired VPS SSH credentials.
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
   check:

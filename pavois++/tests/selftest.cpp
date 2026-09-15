@@ -1007,7 +1007,8 @@ void test_imu() {
         std::ostringstream sink;
         std::mutex log_mu;
         CameraWorker injected(cam, file_cfg, fusion, sink, log_mu,
-                              nullptr, nullptr, nullptr, shared_imu, false);
+                              nullptr, nullptr, nullptr, nullptr, shared_imu,
+                              false);
         (void)injected;
     }
     std::atomic<int> ok_reads{0};

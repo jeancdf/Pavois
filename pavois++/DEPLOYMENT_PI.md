@@ -38,11 +38,14 @@ Renseigner `output_host` avec l'adresse réelle du VPS et `output_port=41234`
 (staging OVH écoute 41234 et 41235).
 Le script attribue le nom de la Pi à `camera.0.id` : garder des identifiants
 différents sur chaque Pi. La caméra est sélectionnée par `camera.0.device=csi:0`,
-à comparer avec `rpicam-hello --list-cameras`. Le modèle de configuration propose
-1280×720 à 10 images/s pour les Pi 4 ; Jean (Pi 5) est réglé à 20 images/s.
-`camera.0.fps` règle la cadence demandée à la caméra CSI. À 20 images/s demandées,
-le traitement mesuré sur Walid plafonnait autour de 11–12 images/s : une cadence
-de 10 évite de demander plus d'images que le détecteur ne peut en traiter.
+à comparer avec `rpicam-hello --list-cameras`. Les trois Pi demandent actuellement
+1280×720 à 30 images/s au capteur CSI. Les journaux de déploiement du 15 septembre
+confirment le mode `P(30)` sur Jean, Tanel et Walid. Sur les Pi 4, le débit traité
+observé pendant les essais récents se situe entre 20 et 30 images/s selon la scène ;
+l'ancienne mesure de 11–12 images/s à 20 images/s demandées est obsolète. Le seuil
+du cadrage (au moins 20 images/s) est donc atteint sur les trois Pi dans ces essais.
+Pour une slide KPI, conserver la plage mesurée 20–30 images/s pour les Pi 4 et
+30 images/s demandées pour la Pi 5, puis dater la mesure et préciser la scène.
 
 Le script installe les dépendances, le compte de service `pavois` et le service
 systemd. Il autorise le compte de déploiement à remplacer le binaire et à

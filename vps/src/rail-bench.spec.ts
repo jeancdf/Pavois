@@ -4,7 +4,7 @@ import {
   expectedTarget,
   railPitchMm,
 } from './rail-bench';
-import { makeIntrinsics } from './fusion-geo';
+import { makeIntrinsics, projectWorldToPixel } from './fusion-geo';
 import { triangulate } from './fusion-triangulate';
 
 describe('rail-bench geometry', () => {
@@ -32,28 +32,28 @@ describe('rail-bench geometry', () => {
     expect(state.targetSizeM).toBe(0.2);
   });
 
-  it('triangulates real rail pixels with walid on the left and tanel on the right', () => {
+  it('triangulates pixels from the extended rail at the 5 m classroom mark', () => {
     const state = buildRailBenchState();
-    const pixels: Record<string, [number, number]> = {
-      jean: [683.77, 284.91],
-      tanel: [339.81, 470.26],
-      walid: [993.44, 331.28],
-    };
     const intrinsics = makeIntrinsics(1280, 720, 65);
     const result = triangulate(
-      state.cameras.map((camera) => ({
-        cameraId: camera.id,
-        pixelX: pixels[camera.id][0],
-        pixelY: pixels[camera.id][1],
-        quality: 0.95,
-        pose: camera,
-        intrinsics,
-      })),
+      state.cameras.map((camera) => {
+        const pixel = projectWorldToPixel(intrinsics, camera, state.expected);
+        expect(pixel).not.toBeNull();
+        return {
+          cameraId: camera.id,
+          pixelX: pixel![0],
+          pixelY: pixel![1],
+          quality: 0.95,
+          pose: camera,
+          intrinsics,
+        };
+      }),
     );
 
     expect(result.ok).toBe(true);
     expect(result.cameras).toEqual(['tanel', 'jean', 'walid']);
-    expect(result.point?.y).toBeGreaterThan(1);
-    expect(result.point?.z).toBeCloseTo(0.41, 1);
+    expect(result.point?.x).toBeCloseTo(0, 6);
+    expect(result.point?.y).toBeCloseTo(5, 6);
+    expect(result.point?.z).toBeCloseTo(0.4, 6);
   });
 });

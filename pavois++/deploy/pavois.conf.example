@@ -3,6 +3,7 @@
 frames=-1
 # Camera thread + two persistent helpers. Keep one Pi core for capture/OS.
 processing_threads=3
+runtime.pin_threads=true
 fusion_window_ms=20
 
 # VPS destination (required to send observations).

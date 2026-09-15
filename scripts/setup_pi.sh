@@ -97,6 +97,10 @@ EOF
 fi
 
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/pavois.service" /etc/systemd/system/pavois.service
+install -o root -g root -m 0755 "$repo_dir/pavois++/deploy/pavois-performance.sh" \
+  /usr/local/sbin/pavois-performance
+install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/pavois-performance.service" \
+  /etc/systemd/system/pavois-performance.service
 install -o root -g root -m 0644 "$repo_dir/pavois++/deploy/60-pavois-i2c.rules" \
   /etc/udev/rules.d/60-pavois-i2c.rules
 if command -v udevadm >/dev/null; then
@@ -122,6 +126,7 @@ if systemctl cat pavois-camstream.service >/dev/null 2>&1; then
   systemctl disable pavois-camstream.service
 fi
 systemctl enable pavois.service
+systemctl enable pavois-performance.service
 echo "Setup complete. Edit /etc/pavois/pavois.conf before deploying."
 echo "CSI cameras: rpicam-hello --list-cameras"
 echo "Deploy as $deploy_user: bash scripts/deploy_pi.sh"

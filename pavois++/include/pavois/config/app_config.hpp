@@ -91,6 +91,8 @@ struct AppConfig {
     // Total threads participating in full-frame detector passes, including
     // the camera thread. Three leaves one Pi core for capture and the OS.
     int processing_threads = 3;
+    // Pi 4/5 default: capture=CPU0, detector caller=CPU1, helpers=CPU2-3.
+    bool pin_threads = true;
 
     // --- fusion ---
     int fusion_window_ms = 20;

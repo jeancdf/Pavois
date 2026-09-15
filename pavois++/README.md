@@ -97,6 +97,11 @@ Detector and fusion behaviour is tunable per camera / globally in
 - Output is a compact CSV-like track line, not JSON.
 - The Pi-side binary is only the acquisition + fusion stage; the VPS will do pattern recognition later.
 - If `output_host` and `output_port` are set, the same track line is also sent over UDP.
+- CSI capture uses libcamera's native YUV420 stream and keeps only the Y plane;
+  no per-frame MJPEG encode/decode is performed. Capture and detection are
+  decoupled with replace-latest buffers so overload costs frames, not latency.
+- Full-frame detector passes use persistent worker threads and ARM NEON kernels.
+  Preview resize/JPEG/HTTP runs asynchronously and does not stall detection.
 - If `camera.N.device` starts with `rtsp://`, `http://`, or `https://`, the app uses `ffmpeg` to decode the stream into grayscale frames.
 - That means the machine running `pavois_detect` needs `ffmpeg` installed when you use iPhone network streams.
 

@@ -3,10 +3,11 @@
 #include "pavois/capture/frame_source.hpp"
 #include "pavois/detection/motion_detector.hpp"
 #include "pavois/domain/observation.hpp"
+#include "pavois/runtime/latest_frame_pump.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/transport/event_bus.hpp"
 #include "pavois/util/debug_sink.hpp"
-#include "pavois/util/jpeg_gray.hpp"
+#include "pavois/util/thread_tuning.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -112,35 +113,39 @@ void CameraWorker::maybe_emit_attitude(const CameraPose& pose,
     udp_sender_->send_line(line.str());
 }
 
-void CameraWorker::maybe_send_preview(const GrayFrame& frame,
+void CameraWorker::maybe_send_preview(std::shared_ptr<const GrayFrame> frame,
                                       std::uint64_t now_us,
                                       std::uint64_t& last_preview_us) {
     if (!app_.preview_enabled || !preview_http_ || !preview_http_->valid()) {
         return;
     }
-    if (frame.empty()) return;
+    if (!frame || frame->empty()) return;
     const int fps = std::max(1, app_.preview_fps);
     const std::uint64_t interval_us = 1000000ULL / static_cast<std::uint64_t>(fps);
     if (last_preview_us != 0 && now_us - last_preview_us < interval_us) {
         return;
     }
     last_preview_us = now_us;
-    const GrayFrame small = downscale_gray(frame, app_.preview_width);
-    std::vector<std::uint8_t> jpeg;
-    if (!encode_gray_jpeg(small, app_.preview_quality, jpeg)) return;
-    // Nest rejects bodies over 64 KiB; skip an oversized thumbnail.
-    if (jpeg.size() > 60000) return;
-    preview_http_->post_jpeg(cfg_.id, std::move(jpeg));
+    // Resize and JPEG encoding happen in HttpPoster's replace-latest worker.
+    // The shared pump buffer remains immutable until that job releases it.
+    preview_http_->post_gray(cfg_.id, std::move(frame), app_.preview_quality,
+                             {}, app_.preview_width, 60000);
 }
 
 void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
                                     std::uint64_t frame_id,
                                     std::uint64_t& window_start_us,
-                                    std::uint64_t& window_frames) {
+                                    std::uint64_t& window_frames,
+                                    std::uint64_t captured_frames,
+                                    std::uint64_t dropped_frames,
+                                    std::uint64_t& window_captured,
+                                    std::uint64_t& detector_time_us) {
     if (!udp_sender_ || !udp_sender_->valid()) return;
     if (window_start_us == 0) {
         window_start_us = now_us;
         window_frames = 0;
+        window_captured = captured_frames;
+        detector_time_us = 0;
     }
     ++window_frames;
     if (now_us < window_start_us + 1'000'000ULL) return;
@@ -149,27 +154,42 @@ void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
     const double fps = dt_s > 0.0
                            ? static_cast<double>(window_frames) / dt_s
                            : 0.0;
+    const double capture_fps = dt_s > 0.0
+                                   ? static_cast<double>(captured_frames -
+                                                         window_captured) /
+                                         dt_s
+                                   : 0.0;
+    const double detector_ms = window_frames > 0
+                                   ? static_cast<double>(detector_time_us) /
+                                         (1000.0 * window_frames)
+                                   : 0.0;
+    const double temperature_c = read_cpu_temperature_c();
     std::ostringstream line;
     line << "stats," << cfg_.id << ',' << std::fixed << std::setprecision(2)
-         << fps << ',' << frame_id << ',' << now_us;
+         << fps << ',' << frame_id << ',' << now_us << ',' << capture_fps
+         << ',' << dropped_frames << ',' << detector_ms << ','
+         << temperature_c;
     udp_sender_->send_line(line.str());
     window_start_us = now_us;
     window_frames = 0;
+    window_captured = captured_frames;
+    detector_time_us = 0;
 }
 
 void CameraWorker::send_classification_capture(
-    const GrayFrame& frame, const DetectionResult& detection,
+    std::shared_ptr<const GrayFrame> frame,
+    const DetectionResult& detection,
     const UdpSender::CaptureRequest& request) {
     if (!classification_http_ || !classification_http_->valid() ||
-        frame.empty()) {
+        !frame || frame->empty()) {
         return;
     }
     const BlobDetection* blob =
         detection.blobs.empty() ? nullptr : &detection.blobs.front();
     std::ostringstream query;
     query << "requestId=" << request.request_id
-          << "&capturedUs=" << frame.captured_us
-          << "&frameId=" << frame.frame_id;
+          << "&capturedUs=" << frame->captured_us
+          << "&frameId=" << frame->frame_id;
     if (blob) {
         query << "&cx=" << std::fixed << std::setprecision(2) << blob->cx
               << "&cy=" << blob->cy
@@ -177,7 +197,7 @@ void CameraWorker::send_classification_capture(
               << "&x1=" << blob->x1 << "&y1=" << blob->y1
               << "&area=" << blob->area;
     }
-    classification_http_->post_gray(cfg_.id, frame,
+    classification_http_->post_gray(cfg_.id, std::move(frame),
                                      app_.classification_quality,
                                      query.str());
     log_line("camera " + cfg_.id + " classification capture " +
@@ -214,6 +234,7 @@ void CameraWorker::stream_attitude_only(
 
 void CameraWorker::operator()() {
     if (!cfg_.enabled) return;
+    if (app_.pin_threads) pin_current_thread(1);
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
     CameraPose pose = pose_from(cfg_);
@@ -238,58 +259,68 @@ void CameraWorker::operator()() {
     DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
     detector.set_debug(debug.active());
 
-    GrayFrame frame;
-    std::uint64_t frame_id = 0;
+    LatestFramePump pump(std::move(source), 4, app_.pin_threads ? 0 : -1);
+    std::uint64_t processed_frames = 0;
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;
     std::uint64_t last_preview_us = 0;
     std::uint64_t stats_window_start_us = 0;
     std::uint64_t stats_window_frames = 0;
+    std::uint64_t stats_window_captured = 0;
+    std::uint64_t detector_time_us = 0;
 
-    while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
-        const auto capture_request =
-            udp_sender_ ? udp_sender_->take_capture_request(cfg_.id)
-                        : std::nullopt;
-        if (!source->read_frame(frame)) {
+    while (cfg_.frames < 0 ||
+           static_cast<int>(processed_frames) < cfg_.frames) {
+        const auto frame = pump.wait_next();
+        if (!frame) {
             log_line("camera " + cfg_.id + " read failed: " +
-                     source->last_error());
+                     pump.last_error());
             stream_attitude_only(imu_.get(), pose);
             return;
         }
-        frame.frame_id = frame_id;
-        if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
+        const auto capture_request =
+            udp_sender_ ? udp_sender_->take_capture_request(cfg_.id)
+                        : std::nullopt;
 
         std::string calib_token;
         const bool imu_valid = apply_imu_sample(imu_.get(), pose, calib_token);
-        maybe_emit_attitude(pose, calib_token, imu_valid, frame.captured_us,
+        maybe_emit_attitude(pose, calib_token, imu_valid, frame->captured_us,
                             last_att_us);
-        maybe_send_preview(frame, frame.captured_us, last_preview_us);
+        maybe_send_preview(frame, frame->captured_us, last_preview_us);
 
-        const DetectionResult det = detector.process(frame);
+        const auto detector_start = std::chrono::steady_clock::now();
+        const DetectionResult det = detector.process(*frame);
+        detector_time_us += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - detector_start)
+                .count());
         if (capture_request) {
             send_classification_capture(frame, det, *capture_request);
         }
-        if (debug.active()) debug.dump(frame, det);
-        maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
-                         stats_window_frames);
+        if (debug.active()) debug.dump(*frame, det);
+        maybe_emit_stats(wall_clock_us(), frame->frame_id,
+                         stats_window_start_us,
+                         stats_window_frames, pump.captured_frames(),
+                         pump.dropped_frames(), stats_window_captured,
+                         detector_time_us);
 
         if (det.confirmed) {
             for (const auto& blob : det.blobs) {
                 Observation obs;
                 obs.camera_id = cfg_.id;
-                obs.frame_id = frame_id;
-                obs.timestamp_us = frame.captured_us;
-                obs.captured_us = frame.captured_us;
-                obs.image_width = frame.width;
-                obs.image_height = frame.height;
+                obs.frame_id = frame->frame_id;
+                obs.timestamp_us = frame->captured_us;
+                obs.captured_us = frame->captured_us;
+                obs.image_width = frame->width;
+                obs.image_height = frame->height;
                 obs.centroid_x = blob.cx;
                 obs.centroid_y = blob.cy;
                 obs.blob_area = blob.area;
                 obs.quality = blob.quality;
                 obs.confidence = blob.quality;
                 obs.intrinsics = intr;
-                obs.intrinsics.image_width = frame.width;
-                obs.intrinsics.image_height = frame.height;
+                obs.intrinsics.image_width = frame->width;
+                obs.intrinsics.image_height = frame->height;
                 obs.pose = pose;
                 obs.cam_x = pose.x;
                 obs.cam_y = pose.y;
@@ -334,9 +365,12 @@ void CameraWorker::operator()() {
             }
         }
 
-        ++frame_id;
-        if ((frame_id % 120) == 0) {
-            log_line("camera " + cfg_.id + " f=" + std::to_string(frame_id) +
+        ++processed_frames;
+        if ((processed_frames % 120) == 0) {
+            log_line("camera " + cfg_.id + " processed=" +
+                     std::to_string(processed_frames) + " captured=" +
+                     std::to_string(pump.captured_frames()) + " dropped=" +
+                     std::to_string(pump.dropped_frames()) +
                      " emitted=" + std::to_string(emitted) + " | " + fusion_.last_status());
         }
     }

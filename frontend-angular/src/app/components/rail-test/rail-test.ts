@@ -110,6 +110,32 @@ export class RailTestPage implements OnInit, OnDestroy {
     return stats.fps.toFixed(1);
   }
 
+  captureHealth(id: string): string {
+    this.now();
+    const stats = this.realtime.statsOf(id);
+    if (!stats || this.now() - stats.receivedAt > 4000) return 'Capture —';
+    const capture = Number.isFinite(stats.captureFps)
+      ? `${stats.captureFps!.toFixed(1)} capture`
+      : `${stats.fps.toFixed(1)} capture`;
+    const detector = Number.isFinite(stats.detectorMs)
+      ? ` · ${stats.detectorMs!.toFixed(1)} ms`
+      : '';
+    return `${capture}${detector}`;
+  }
+
+  loadHealth(id: string): string {
+    this.now();
+    const stats = this.realtime.statsOf(id);
+    if (!stats || this.now() - stats.receivedAt > 4000) return '';
+    const dropped = Number.isFinite(stats.droppedFrames)
+      ? `${stats.droppedFrames} sautées`
+      : '';
+    const temperature = Number.isFinite(stats.temperatureC) && stats.temperatureC! >= 0
+      ? `${stats.temperatureC!.toFixed(0)} °C`
+      : '';
+    return [dropped, temperature].filter(Boolean).join(' · ');
+  }
+
   detectionAge(id: string): string {
     this.now();
     const at = this.realtime.lastDetectionAt()[id];

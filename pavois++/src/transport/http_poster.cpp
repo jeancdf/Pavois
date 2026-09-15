@@ -98,9 +98,11 @@ bool send_all(int fd, const void* data, std::size_t size) {
     return true;
 }
 
-void HttpPoster::post_gray(const std::string& camera_id, GrayFrame frame,
-                           int jpeg_quality, std::string query) {
-    if (!camera_id_ok(camera_id) || frame.empty()) return;
+void HttpPoster::post_gray(const std::string& camera_id,
+                           std::shared_ptr<const GrayFrame> frame,
+                           int jpeg_quality, std::string query,
+                           int output_width, std::size_t max_bytes) {
+    if (!camera_id_ok(camera_id) || !frame || frame->empty()) return;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!valid_) return;
@@ -109,6 +111,8 @@ void HttpPoster::post_gray(const std::string& camera_id, GrayFrame frame,
         job.query = std::move(query);
         job.frame = std::move(frame);
         job.jpeg_quality = jpeg_quality;
+        job.output_width = output_width;
+        job.max_bytes = max_bytes;
         jobs_[camera_id] = std::move(job);
     }
     cv_.notify_one();
@@ -131,16 +135,24 @@ bool HttpPoster::send_once(const Job& job) {
     std::vector<std::uint8_t> encoded;
     const std::vector<std::uint8_t>* jpeg = &job.jpeg;
     if (jpeg->empty()) {
-        if (!encode_gray_jpeg(job.frame, job.jpeg_quality, encoded)) {
+        const GrayFrame* encode_frame = job.frame.get();
+        GrayFrame resized;
+        if (encode_frame != nullptr && job.output_width > 0 &&
+            encode_frame->width > job.output_width) {
+            resized = downscale_gray(*encode_frame, job.output_width);
+            encode_frame = &resized;
+        }
+        if (encode_frame == nullptr ||
+            !encode_gray_jpeg(*encode_frame, job.jpeg_quality, encoded)) {
             std::lock_guard<std::mutex> lock(mutex_);
             last_error_ = "JPEG encoding failed";
             return false;
         }
         jpeg = &encoded;
     }
-    if (jpeg->size() > 1024 * 1024) {
+    if (jpeg->size() > job.max_bytes) {
         std::lock_guard<std::mutex> lock(mutex_);
-        last_error_ = "JPEG exceeds 1 MiB";
+        last_error_ = "JPEG exceeds configured size limit";
         return false;
     }
     addrinfo hints{};

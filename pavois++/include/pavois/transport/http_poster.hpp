@@ -3,8 +3,10 @@
 #include "pavois/domain/frame.hpp"
 
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -27,9 +29,11 @@ public:
                    std::vector<std::uint8_t> jpeg,
                    std::string query = {});
     void post_gray(const std::string& camera_id,
-                   GrayFrame frame,
+                   std::shared_ptr<const GrayFrame> frame,
                    int jpeg_quality,
-                   std::string query = {});
+                   std::string query = {},
+                   int output_width = 0,
+                   std::size_t max_bytes = 1024 * 1024);
     std::string last_error() const;
 
 private:
@@ -37,8 +41,10 @@ private:
         std::string camera_id;
         std::string query;
         std::vector<std::uint8_t> jpeg;
-        GrayFrame frame;
+        std::shared_ptr<const GrayFrame> frame;
         int jpeg_quality = 90;
+        int output_width = 0;
+        std::size_t max_bytes = 1024 * 1024;
     };
 
     void worker_loop();

@@ -108,6 +108,7 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
     try {
         if (key == "frames") cfg.frames = std::stoi(v);
         else if (key == "processing_threads") cfg.processing_threads = std::stoi(v);
+        else if (key == "runtime.pin_threads") cfg.pin_threads = parse_bool(v);
         else if (key == "fusion_window_ms") cfg.fusion_window_ms = std::stoi(v);
         else if (key == "fusion_emit_interval_ms") cfg.fusion_emit_interval_ms = std::stoi(v);
         else if (key == "fusion_max_range_m") cfg.fusion_max_range_m = std::stod(v);

@@ -1,6 +1,7 @@
 /**
- * UDP: stats,<cameraId>,<fps>,<frameIndex>,<ts_us>
- * Real capture/detect rate from the Pi worker, not the 2 fps preview.
+ * UDP: stats,<cameraId>,<detectFps>,<frameIndex>,<ts_us>,
+ *            <captureFps>,<droppedFrames>,<detectorMs>,<temperatureC>
+ * The last four fields are optional for backward compatibility.
  */
 
 export interface CameraStats {
@@ -9,6 +10,10 @@ export interface CameraStats {
   fps: number;
   frameIndex: number;
   timestamp: number;
+  captureFps?: number;
+  droppedFrames?: number;
+  detectorMs?: number;
+  temperatureC?: number;
 }
 
 function allFinite(values: number[]): boolean {
@@ -27,11 +32,35 @@ export function parseCameraStatsLine(line: string): CameraStats | null {
     return null;
   }
 
+  const optional = parts.length >= 9
+    ? {
+        captureFps: Number(parts[5]),
+        droppedFrames: Number(parts[6]),
+        detectorMs: Number(parts[7]),
+        temperatureC: Number(parts[8]),
+      }
+    : {};
+  if (
+    parts.length >= 9 &&
+    (!allFinite([
+      optional.captureFps!,
+      optional.droppedFrames!,
+      optional.detectorMs!,
+      optional.temperatureC!,
+    ]) ||
+      optional.captureFps! < 0 ||
+      optional.droppedFrames! < 0 ||
+      optional.detectorMs! < 0)
+  ) {
+    return null;
+  }
+
   return {
     type: 'camera_stats',
     cameraId,
     fps,
     frameIndex,
     timestamp,
+    ...optional,
   };
 }

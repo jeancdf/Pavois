@@ -12,7 +12,8 @@ struct CameraConfig {
     std::string device = "/dev/video0";
     int width = 1280;
     int height = 720;
-    int fps = 30;  // CSI capture frame rate
+    int fps = 0;  // CSI: requested rate only when limit_fps is enabled
+    bool limit_fps = false;  // Also bypass legacy 10/20/30 FPS field configs
     int frames = -1;
     bool enabled = true;
 
@@ -76,11 +77,11 @@ struct CameraConfig {
     int reconnect_max_attempts = 0;   // 0 => unlimited
     int reconnect_backoff_ms = 500;
 
-    // CSI exposure lock. Short shutter limits motion blur; fixed analogue and
-    // white-balance gains avoid auto-control jumps becoming foreground.
+    // Zero shutter/gain lets auto exposure adapt to indoor lighting. Positive
+    // values opt into manual exposure for a sufficiently illuminated scene.
     std::string exposure_mode = "sport";
-    int shutter_us = 750;
-    double analogue_gain = 4.0;
+    int shutter_us = 0;
+    double analogue_gain = 0.0;
     double awb_red_gain = 1.0;
     double awb_blue_gain = 1.0;
 };

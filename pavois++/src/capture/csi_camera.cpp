@@ -101,8 +101,8 @@ bool CsiCamera::open() {
     const std::string index = config_.device.substr(4);  // csi:N
     if (index.empty() || index.size() > 3 ||
         !std::all_of(index.begin(), index.end(), [](char c) { return c >= '0' && c <= '9'; }) ||
-        config_.width <= 0 || config_.height <= 0 || config_.fps <= 0) {
-        last_error_ = "CSI capture requires csi:N and positive width, height and fps";
+        config_.width <= 0 || config_.height <= 0 || config_.fps < 0) {
+        last_error_ = "CSI capture requires csi:N, positive width/height and fps >= 0";
         return false;
     }
 
@@ -134,6 +134,10 @@ bool CsiCamera::open() {
     // 30 frames every second even though the detector only needs luminance.
     std::ostringstream awb_gains;
     awb_gains << config_.awb_red_gain << ',' << config_.awb_blue_gain;
+    // rpicam's framerate=0 leaves default frame-duration controls in place;
+    // it does not request maximum speed. An above-hardware request lets the
+    // driver clamp to its fastest available mode (including OV5647 Pi 4/5).
+    const int requested_fps = config_.limit_fps && config_.fps > 0 ? config_.fps : 1000;
     std::vector<std::string> arguments = {
         "rpicam-vid",
         "--camera", index,
@@ -142,7 +146,7 @@ bool CsiCamera::open() {
         "--codec", "yuv420",
         "--width", std::to_string(config_.width),
         "--height", std::to_string(config_.height),
-        "--framerate", std::to_string(config_.fps),
+        "--framerate", std::to_string(requested_fps),
         "--exposure", config_.exposure_mode,
         "--shutter", std::to_string(config_.shutter_us),
         "--gain", std::to_string(config_.analogue_gain),

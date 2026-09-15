@@ -39,10 +39,26 @@ Renseigner `output_host` avec l'adresse réelle du VPS et `output_port=41234`
 Le script attribue le nom de la Pi à `camera.0.id` : garder des identifiants
 différents sur chaque Pi. La caméra est sélectionnée par `camera.0.device=csi:0`,
 à comparer avec `rpicam-hello --list-cameras`. Le modèle de configuration propose
-1280×720 à 10 images/s pour les Pi 4 ; Jean (Pi 5) est réglé à 20 images/s.
-`camera.0.fps` règle la cadence demandée à la caméra CSI. À 20 images/s demandées,
-le traitement mesuré sur Walid plafonnait autour de 11–12 images/s : une cadence
-de 10 évite de demander plus d'images que le détecteur ne peut en traiter.
+1280x720 avec `camera.0.limit_fps=false` (valeur par defaut) : demande de
+cadence maximale au capteur sur Pi 4 comme Pi 5. Le programme demande 1000
+images/s au pilote, qui ramene cette demande au maximum materiel disponible.
+Ce n'est pas une promesse de 1000 FPS. Les anciennes valeurs `camera.0.fps`
+(10, 20, 30...) sont ignorees tant que `camera.0.limit_fps` n'est pas active.
+Le deploiement du binaire suffit : aucune modification privilegiee des
+fichiers `/etc/pavois/pavois.conf` n'est necessaire pour retirer les limites.
+Pour limiter volontairement, utiliser `camera.0.limit_fps=true` et un
+`camera.0.fps` positif. La capture et la detection restent independantes.
+Les statistiques du rail distinguent FPS captures et FPS traites.
+
+Le pilote peut choisir un autre mode capteur a cadence maximale (recadrage ou
+resolution native). Verifier les intrinseques du rail avant de reutiliser une
+calibration. L'outil terrain utilise son mode fixe 1920x1080 ; ne pas reutiliser
+cette calibration pour un autre mode de capture.
+
+L'exposition automatique est le défaut (`camera.0.shutter_us=0`,
+`camera.0.analogue_gain=0`). Les valeurs positives verrouillent ces paramètres ;
+le précédent réglage 750 us / gain 4 peut sous-exposer le rail en intérieur.
+Les réglages manuels déjà présents dans la configuration restent prioritaires.
 
 Le script installe les dépendances, le compte de service `pavois` et le service
 systemd. Il autorise le compte de déploiement à remplacer le binaire et à

@@ -59,6 +59,24 @@ staged_binary=
 install -m 0755 "$repo_dir/scripts/pavois_imu_calib.py" "$install_dir/calib.py"
 install -m 0755 "$repo_dir/scripts/pavois_camera_calib.py" "$install_dir/camera-calib.py"
 
+# Units require root and are installed by setup_pi.sh. Refresh them when this
+# runner has broader passwordless sudo; older field runners safely continue
+# with binary-level CPU affinity until setup_pi.sh is run once again.
+if sudo -n install -o root -g root -m 0755 \
+    "$repo_dir/pavois++/deploy/pavois-performance.sh" \
+    /usr/local/sbin/pavois-performance 2>/dev/null && \
+   sudo -n install -o root -g root -m 0644 \
+    "$repo_dir/pavois++/deploy/pavois-performance.service" \
+    /etc/systemd/system/pavois-performance.service 2>/dev/null && \
+   sudo -n install -o root -g root -m 0644 \
+    "$repo_dir/pavois++/deploy/pavois.service" \
+    /etc/systemd/system/pavois.service 2>/dev/null; then
+  sudo -n systemctl daemon-reload
+  sudo -n systemctl enable --now pavois-performance.service
+else
+  echo "Performance unit unchanged (run setup_pi.sh once to install it)."
+fi
+
 if ! sudo -n systemctl restart pavois.service; then
   rollback_binary
   exit 1

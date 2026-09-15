@@ -1,0 +1,11 @@
+[Unit]
+Description=Pavois Raspberry Pi performance governor
+Before=pavois.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pavois-performance
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

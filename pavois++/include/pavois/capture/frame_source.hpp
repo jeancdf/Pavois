@@ -18,7 +18,7 @@ public:
 };
 
 // Picks a concrete source from the camera config:
-//   device starting with csi:N -> local rpicam-vid + FFmpeg
+//   device starting with csi:N -> native libcamera YUV420 luminance
 //   device starting with rtsp:// http:// https://  -> network (ffmpeg)
 //   device starting with replay:PATH  or a directory -> ReplaySource
 //   otherwise                                         -> V4L2Camera

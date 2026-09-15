@@ -25,6 +25,7 @@ add_library(pavois_core STATIC
     src/fusion/fusion_engine.cpp
     src/math/pose.cpp
     src/runtime/camera_worker.cpp
+    src/runtime/latest_frame_pump.cpp
     src/sensors/imu.cpp
     src/transport/event_bus.cpp
     src/transport/http_poster.cpp
@@ -32,6 +33,7 @@ add_library(pavois_core STATIC
     src/util/debug_sink.cpp
     src/util/jpeg_gray.cpp
     src/util/parallel_executor.cpp
+    src/util/thread_tuning.cpp
     src/v4l2_camera.cpp
 )
 
@@ -70,6 +72,11 @@ add_executable(pavois_csi_test tests/csi_capture.cpp)
 target_link_libraries(pavois_csi_test PRIVATE pavois_core)
 add_test(NAME pavois_csi_test COMMAND pavois_csi_test)
 set_tests_properties(pavois_csi_test PROPERTIES TIMEOUT 15)
+
+add_executable(pavois_latest_frame_test tests/latest_frame_pump.cpp)
+target_link_libraries(pavois_latest_frame_test PRIVATE pavois_core)
+add_test(NAME pavois_latest_frame_test COMMAND pavois_latest_frame_test)
+set_tests_properties(pavois_latest_frame_test PROPERTIES TIMEOUT 15)
 
 add_executable(pavois_selftest tests/selftest.cpp)
 target_link_libraries(pavois_selftest PRIVATE pavois_core)

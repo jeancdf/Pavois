@@ -7,7 +7,7 @@ Minimal C++ migration for PAVOIS.
 See [DEPLOYMENT_PI.md](DEPLOYMENT_PI.md) for local CSI capture, per-Pi
 configuration, systemd installation and automatic deployment from GitHub Actions.
 Set `camera.0.device=csi:0` to capture camera 0 locally through `rpicam-vid`
-using native YUV420. Capture requests maximum sensor speed by default, including
+and FFmpeg as an ordered grayscale stream. Capture requests maximum sensor speed by default, including
 on Pis whose existing configuration still contains an old FPS limit. Set
 `camera.0.limit_fps=true` with a positive `camera.0.fps` to opt into a limit. Full-frame
 detector passes use `processing_threads=3` by default.
@@ -99,11 +99,10 @@ Detector and fusion behaviour is tunable per camera / globally in
 - Output is a compact CSV-like track line, not JSON.
 - The Pi-side binary is only the acquisition + fusion stage; the VPS will do pattern recognition later.
 - If `output_host` and `output_port` are set, the same track line is also sent over UDP.
-- CSI capture uses libcamera's native YUV420 stream and keeps only the Y plane;
-  no per-frame MJPEG encode/decode is performed. Capture and detection are
-  decoupled with replace-latest buffers so overload costs frames, not latency.
-- Full-frame detector passes use persistent worker threads and ARM NEON kernels.
-  Preview resize/JPEG/HTTP runs asynchronously and does not stall detection.
+- CSI capture uses the ordered MJPEG-to-grayscale path used before the 15
+  September performance change. Detection consumes every decoded frame in order.
+- Auto exposure and white balance settle before the detector learns its initial
+  background. Set `camera.N.startup_calibration_ms=0` to disable that pause.
 - If `camera.N.device` starts with `rtsp://`, `http://`, or `https://`, the app uses `ffmpeg` to decode the stream into grayscale frames.
 - That means the machine running `pavois_detect` needs `ffmpeg` installed when you use iPhone network streams.
 

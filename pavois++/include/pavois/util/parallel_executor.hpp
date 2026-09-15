@@ -18,7 +18,7 @@ class ParallelExecutor {
 public:
     using RangeTask = std::function<void(std::size_t, std::size_t)>;
 
-    explicit ParallelExecutor(int thread_count, int first_worker_cpu = -1);
+    explicit ParallelExecutor(int thread_count);
     ~ParallelExecutor();
 
     ParallelExecutor(const ParallelExecutor&) = delete;
@@ -34,7 +34,6 @@ private:
         std::size_t worker_index) const;
 
     int thread_count_ = 1;
-    int first_worker_cpu_ = -1;
     std::vector<std::thread> workers_;
 
     // Only one image pass uses this compact executor at a time. A process-wide

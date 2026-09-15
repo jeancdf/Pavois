@@ -1099,7 +1099,11 @@ void test_imu() {
         file << "imu.i2c_retry_max_ms=3000\n";
         file << "imu.heading_sign=-1\n";
         file << "processing_threads=7\n";
+        file << "camera.0.limit_fps=true\n";
+        file << "camera.0.fps=60\n";
+        file << "camera.0.startup_calibration_ms=1750\n";
         file << "camera.0.exposure_mode=sport\n";
+        file << "camera.0.manual_exposure=true\n";
         file << "camera.0.shutter_us=600\n";
         file << "camera.0.analogue_gain=5.5\n";
         file << "camera.0.awb_red_gain=1.2\n";
@@ -1113,7 +1117,13 @@ void test_imu() {
     check(loaded.imu_i2c_retry_max_ms == 3000, "config i2c retry max");
     check(loaded.imu_heading_sign == -1.0, "config heading sign");
     check(loaded.processing_threads == 7, "config processing thread count");
+    check(loaded.cameras[0].limit_fps, "config explicit FPS limit");
+    check(loaded.cameras[0].fps == 60, "config limited FPS value");
+    check(loaded.cameras[0].startup_calibration_ms == 1750,
+          "config startup camera calibration time");
     check(loaded.cameras[0].exposure_mode == "sport", "config exposure mode");
+    check(loaded.cameras[0].manual_exposure,
+          "config explicit manual camera controls");
     check(loaded.cameras[0].shutter_us == 600, "config fixed shutter");
     check_near(loaded.cameras[0].analogue_gain, 5.5, 1e-9,
                "config fixed analogue gain");

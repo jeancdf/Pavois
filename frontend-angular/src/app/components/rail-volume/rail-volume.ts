@@ -75,19 +75,19 @@ export class RailVolume implements AfterViewInit, OnDestroy {
         0.05,
         40,
       );
-      camera.position.set(2.2, 2.4, 3.4);
+      camera.position.set(4.5, 4.5, 9.5);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(el.clientWidth, el.clientHeight);
       el.appendChild(renderer.domElement);
       const controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.set(0, 0.4, -1.4);
+      controls.target.set(0, 0.4, -4.0);
       controls.update();
       scene.add(new THREE.AmbientLight(0xffffff, 0.55));
       const sun = new THREE.DirectionalLight(0xffffff, 0.8);
       sun.position.set(2, 6, 3);
       scene.add(sun);
-      const grid = new THREE.GridHelper(8, 16, 0x1e3a5f, 0x132033);
+      const grid = new THREE.GridHelper(20, 40, 0x1e3a5f, 0x132033);
       scene.add(grid);
       const axes = new THREE.AxesHelper(0.6);
       scene.add(axes);

@@ -8,9 +8,9 @@ import { makeIntrinsics } from './fusion-geo';
 import { triangulate } from './fusion-triangulate';
 
 describe('rail-bench geometry', () => {
-  it('places tanel / jean / walid 3 pitches apart on a 1 m rig', () => {
-    expect(railPitchMm(1000)).toBeCloseTo(1000 / 7);
-    expect(adjacentBaselineM(1000)).toBeCloseTo(3 / 7);
+  it('places tanel / jean / walid 4 pitches apart on the extended rig', () => {
+    expect(railPitchMm()).toBeCloseTo(1000 / 7);
+    expect(adjacentBaselineM()).toBeCloseTo(4 / 7);
     const state = buildRailBenchState({ rangeM: 2.5, targetSizeM: 0.2 });
     expect(state.cameras.map((c) => c.id)).toEqual([
       'tanel',
@@ -18,8 +18,8 @@ describe('rail-bench geometry', () => {
       'walid',
     ]);
     expect(state.cameras[1]).toMatchObject({ x: 0, y: 0, z: 0 });
-    expect(state.cameras[0].x).toBeCloseTo(3 / 7);
-    expect(state.cameras[2].x).toBeCloseTo(-3 / 7);
+    expect(state.cameras[0].x).toBeCloseTo(4 / 7);
+    expect(state.cameras[2].x).toBeCloseTo(-4 / 7);
     expect(state.cameras[0].headingDeg).toBe(0);
     expect(state.cameras[0].elevationDeg).toBe(20);
   });

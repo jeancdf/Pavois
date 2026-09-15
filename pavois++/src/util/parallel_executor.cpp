@@ -1,14 +1,11 @@
 #include "pavois/util/parallel_executor.hpp"
 
-#include "pavois/util/thread_tuning.hpp"
-
 #include <algorithm>
 
 namespace pavois {
 
-ParallelExecutor::ParallelExecutor(int thread_count, int first_worker_cpu)
-    : thread_count_(std::clamp(thread_count, 1, 8)),
-      first_worker_cpu_(first_worker_cpu) {
+ParallelExecutor::ParallelExecutor(int thread_count)
+    : thread_count_(std::clamp(thread_count, 1, 8)) {
     workers_.reserve(static_cast<std::size_t>(thread_count_ - 1));
     for (int i = 1; i < thread_count_; ++i) {
         workers_.emplace_back(&ParallelExecutor::worker_loop, this,
@@ -77,10 +74,6 @@ void ParallelExecutor::for_each_range(std::size_t begin, std::size_t end,
 }
 
 void ParallelExecutor::worker_loop(std::size_t worker_index) {
-    if (first_worker_cpu_ >= 0) {
-        pin_current_thread(first_worker_cpu_ +
-                           static_cast<int>(worker_index) - 1);
-    }
     std::size_t seen_generation = 0;
     for (;;) {
         RangeTask task;

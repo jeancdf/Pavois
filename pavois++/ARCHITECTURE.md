@@ -72,12 +72,12 @@ Camera settings are loaded from `pavois++.conf`. Each camera can define:
 
 1. `main.cpp` loads `AppConfig` and starts one `CameraWorker` thread per enabled
    camera, plus a shared `FusionEngine`.
-2. Each worker opens a `FrameSource` (`make_frame_source`): native CSI YUV420
-   (the detector keeps the Y plane without JPEG/FFmpeg), an ffmpeg network
-   stream, V4L2, or a `ReplaySource`. A dedicated capture thread drains the
-   source into four reusable buffers. Detection consumes the newest completed
-   buffer and drops stale frames instead of accumulating latency. CSI frames
-   carry libcamera's sensor `FrameWallClock` timestamp.
+2. Each worker opens a `FrameSource` (`make_frame_source`): CSI through
+   `rpicam-vid` MJPEG and FFmpeg grayscale, an ffmpeg network stream, V4L2, or a
+   `ReplaySource`. Frames are consumed sequentially so temporal confirmation
+   and the centroid tracker see the complete ordered stream. CSI frames carry
+   libcamera's sensor `FrameWallClock` timestamp. Auto camera controls settle
+   before the detector learns its initial background.
 3. `MotionDetector` (`src/detection/motion_detector.cpp`) emits every valid
    blob as an `Observation`:
    - short temporal **background warm-up** (no baked-in ghosts),
@@ -88,11 +88,8 @@ Camera settings are loaded from `pavois++.conf`. Each camera can define:
    - blob scoring (area, fill, motion energy, temporal continuity),
    - **2D constant-velocity Kalman** on the centroid,
    - **M-of-N confirmation** before anything is emitted.
-   Full-frame passes use a persistent three-way executor. ARM builds also use
-   NEON for blur, residual and morphology kernels; connected-components uses
-   generation stamps instead of clearing a megapixel visited map every frame.
-   Capture, detector and helper threads are pinned to separate Pi cores by
-   default. Preview resize/JPEG/network work runs outside the detector thread.
+   Full-frame passes use the established persistent three-way executor and the
+   pre-15-September scalar residual/connected-component path.
 4. `FusionEngine` buffers a short history per camera and, once per fusion cycle:
    - **time-aligns** each camera's observation to a common instant
      (interpolating the pixel track),

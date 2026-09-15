@@ -4,17 +4,9 @@
 #include "pavois/util/parallel_executor.hpp"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cmath>
 #include <numeric>
-
-#if defined(__ARM_NEON) || defined(__ARM_NEON__)
-#include <arm_neon.h>
-#define PAVOIS_MOTION_HAS_NEON 1
-#else
-#define PAVOIS_MOTION_HAS_NEON 0
-#endif
 
 namespace pavois {
 namespace {
@@ -42,27 +34,20 @@ MotionDetector::MotionDetector(const CameraConfig& cfg,
 std::vector<MotionDetector::Blob> MotionDetector::connected_components(
     const std::vector<std::uint8_t>& mask, const std::vector<float>& diff) {
     std::vector<Blob> blobs;
-    if (cc_seen_.size() != mask.size()) {
-        cc_seen_.assign(mask.size(), 0);
-        cc_epoch_ = 1;
-    } else if (++cc_epoch_ == 0) {
-        std::fill(cc_seen_.begin(), cc_seen_.end(), 0);
-        cc_epoch_ = 1;
-    }
-    const std::uint32_t epoch = cc_epoch_;
+    cc_visited_.assign(mask.size(), 0);
     auto& stack = cc_stack_;
 
     for (int y = 0; y < h_; ++y) {
         for (int x = 0; x < w_; ++x) {
             const std::size_t s = static_cast<std::size_t>(y) * w_ + x;
-            if (!mask[s] || cc_seen_[s] == epoch) continue;
+            if (!mask[s] || cc_visited_[s]) continue;
 
             Blob b;
             b.x0 = b.x1 = x;
             b.y0 = b.y1 = y;
             stack.clear();
             stack.push_back(static_cast<int>(s));
-            cc_seen_[s] = epoch;
+            cc_visited_[s] = 1;
             double esum = 0.0;
             while (!stack.empty()) {
                 const int ci = stack.back();
@@ -84,8 +69,8 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
                 for (int ny = y0; ny <= y1; ++ny) {
                     for (int nx = x0; nx <= x1; ++nx) {
                         const std::size_t ni = static_cast<std::size_t>(ny) * w_ + nx;
-                        if (!mask[ni] || cc_seen_[ni] == epoch) continue;
-                        cc_seen_[ni] = epoch;
+                        if (!mask[ni] || cc_visited_[ni]) continue;
+                        cc_visited_[ni] = 1;
                         stack.push_back(static_cast<int>(ni));
                     }
                 }
@@ -151,44 +136,10 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Global brightness bias (exposure / white-balance drift): the mean signed
     // delta over the whole frame is dominated by the illumination shift, not by
     // the tiny target, so subtracting it makes the detector shift-invariant.
-    const int lanes = executor_ ? executor_->thread_count() : 1;
-    std::array<double, 8> bias_parts{};
-    const std::size_t lane_width =
-        (frame.size() + static_cast<std::size_t>(lanes) - 1) /
-        static_cast<std::size_t>(lanes);
-    for_each_range(executor_, 0, frame.size(),
-                   [&](std::size_t first, std::size_t last) {
-        double local = 0.0;
-        std::size_t i = first;
-#if PAVOIS_MOTION_HAS_NEON
-        float32x4_t sum4 = vdupq_n_f32(0.0f);
-        for (; i + 15 < last; i += 16) {
-            const uint8x16_t pixels = vld1q_u8(blur_.data() + i);
-            const uint16x8_t lo16 = vmovl_u8(vget_low_u8(pixels));
-            const uint16x8_t hi16 = vmovl_u8(vget_high_u8(pixels));
-            const float32x4_t p0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(lo16)));
-            const float32x4_t p1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(lo16)));
-            const float32x4_t p2 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(hi16)));
-            const float32x4_t p3 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(hi16)));
-            sum4 = vaddq_f32(sum4, vsubq_f32(p0, vld1q_f32(bg_.data() + i)));
-            sum4 = vaddq_f32(sum4, vsubq_f32(p1, vld1q_f32(bg_.data() + i + 4)));
-            sum4 = vaddq_f32(sum4, vsubq_f32(p2, vld1q_f32(bg_.data() + i + 8)));
-            sum4 = vaddq_f32(sum4, vsubq_f32(p3, vld1q_f32(bg_.data() + i + 12)));
-        }
-        float sums[4];
-        vst1q_f32(sums, sum4);
-        local += static_cast<double>(sums[0]) + sums[1] + sums[2] + sums[3];
-#endif
-        for (; i < last; ++i) {
-            local += static_cast<double>(blur_[i]) - bg_[i];
-        }
-        const std::size_t lane = std::min(
-            static_cast<std::size_t>(lanes - 1),
-            first / std::max<std::size_t>(1, lane_width));
-        bias_parts[lane] = local;
-    });
-    double bias = std::accumulate(
-        bias_parts.begin(), bias_parts.begin() + lanes, 0.0);
+    double bias = 0.0;
+    for (std::size_t i = 0; i < frame.size(); ++i) {
+        bias += static_cast<double>(blur_[i]) - bg_[i];
+    }
     bias /= static_cast<double>(frame.size());
 
     diff_.resize(frame.size());
@@ -198,37 +149,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     for_each_range(executor_, 0, frame.size(),
                    [&](std::size_t first, std::size_t last) {
         std::size_t local_hot = 0;
-        std::size_t i = first;
-#if PAVOIS_MOTION_HAS_NEON
-        const float32x4_t bias4 = vdupq_n_f32(static_cast<float>(bias));
-        for (; i + 15 < last; i += 16) {
-            const uint8x16_t pixels = vld1q_u8(blur_.data() + i);
-            const uint16x8_t lo16 = vmovl_u8(vget_low_u8(pixels));
-            const uint16x8_t hi16 = vmovl_u8(vget_high_u8(pixels));
-            const float32x4_t p0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(lo16)));
-            const float32x4_t p1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(lo16)));
-            const float32x4_t p2 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(hi16)));
-            const float32x4_t p3 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(hi16)));
-            vst1q_f32(diff_.data() + i,
-                       vabsq_f32(vsubq_f32(vsubq_f32(p0, vld1q_f32(bg_.data() + i)), bias4)));
-            vst1q_f32(diff_.data() + i + 4,
-                       vabsq_f32(vsubq_f32(vsubq_f32(p1, vld1q_f32(bg_.data() + i + 4)), bias4)));
-            vst1q_f32(diff_.data() + i + 8,
-                       vabsq_f32(vsubq_f32(vsubq_f32(p2, vld1q_f32(bg_.data() + i + 8)), bias4)));
-            vst1q_f32(diff_.data() + i + 12,
-                       vabsq_f32(vsubq_f32(vsubq_f32(p3, vld1q_f32(bg_.data() + i + 12)), bias4)));
-            for (std::size_t j = i; j < i + 16; ++j) {
-                const double threshold = base + cfg_.adaptive_k * noise_[j];
-                if (diff_[j] > threshold) {
-                    mask_[j] = 255;
-                    ++local_hot;
-                } else {
-                    mask_[j] = 0;
-                }
-            }
-        }
-#endif
-        for (; i < last; ++i) {
+        for (std::size_t i = first; i < last; ++i) {
             const float d = std::fabs(
                 (static_cast<float>(blur_[i]) - bg_[i]) -
                 static_cast<float>(bias));

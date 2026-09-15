@@ -7,12 +7,10 @@
 #include <deque>
 #include <sys/types.h>
 #include <string>
-#include <vector>
 
 namespace pavois {
 
-// Local CSI capture as native YUV420 through rpicam/libcamera. Only the Y
-// plane is retained, so there is no JPEG encode/decode or FFmpeg process.
+// Local CSI capture through rpicam-vid and FFmpeg, without a network stream.
 class CsiCamera final : public FrameSource {
 public:
     explicit CsiCamera(const CameraConfig& config);
@@ -33,7 +31,6 @@ private:
     std::string metadata_path_;
     std::string metadata_buffer_;
     std::deque<std::uint64_t> metadata_timestamps_;
-    std::vector<std::uint8_t> chroma_scratch_;
     std::string last_error_;
 };
 

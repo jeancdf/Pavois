@@ -47,6 +47,7 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "height") c.height = std::stoi(v);
         else if (f == "fps") c.fps = std::stoi(v);
         else if (f == "limit_fps") c.limit_fps = (v == "true" || v == "1");
+        else if (f == "startup_calibration_ms") c.startup_calibration_ms = std::stoi(v);
         else if (f == "frames") c.frames = std::stoi(v);
         else if (f == "enabled") c.enabled = parse_bool(v);
         else if (f == "diff_threshold") c.diff_threshold = static_cast<std::uint8_t>(std::stoi(v));
@@ -93,6 +94,7 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "reconnect_max_attempts") c.reconnect_max_attempts = std::stoi(v);
         else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
         else if (f == "exposure_mode") c.exposure_mode = v;
+        else if (f == "manual_exposure") c.manual_exposure = parse_bool(v);
         else if (f == "shutter_us") c.shutter_us = std::stoi(v);
         else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
         else if (f == "awb_red_gain") c.awb_red_gain = std::stod(v);
@@ -215,8 +217,9 @@ void finalize_camera(CameraConfig& c) {
     }
     c.shutter_us = c.shutter_us <= 0 ? 0 : std::clamp(c.shutter_us, 100, 1'000'000);
     c.analogue_gain = c.analogue_gain <= 0.0 ? 0.0 : std::clamp(c.analogue_gain, 1.0, 32.0);
-    c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);
-    c.awb_blue_gain = std::clamp(c.awb_blue_gain, 0.1, 8.0);
+    c.startup_calibration_ms = std::clamp(c.startup_calibration_ms, 0, 10'000);
+    c.awb_red_gain = c.awb_red_gain <= 0.0 ? 0.0 : std::clamp(c.awb_red_gain, 0.1, 8.0);
+    c.awb_blue_gain = c.awb_blue_gain <= 0.0 ? 0.0 : std::clamp(c.awb_blue_gain, 0.1, 8.0);
 }
 
 }  // namespace

@@ -195,22 +195,16 @@ class CameraSession:
         prefix = f"camera.{index}."
         width = int(config_number(values, prefix + "width", 1280))
         height = int(config_number(values, prefix + "height", 720))
-        fps = int(config_number(values, prefix + "fps", 0))
-        limit_fps = values.get(prefix + "limit_fps", "false").lower() in ("true", "1")
+        fps = int(config_number(values, prefix + "fps", 30))
         if (width, height) != (1280, 720):
             raise RuntimeError(
                 f"la calibration terrain attend le mode déployé 1280x720, pas {width}x{height}"
             )
 
         self.camera = Picamera2(index)
-        # Match the detector's maximum-rate request without dividing by zero.
-        if fps < 0:
-            raise RuntimeError("camera fps doit être positif ou 0 (maximum)")
-        # Geometric calibration deliberately uses a stable full-resolution
-        # sensor mode. The tracking service asks for the sensor maximum.
-        requested_fps = fps if limit_fps and fps > 0 else 30
-        frame_us = max(1, round(1_000_000 / requested_fps))
-        controls = {"FrameDurationLimits": (frame_us, frame_us)}
+        controls = {
+            "FrameDurationLimits": (round(1_000_000 / fps), round(1_000_000 / fps))
+        }
         configuration = self.camera.create_video_configuration(
             main={"size": (width, height), "format": "RGB888"},
             sensor={"output_size": (1920, 1080), "bit_depth": 10},

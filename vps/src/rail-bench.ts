@@ -1,15 +1,15 @@
 /**
- * Layout of the extended V5 rail bench in metres, jean at the origin.
- * Three rail modules sit between each camera on a nine-module rig:
- * pitch = width/9, adjacent baseline = 4 pitches.
+ * Layout of the V5 rail bench in metres, jean at the origin.
+ * Two rail modules sit between each camera on a 1 m rig:
+ * pitch = width/7, adjacent baseline = 3 pitches.
  * Forward is +Y (heading 0). Elevation matches the V2 mount.
  */
 
 export const RAIL_CAMERA_IDS = ['tanel', 'jean', 'walid'] as const;
 export type RailCameraId = (typeof RAIL_CAMERA_IDS)[number];
 
-export const DEFAULT_RIG_WIDTH_MM = 9000 / 7;
-export const DEFAULT_RANGE_M = 5;
+export const DEFAULT_RIG_WIDTH_MM = 1000;
+export const DEFAULT_RANGE_M = 2.5;
 export const DEFAULT_TARGET_SIZE_M = 0.2;
 export const DEFAULT_HOVER_M = 0.4;
 export const DEFAULT_HEADING_DEG = 0;
@@ -55,13 +55,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function railPitchMm(rigWidthMm = DEFAULT_RIG_WIDTH_MM): number {
-  return rigWidthMm / 9;
+  return rigWidthMm / 7;
 }
 
 export function adjacentBaselineM(
   rigWidthMm = DEFAULT_RIG_WIDTH_MM,
 ): number {
-  return (4 * railPitchMm(rigWidthMm)) / 1000;
+  return (3 * railPitchMm(rigWidthMm)) / 1000;
 }
 
 export function expectedTarget(
@@ -99,8 +99,8 @@ export function buildRailBenchState(
 ): RailBenchState {
   const rigWidthMm = clamp(
     options.rigWidthMm ?? DEFAULT_RIG_WIDTH_MM,
-    1080,
-    1350,
+    840,
+    1050,
   );
   const rangeM = clamp(options.rangeM ?? DEFAULT_RANGE_M, 0.5, 20);
   const targetSizeM = clamp(

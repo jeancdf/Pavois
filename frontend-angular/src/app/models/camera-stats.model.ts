@@ -4,9 +4,5 @@ export interface CameraStats {
   fps: number;
   frameIndex: number;
   timestamp: number;
-  captureFps?: number;
-  droppedFrames?: number;
-  detectorMs?: number;
-  temperatureC?: number;
   receivedAt: number;
 }

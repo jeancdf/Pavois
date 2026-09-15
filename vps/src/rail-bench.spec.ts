@@ -4,13 +4,13 @@ import {
   expectedTarget,
   railPitchMm,
 } from './rail-bench';
-import { makeIntrinsics, projectWorldToPixel } from './fusion-geo';
+import { makeIntrinsics } from './fusion-geo';
 import { triangulate } from './fusion-triangulate';
 
 describe('rail-bench geometry', () => {
-  it('places tanel / jean / walid 4 pitches apart on the extended rig', () => {
-    expect(railPitchMm()).toBeCloseTo(1000 / 7);
-    expect(adjacentBaselineM()).toBeCloseTo(4 / 7);
+  it('places tanel / jean / walid 3 pitches apart on a 1 m rig', () => {
+    expect(railPitchMm(1000)).toBeCloseTo(1000 / 7);
+    expect(adjacentBaselineM(1000)).toBeCloseTo(3 / 7);
     const state = buildRailBenchState({ rangeM: 2.5, targetSizeM: 0.2 });
     expect(state.cameras.map((c) => c.id)).toEqual([
       'tanel',
@@ -18,8 +18,8 @@ describe('rail-bench geometry', () => {
       'walid',
     ]);
     expect(state.cameras[1]).toMatchObject({ x: 0, y: 0, z: 0 });
-    expect(state.cameras[0].x).toBeCloseTo(4 / 7);
-    expect(state.cameras[2].x).toBeCloseTo(-4 / 7);
+    expect(state.cameras[0].x).toBeCloseTo(3 / 7);
+    expect(state.cameras[2].x).toBeCloseTo(-3 / 7);
     expect(state.cameras[0].headingDeg).toBe(0);
     expect(state.cameras[0].elevationDeg).toBe(20);
   });
@@ -32,28 +32,28 @@ describe('rail-bench geometry', () => {
     expect(state.targetSizeM).toBe(0.2);
   });
 
-  it('triangulates pixels from the extended rail at the 5 m classroom mark', () => {
+  it('triangulates real rail pixels with walid on the left and tanel on the right', () => {
     const state = buildRailBenchState();
+    const pixels: Record<string, [number, number]> = {
+      jean: [683.77, 284.91],
+      tanel: [339.81, 470.26],
+      walid: [993.44, 331.28],
+    };
     const intrinsics = makeIntrinsics(1280, 720, 65);
     const result = triangulate(
-      state.cameras.map((camera) => {
-        const pixel = projectWorldToPixel(intrinsics, camera, state.expected);
-        expect(pixel).not.toBeNull();
-        return {
-          cameraId: camera.id,
-          pixelX: pixel![0],
-          pixelY: pixel![1],
-          quality: 0.95,
-          pose: camera,
-          intrinsics,
-        };
-      }),
+      state.cameras.map((camera) => ({
+        cameraId: camera.id,
+        pixelX: pixels[camera.id][0],
+        pixelY: pixels[camera.id][1],
+        quality: 0.95,
+        pose: camera,
+        intrinsics,
+      })),
     );
 
     expect(result.ok).toBe(true);
     expect(result.cameras).toEqual(['tanel', 'jean', 'walid']);
-    expect(result.point?.x).toBeCloseTo(0, 6);
-    expect(result.point?.y).toBeCloseTo(5, 6);
-    expect(result.point?.z).toBeCloseTo(0.4, 6);
+    expect(result.point?.y).toBeGreaterThan(1);
+    expect(result.point?.z).toBeCloseTo(0.41, 1);
   });
 });

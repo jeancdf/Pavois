@@ -72,14 +72,12 @@ Camera settings are loaded from `pavois++.conf`. Each camera can define:
 
 1. `main.cpp` loads `AppConfig` and starts one `CameraWorker` thread per enabled
    camera, plus a shared `FusionEngine`.
-2. Each worker opens a `FrameSource` (`make_frame_source`): CSI through
-   `rpicam-vid` MJPEG and FFmpeg grayscale, an ffmpeg network stream, V4L2, or a
-   `ReplaySource`. Frames are consumed sequentially so temporal confirmation
-   and the centroid tracker see the complete ordered stream. CSI frames carry
-   libcamera's sensor `FrameWallClock` timestamp. Auto camera controls settle
-   before the detector learns its initial background.
-3. `MotionDetector` (`src/detection/motion_detector.cpp`) emits every valid
-   blob as an `Observation`:
+2. Each worker opens a `FrameSource` (`make_frame_source`): V4L2, an ffmpeg
+   network stream (low-latency flags, backlog drop, auto-reconnect), or a
+   `ReplaySource` (directory of `.pgm` frames) for offline testing. Every frame
+   carries a `captured_us` timestamp stamped at read time.
+3. `MotionDetector` (`src/detection/motion_detector.cpp`) turns a frame into at
+   most one `Observation`:
    - short temporal **background warm-up** (no baked-in ghosts),
    - box blur, global-brightness-bias removal (exposure/white-balance drift),
    - **running-average background** + per-pixel adaptive threshold,
@@ -88,8 +86,6 @@ Camera settings are loaded from `pavois++.conf`. Each camera can define:
    - blob scoring (area, fill, motion energy, temporal continuity),
    - **2D constant-velocity Kalman** on the centroid,
    - **M-of-N confirmation** before anything is emitted.
-   Full-frame passes use the established persistent three-way executor and the
-   pre-15-September scalar residual/connected-component path.
 4. `FusionEngine` buffers a short history per camera and, once per fusion cycle:
    - **time-aligns** each camera's observation to a common instant
      (interpolating the pixel track),

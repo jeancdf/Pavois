@@ -101,8 +101,8 @@ bool CsiCamera::open() {
     const std::string index = config_.device.substr(4);  // csi:N
     if (index.empty() || index.size() > 3 ||
         !std::all_of(index.begin(), index.end(), [](char c) { return c >= '0' && c <= '9'; }) ||
-        config_.width <= 0 || config_.height <= 0 || config_.fps < 0) {
-        last_error_ = "CSI capture requires csi:N, positive width/height and fps >= 0";
+        config_.width <= 0 || config_.height <= 0 || config_.fps <= 0) {
+        last_error_ = "CSI capture requires csi:N and positive width, height and fps";
         return false;
     }
 
@@ -131,26 +131,17 @@ bool CsiCamera::open() {
 
     // MJPEG carries dimensions and avoids assuming libcamera's raw buffer stride.
     // Both processes run locally; FFmpeg produces tightly packed grayscale frames.
-    const int requested_fps =
-        config_.limit_fps && config_.fps > 0 ? config_.fps : 1000;
     std::ostringstream cmd;
     cmd << "rpicam-vid --camera " << index
         << " --timeout 0 --nopreview --codec mjpeg --quality 80"
         << " --width " << config_.width << " --height " << config_.height
-        << " --framerate " << requested_fps
-        << " --exposure " << config_.exposure_mode;
-    if (config_.manual_exposure && config_.shutter_us > 0) {
-        cmd << " --shutter " << config_.shutter_us;
-    }
-    if (config_.manual_exposure && config_.analogue_gain > 0.0) {
-        cmd << " --gain " << config_.analogue_gain;
-    }
-    if (config_.manual_exposure && config_.awb_red_gain > 0.0 &&
-        config_.awb_blue_gain > 0.0) {
-        cmd << " --awb custom --awbgains " << config_.awb_red_gain << ','
-            << config_.awb_blue_gain;
-    }
-    cmd << " --metadata " << metadata_path_ << " --metadata-format txt"
+        << " --framerate " << config_.fps
+        << " --exposure " << config_.exposure_mode
+        << " --shutter " << config_.shutter_us
+        << " --gain " << config_.analogue_gain
+        << " --awb custom --awbgains " << config_.awb_red_gain << ','
+        << config_.awb_blue_gain
+        << " --metadata " << metadata_path_ << " --metadata-format txt"
         << " --output -"
         << " | ffmpeg -nostdin -loglevel error -threads 1 -f mjpeg -i pipe:0"
         << " -an -sn -vf scale=" << config_.width << ':' << config_.height << ",format=gray"

@@ -234,26 +234,11 @@ void CameraWorker::operator()() {
         return;
     }
 
-    GrayFrame frame;
-    if (cfg_.startup_calibration_ms > 0) {
-        log_line("camera " + cfg_.id + " auto calibration " +
-                 std::to_string(cfg_.startup_calibration_ms) + " ms");
-        const auto deadline = std::chrono::steady_clock::now() +
-                              std::chrono::milliseconds(cfg_.startup_calibration_ms);
-        do {
-            if (!source->read_frame(frame)) {
-                log_line("camera " + cfg_.id + " calibration read failed: " +
-                         source->last_error());
-                stream_attitude_only(imu_.get(), pose);
-                return;
-            }
-        } while (std::chrono::steady_clock::now() < deadline);
-    }
-
     MotionDetector detector(cfg_, processing_executor_.get());
     DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
     detector.set_debug(debug.active());
 
+    GrayFrame frame;
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;

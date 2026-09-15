@@ -96,4 +96,66 @@ describe('ClassificationService trigger', () => {
     expect(service.considerFusion(fuse, ['jean', 'tanel'], 1000)).toBeNull();
     service.onModuleDestroy();
   });
+
+  it('broadcasts the retained JPEG with its OpenCV boxes', () => {
+    const broadcast = jest.fn();
+    const service = new ClassificationService({ broadcast } as never);
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const vote: ClassificationVote = {
+      cameraId: 'jean',
+      label: 'drone',
+      confidence: 0.8,
+      imageWidth: 1280,
+      imageHeight: 720,
+      boxes: [
+        {
+          label: 'drone',
+          confidence: 0.8,
+          x: 100,
+          y: 50,
+          width: 80,
+          height: 60,
+        },
+      ],
+    };
+    (service as any).broadcastReview(
+      {
+        trigger: {
+          requestId: 'request-1',
+          cameraIds: ['jean', 'tanel', 'walid'],
+          expiresAt: Date.now() + 1000,
+        },
+        captures: new Map([
+          [
+            'jean',
+            {
+              meta: {
+                requestId: 'request-1',
+                cameraId: 'jean',
+                capturedUs: 1,
+                frameId: 2,
+              },
+              jpeg,
+            },
+          ],
+        ]),
+      },
+      [vote],
+    );
+    expect(broadcast).toHaveBeenCalledWith(
+      'classification_review',
+      expect.objectContaining({
+        requestId: 'request-1',
+        images: [
+          expect.objectContaining({
+            cameraId: 'jean',
+            jpegBase64: jpeg.toString('base64'),
+            width: 1280,
+            height: 720,
+            vote,
+          }),
+        ],
+      }),
+    );
+  });
 });

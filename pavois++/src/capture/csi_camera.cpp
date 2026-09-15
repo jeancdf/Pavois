@@ -20,7 +20,7 @@ namespace pavois {
 CsiCamera::CsiCamera(const CameraConfig& config) : config_(config) {}
 
 CsiCamera::~CsiCamera() {
-    // Stop the local libcamera producer before closing its output pipe.
+    // Stop both local producers before closing their output pipe.
     if (process_group_ > 0) ::kill(-process_group_, SIGTERM);
     if (pipe_ != nullptr) std::fclose(pipe_);
     close_metadata();
@@ -57,7 +57,7 @@ void CsiCamera::drain_metadata() {
 
     // rpicam writes one text block per encoded frame. FrameWallClock is the
     // libcamera timestamp for the first exposed sensor row, expressed in Unix
-    // nanoseconds; order is identical to the YUV stream.
+    // nanoseconds; order is identical to the MJPEG stream.
     std::size_t newline = 0;
     while ((newline = metadata_buffer_.find('\n')) != std::string::npos) {
         std::string line = metadata_buffer_.substr(0, newline);
@@ -106,7 +106,7 @@ bool CsiCamera::open() {
         return false;
     }
 
-    // A FIFO carries per-frame libcamera metadata alongside the YUV stream.
+    // A FIFO carries per-frame libcamera metadata alongside the MJPEG stream.
     // Unlike save-pts this works on Pi 5, and FrameWallClock gives a common
     // NTP-disciplined Unix clock rather than a timestamp taken after decoding.
     char metadata_template[] = "/tmp/pavois-camera-meta.XXXXXX";
@@ -129,37 +129,32 @@ bool CsiCamera::open() {
         return false;
     }
 
-    // Ask libcamera for planar YUV420 and consume its Y plane directly. The
-    // previous MJPEG -> FFmpeg -> grayscale round-trip encoded and decoded all
-    // 30 frames every second even though the detector only needs luminance.
-    std::ostringstream awb_gains;
-    awb_gains << config_.awb_red_gain << ',' << config_.awb_blue_gain;
-    // rpicam's framerate=0 leaves default frame-duration controls in place;
-    // it does not request maximum speed. An above-hardware request lets the
-    // driver clamp to its fastest available mode (including OV5647 Pi 4/5).
-    const int requested_fps = config_.limit_fps && config_.fps > 0 ? config_.fps : 1000;
-    std::vector<std::string> arguments = {
-        "rpicam-vid",
-        "--camera", index,
-        "--timeout", "0",
-        "--nopreview",
-        "--codec", "yuv420",
-        "--width", std::to_string(config_.width),
-        "--height", std::to_string(config_.height),
-        "--framerate", std::to_string(requested_fps),
-        "--exposure", config_.exposure_mode,
-        "--shutter", std::to_string(config_.shutter_us),
-        "--gain", std::to_string(config_.analogue_gain),
-        "--awb", "custom",
-        "--awbgains", awb_gains.str(),
-        "--metadata", metadata_path_,
-        "--metadata-format", "txt",
-        "--output", "-",
-    };
-    std::vector<char*> argv;
-    argv.reserve(arguments.size() + 1);
-    for (auto& argument : arguments) argv.push_back(argument.data());
-    argv.push_back(nullptr);
+    // MJPEG carries dimensions and avoids assuming libcamera's raw buffer stride.
+    // Both processes run locally; FFmpeg produces tightly packed grayscale frames.
+    const int requested_fps =
+        config_.limit_fps && config_.fps > 0 ? config_.fps : 1000;
+    std::ostringstream cmd;
+    cmd << "rpicam-vid --camera " << index
+        << " --timeout 0 --nopreview --codec mjpeg --quality 80"
+        << " --width " << config_.width << " --height " << config_.height
+        << " --framerate " << requested_fps
+        << " --exposure " << config_.exposure_mode;
+    if (config_.manual_exposure && config_.shutter_us > 0) {
+        cmd << " --shutter " << config_.shutter_us;
+    }
+    if (config_.manual_exposure && config_.analogue_gain > 0.0) {
+        cmd << " --gain " << config_.analogue_gain;
+    }
+    if (config_.manual_exposure && config_.awb_red_gain > 0.0 &&
+        config_.awb_blue_gain > 0.0) {
+        cmd << " --awb custom --awbgains " << config_.awb_red_gain << ','
+            << config_.awb_blue_gain;
+    }
+    cmd << " --metadata " << metadata_path_ << " --metadata-format txt"
+        << " --output -"
+        << " | ffmpeg -nostdin -loglevel error -threads 1 -f mjpeg -i pipe:0"
+        << " -an -sn -vf scale=" << config_.width << ':' << config_.height << ",format=gray"
+        << " -threads 1 -f rawvideo -pix_fmt gray pipe:1";
     int fds[2];
     if (::pipe2(fds, O_CLOEXEC) < 0) {
         last_error_ = "CSI pipe: " + std::string(std::strerror(errno));
@@ -175,16 +170,17 @@ bool CsiCamera::open() {
     posix_spawnattr_init(&attr);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
     posix_spawnattr_setpgroup(&attr, 0);
-    const int rc = ::posix_spawnp(&process_group_, "rpicam-vid", &actions,
-                                  &attr, argv.data(), environ);
+    std::string command = cmd.str();
+    char shell[] = "/bin/sh", option[] = "-c";
+    char* argv[] = {shell, option, command.data(), nullptr};
+    const int rc = ::posix_spawn(&process_group_, shell, &actions, &attr, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attr);
     ::close(fds[1]);
     if (rc != 0) {
         ::close(fds[0]);
         process_group_ = -1;
-        last_error_ = "CSI rpicam-vid process: " +
-                      std::string(std::strerror(rc));
+        last_error_ = "CSI process: " + std::string(std::strerror(rc));
         close_metadata();
         return false;
     }
@@ -213,22 +209,7 @@ bool CsiCamera::read_frame(GrayFrame& out) {
         const std::size_t n = std::fread(out.pixels.data() + offset, 1,
                                        out.pixels.size() - offset, pipe_);
         if (n == 0) {
-            last_error_ = "CSI YUV stream ended; check rpicam-vid logs and camera availability";
-            return false;
-        }
-        offset += n;
-    }
-    // YUV420 carries one chroma byte per two luminance pixels. Read and
-    // discard those planes to keep the following frame boundary exact.
-    chroma_scratch_.resize(out.pixels.size() / 2);
-    offset = 0;
-    while (offset < chroma_scratch_.size()) {
-        const std::size_t n =
-            std::fread(chroma_scratch_.data() + offset, 1,
-                       chroma_scratch_.size() - offset, pipe_);
-        if (n == 0) {
-            last_error_ =
-                "CSI YUV stream ended inside chroma planes";
+            last_error_ = "CSI stream ended; check rpicam-vid/ffmpeg logs and camera availability";
             return false;
         }
         offset += n;

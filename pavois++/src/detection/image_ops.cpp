@@ -76,27 +76,7 @@ void box_blur(const std::vector<std::uint8_t>& src,
                 const std::size_t down = std::min<std::size_t>(
                                              static_cast<std::size_t>(height - 1), y + 1) *
                                          static_cast<std::size_t>(width);
-                int x = 0;
-#if PAVOIS_HAS_NEON
-                // For values <= 765, (value * 21846) >> 16 is exactly
-                // floor(value / 3), matching the scalar implementation.
-                const uint16x4_t divisor = vdup_n_u16(21846);
-                for (; x + 7 < width; x += 8) {
-                    const std::size_t xi = static_cast<std::size_t>(x);
-                    const uint16x8_t sum = vaddq_u16(
-                        vaddq_u16(vld1q_u16(acc.data() + up + xi),
-                                  vld1q_u16(acc.data() + row + xi)),
-                        vld1q_u16(acc.data() + down + xi));
-                    const uint32x4_t q0 = vshrq_n_u32(
-                        vmull_u16(vget_low_u16(sum), divisor), 16);
-                    const uint32x4_t q1 = vshrq_n_u32(
-                        vmull_u16(vget_high_u16(sum), divisor), 16);
-                    const uint16x8_t q16 = vcombine_u16(
-                        vmovn_u32(q0), vmovn_u32(q1));
-                    vst1_u8(out.data() + row + xi, vmovn_u16(q16));
-                }
-#endif
-                for (; x < width; ++x) {
+                for (int x = 0; x < width; ++x) {
                     const std::size_t xi = static_cast<std::size_t>(x);
                     out[row + xi] = static_cast<std::uint8_t>(
                         (acc[up + xi] + acc[row + xi] + acc[down + xi]) / 3);

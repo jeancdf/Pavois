@@ -47,18 +47,13 @@ private:
     bool apply_imu_sample(ImuReader* imu, CameraPose& pose,
                           std::string& calib_token);
     void stream_attitude_only(ImuReader* imu, CameraPose pose);
-    void maybe_send_preview(std::shared_ptr<const GrayFrame> frame,
-                            std::uint64_t now_us,
+    void maybe_send_preview(const GrayFrame& frame, std::uint64_t now_us,
                             std::uint64_t& last_preview_us);
     void maybe_emit_stats(std::uint64_t now_us, std::uint64_t frame_id,
                           std::uint64_t& window_start_us,
-                          std::uint64_t& window_frames,
-                          std::uint64_t captured_frames,
-                          std::uint64_t dropped_frames,
-                          std::uint64_t& window_captured,
-                          std::uint64_t& detector_time_us);
+                          std::uint64_t& window_frames);
     void send_classification_capture(
-        std::shared_ptr<const GrayFrame> frame,
+        const GrayFrame& frame,
         const DetectionResult& detection,
         const UdpSender::CaptureRequest& request);
 

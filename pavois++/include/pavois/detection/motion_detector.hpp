@@ -84,10 +84,7 @@ private:
     std::vector<float> diff_;
     std::vector<std::uint8_t> mask_;
     std::vector<std::uint8_t> fg_mask_;  // dilated, for slow background update
-    // Generation stamps avoid clearing a full-frame visited bitmap on every
-    // connected-components pass. Only foreground pixels are touched.
-    std::vector<std::uint32_t> cc_seen_;
-    std::uint32_t cc_epoch_ = 0;
+    std::vector<std::uint8_t> cc_visited_;
     std::vector<int> cc_stack_;
 
     KalmanCV centroid_kf_;

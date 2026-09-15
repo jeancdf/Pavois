@@ -206,7 +206,9 @@ class CameraSession:
         # Match the detector's maximum-rate request without dividing by zero.
         if fps < 0:
             raise RuntimeError("camera fps doit être positif ou 0 (maximum)")
-        requested_fps = fps if limit_fps and fps > 0 else 1000
+        # Geometric calibration deliberately uses a stable full-resolution
+        # sensor mode. The tracking service asks for the sensor maximum.
+        requested_fps = fps if limit_fps and fps > 0 else 30
         frame_us = max(1, round(1_000_000 / requested_fps))
         controls = {"FrameDurationLimits": (frame_us, frame_us)}
         configuration = self.camera.create_video_configuration(

@@ -14,6 +14,7 @@ struct CameraConfig {
     int height = 720;
     int fps = 0;  // CSI: requested rate only when limit_fps is enabled
     bool limit_fps = false;  // Also bypass legacy 10/20/30 FPS field configs
+    int startup_calibration_ms = 1500;  // let auto exposure/AWB settle before detection
     int frames = -1;
     bool enabled = true;
 
@@ -80,10 +81,11 @@ struct CameraConfig {
     // Zero shutter/gain lets auto exposure adapt to indoor lighting. Positive
     // values opt into manual exposure for a sufficiently illuminated scene.
     std::string exposure_mode = "sport";
+    bool manual_exposure = false;  // opt-in so legacy locked configs return to auto
     int shutter_us = 0;
     double analogue_gain = 0.0;
-    double awb_red_gain = 1.0;
-    double awb_blue_gain = 1.0;
+    double awb_red_gain = 0.0;
+    double awb_blue_gain = 0.0;
 };
 
 struct AppConfig {

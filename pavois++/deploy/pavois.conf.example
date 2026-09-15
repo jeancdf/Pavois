@@ -20,13 +20,15 @@ camera.0.height=720
 # Bypass old FPS values too. Set limit_fps=true and fps>0 to opt into a limit.
 camera.0.limit_fps=false
 camera.0.fps=0
+camera.0.startup_calibration_ms=1500
 camera.0.fov_deg=65.0
 # Auto exposure adapts to the rail's lighting. Positive shutter/gain lock it.
 camera.0.exposure_mode=sport
+camera.0.manual_exposure=false
 camera.0.shutter_us=0
 camera.0.analogue_gain=0
-camera.0.awb_red_gain=1.0
-camera.0.awb_blue_gain=1.0
+camera.0.awb_red_gain=0
+camera.0.awb_blue_gain=0
 # Low-latency test confirmation; all valid blobs are sent.
 camera.0.confirm_m=2
 camera.0.confirm_n=3

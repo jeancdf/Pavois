@@ -9,9 +9,9 @@ import {
 } from './rail-bench';
 
 describe('rail bench volume points', () => {
-  it('uses two rails between cameras on a 1 m rig', () => {
-    expect(railPitchMm(1000)).toBeCloseTo(1000 / 7);
-    expect(adjacentBaselineM(1000)).toBeCloseTo(3 / 7);
+  it('uses three rails between cameras on the extended nine-module rig', () => {
+    expect(railPitchMm()).toBeCloseTo(1000 / 7);
+    expect(adjacentBaselineM()).toBeCloseTo(4 / 7);
   });
 
   it('puts the 20 cm drone 2.5 m in front of jean', () => {

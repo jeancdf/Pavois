@@ -24,7 +24,7 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly rangeM = signal(DEFAULT_RANGE_M);
   readonly busy = signal(false);
   readonly cameraIds = RAIL_CAMERA_IDS;
-  readonly ranges = [2, 2.5, 3];
+  readonly ranges = [3, 4, 5, 6, 8];
 
   readonly bench = this.realtime.railBench;
   readonly estimated = computed<Vec3m | null>(() => {

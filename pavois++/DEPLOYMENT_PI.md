@@ -47,18 +47,19 @@ Ce n'est pas une promesse de 1000 FPS. Les anciennes valeurs `camera.0.fps`
 Le deploiement du binaire suffit : aucune modification privilegiee des
 fichiers `/etc/pavois/pavois.conf` n'est necessaire pour retirer les limites.
 Pour limiter volontairement, utiliser `camera.0.limit_fps=true` et un
-`camera.0.fps` positif. La capture et la detection restent independantes.
-Les statistiques du rail distinguent FPS captures et FPS traites.
+`camera.0.fps` positif. Le flux MJPEG est décodé puis traité dans l'ordre,
+comme avant les optimisations du 15 septembre au matin.
 
 Le pilote peut choisir un autre mode capteur a cadence maximale (recadrage ou
 resolution native). Verifier les intrinseques du rail avant de reutiliser une
 calibration. L'outil terrain utilise son mode fixe 1920x1080 ; ne pas reutiliser
 cette calibration pour un autre mode de capture.
 
-L'exposition automatique est le défaut (`camera.0.shutter_us=0`,
-`camera.0.analogue_gain=0`). Les valeurs positives verrouillent ces paramètres ;
-le précédent réglage 750 us / gain 4 peut sous-exposer le rail en intérieur.
-Les réglages manuels déjà présents dans la configuration restent prioritaires.
+Au démarrage, la Pi laisse l'exposition et la balance des blancs automatiques
+se stabiliser pendant `camera.0.startup_calibration_ms=1500`, puis le détecteur
+apprend son fond. `camera.0.manual_exposure=false` ignore aussi les anciens
+réglages 750 us / gain 4. Pour les réactiver volontairement, passer cette option
+à `true` et fournir le shutter, le gain et les deux gains AWB.
 
 Le script installe les dépendances, le compte de service `pavois` et le service
 systemd. Il autorise le compte de déploiement à remplacer le binaire et à

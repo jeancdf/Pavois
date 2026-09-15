@@ -197,8 +197,8 @@ int run(int argc, char** argv) {
     // would CONFIG→NDOF once per camera and reset fusion on the others.
     std::shared_ptr<ImuReader> imu_reader = open_imu(config);
 
-    auto processing_executor = std::make_shared<ParallelExecutor>(
-        config.processing_threads, config.pin_threads ? 2 : -1);
+    auto processing_executor =
+        std::make_shared<ParallelExecutor>(config.processing_threads);
     std::cerr << "Detector processing threads: "
               << processing_executor->thread_count() << "\n";
 

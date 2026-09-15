@@ -155,6 +155,134 @@
   margin: 4px 0 0;
 }
 
+.classification-review {
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 5px;
+}
+
+.classification-review summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #93c5fd;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  user-select: none;
+}
+
+.review-count {
+  color: #64748b;
+  letter-spacing: normal;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.review-card {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+}
+
+.review-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.review-card strong {
+  color: #60a5fa;
+}
+
+.vote {
+  color: #f59e0b;
+}
+
+.vote-drone {
+  color: #10b981;
+}
+
+.vote-human {
+  color: #f87171;
+}
+
+.review-image {
+  position: relative;
+  overflow: hidden;
+  background: #020617;
+  line-height: 0;
+}
+
+.review-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.detection-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #f59e0b;
+  pointer-events: none;
+}
+
+.detection-box b {
+  position: absolute;
+  left: -2px;
+  bottom: 100%;
+  padding: 2px 4px;
+  color: #020617;
+  background: #f59e0b;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.box-drone {
+  border-color: #10b981;
+}
+
+.box-drone b {
+  background: #10b981;
+}
+
+.box-human {
+  border-color: #f87171;
+}
+
+.box-human b {
+  background: #f87171;
+}
+
+.review-card figcaption,
+.review-empty {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.review-empty {
+  padding: 0 12px 12px;
+}
+
 @media (max-width: 900px) {
   .rail-body {
     flex-direction: column;
@@ -162,5 +290,9 @@
 
   .pi-panel {
     width: 100%;
+  }
+
+  .review-grid {
+    grid-template-columns: 1fr;
   }
 }

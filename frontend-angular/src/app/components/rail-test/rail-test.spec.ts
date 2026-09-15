@@ -10,6 +10,7 @@ import { RealtimeService } from '../../services/realtime.service';
 import { NotificationService } from '../../services/notification.service';
 import { buildRailBenchState } from '../../config/rail-bench';
 import type { FuseUpdate } from '../../models/fuse-update.model';
+import type { ClassificationReview } from '../../models/target-classification.model';
 
 @Component({
   selector: 'app-rail-volume',
@@ -50,6 +51,7 @@ describe('RailTestPage', () => {
     jean: Date.now(),
   });
   const targetClassification = signal(null);
+  const classificationReview = signal<ClassificationReview | null>(null);
   const stats = {
     jean: {
       type: 'camera_stats' as const,
@@ -62,6 +64,7 @@ describe('RailTestPage', () => {
   };
 
   beforeEach(async () => {
+    classificationReview.set(null);
     await TestBed.configureTestingModule({
       imports: [RailTestPage],
       providers: [
@@ -82,6 +85,7 @@ describe('RailTestPage', () => {
             railBench,
             fuseUpdate,
             targetClassification,
+            classificationReview,
             lastDetectionAt,
             statsOf: (id: string) => stats[id as keyof typeof stats],
             previewOf: () => undefined,
@@ -95,6 +99,51 @@ describe('RailTestPage', () => {
         add: { imports: [RailVolumeStub] },
       })
       .compileComponents();
+  });
+
+  it('shows the last AI image and its scaled detection box', () => {
+    classificationReview.set({
+      type: 'classification_review',
+      requestId: 'request-1',
+      createdAt: Date.now(),
+      images: [
+        {
+          cameraId: 'jean',
+          mime: 'image/jpeg',
+          jpegBase64: '/9j/2Q==',
+          capturedUs: 1,
+          frameId: 2,
+          width: 100,
+          height: 50,
+          vote: {
+            cameraId: 'jean',
+            label: 'drone',
+            confidence: 0.8,
+            reason: 'non_human_sharp_motion',
+            boxes: [
+              {
+                label: 'drone',
+                confidence: 0.8,
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 10,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(RailTestPage);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Dernières photos IA');
+    expect(root.textContent).toContain('drone 80%');
+    const box = root.querySelector<HTMLElement>('.detection-box');
+    expect(box?.style.left).toBe('10%');
+    expect(box?.style.top).toBe('10%');
+    expect(box?.style.width).toBe('20%');
+    expect(box?.style.height).toBe('20%');
   });
 
   it('shows Pi fps and the fused target error', async () => {

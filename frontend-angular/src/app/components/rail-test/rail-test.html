@@ -61,4 +61,49 @@
       <p class="hint">Le FPS est le rythme réel de capture, pas la miniature à 2 img/s.</p>
     </aside>
   </div>
+
+  <details class="classification-review">
+    <summary>
+      <span>Dernières photos IA</span>
+      <span class="review-count">{{ review()?.images?.length ?? 0 }}/3</span>
+    </summary>
+
+    @if (review(); as currentReview) {
+      <div class="review-grid">
+        @for (image of currentReview.images; track image.cameraId) {
+          <figure class="review-card">
+            <header>
+              <strong>{{ image.cameraId }}</strong>
+              <span
+                class="vote"
+                [class.vote-drone]="image.vote?.label === 'drone'"
+                [class.vote-human]="image.vote?.label === 'human'"
+              >
+                {{ voteLabel(image.vote) }}
+              </span>
+            </header>
+            <div class="review-image">
+              <img [src]="imageSrc(image)" [alt]="'Capture IA ' + image.cameraId" />
+              @for (box of image.vote?.boxes ?? []; track $index) {
+                <span
+                  class="detection-box"
+                  [class.box-drone]="box.label === 'drone'"
+                  [class.box-human]="box.label === 'human'"
+                  [style.left.%]="(box.x * 100) / image.width"
+                  [style.top.%]="(box.y * 100) / image.height"
+                  [style.width.%]="(box.width * 100) / image.width"
+                  [style.height.%]="(box.height * 100) / image.height"
+                >
+                  <b>{{ box.label }} {{ box.confidence * 100 | number: '1.0-0' }}%</b>
+                </span>
+              }
+            </div>
+            <figcaption>{{ reasonLabel(image.vote?.reason) }}</figcaption>
+          </figure>
+        }
+      </div>
+    } @else {
+      <p class="review-empty">Les trois images apparaîtront après la prochaine classification.</p>
+    }
+  </details>
 </section>

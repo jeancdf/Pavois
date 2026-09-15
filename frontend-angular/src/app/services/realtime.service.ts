@@ -11,7 +11,7 @@ import { CameraStats } from '../models/camera-stats.model';
 import { FuseUpdate } from '../models/fuse-update.model';
 import { RailBenchState } from '../config/rail-bench';
 import { AlertEvent } from '../models/alert.model';
-import { TargetClassification } from '../models/target-classification.model';
+import { ClassificationReview, TargetClassification } from '../models/target-classification.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -27,6 +27,7 @@ export class RealtimeService implements OnDestroy {
   readonly statsByCamera = signal<Record<string, CameraStats>>({});
   readonly fuseUpdate = signal<FuseUpdate | null>(null);
   readonly targetClassification = signal<TargetClassification | null>(null);
+  readonly classificationReview = signal<ClassificationReview | null>(null);
   readonly railBench = signal<RailBenchState | null>(null);
   readonly lastDetectionAt = signal<Record<string, number>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
@@ -123,6 +124,9 @@ export class RealtimeService implements OnDestroy {
             break;
           case 'target_classification':
             this.targetClassification.set(payload.data as TargetClassification);
+            break;
+          case 'classification_review':
+            this.classificationReview.set(payload.data as ClassificationReview);
             break;
           case 'rail_bench': {
             const benchPayload = payload.data as {

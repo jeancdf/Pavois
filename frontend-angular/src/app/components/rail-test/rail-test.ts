@@ -1,13 +1,18 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { RailVolume } from '../rail-volume/rail-volume';
 import { NotificationService } from '../../services/notification.service';
 import { RailBenchService } from '../../services/rail-bench.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { DEFAULT_RANGE_M, RAIL_CAMERA_IDS, distanceM, type Vec3m } from '../../config/rail-bench';
+import type {
+  ClassificationReviewImage,
+  ClassificationVote,
+} from '../../models/target-classification.model';
 
 @Component({
   selector: 'app-rail-test',
-  imports: [RailVolume],
+  imports: [RailVolume, DecimalPipe],
   templateUrl: './rail-test.html',
   styleUrl: './rail-test.css',
 })
@@ -34,6 +39,7 @@ export class RailTestPage implements OnInit, OnDestroy {
     return track ? { x: track.x, y: track.y, z: track.z } : null;
   });
   readonly seeing = computed(() => this.realtime.fuseUpdate()?.lastFuse?.cameras ?? []);
+  readonly review = this.realtime.classificationReview;
   readonly classificationText = computed(() => {
     const classification = this.realtime.targetClassification();
     if (!classification) return 'en attente';
@@ -118,6 +124,33 @@ export class RailTestPage implements OnInit, OnDestroy {
     if (!preview) return 'hors ligne';
     const sec = Math.max(0, (this.now() - preview.receivedAt) / 1000);
     return sec < 2 ? 'live' : `${sec.toFixed(1)} s`;
+  }
+
+  imageSrc(image: ClassificationReviewImage): string {
+    return `data:${image.mime};base64,${image.jpegBase64}`;
+  }
+
+  voteLabel(vote: ClassificationVote | null): string {
+    if (!vote) return 'pas de verdict';
+    const label = vote.label === 'human' ? 'humain' : vote.label === 'drone' ? 'drone' : 'inconnu';
+    return `${label} ${Math.round(vote.confidence * 100)}%`;
+  }
+
+  reasonLabel(reason: string | undefined): string {
+    switch (reason) {
+      case 'hog_person':
+        return 'silhouette humaine';
+      case 'face':
+        return 'visage détecté';
+      case 'non_human_sharp_motion':
+        return 'objet mobile net';
+      case 'motion_roi_blurry':
+        return 'objet trop flou';
+      case 'motion_roi_missing':
+        return 'aucune zone exploitable';
+      default:
+        return 'analyse indisponible';
+    }
   }
 
   ngOnDestroy(): void {

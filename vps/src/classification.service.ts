@@ -6,6 +6,7 @@ import { EventsGateway } from './events.gateway';
 import type {
   CaptureTrigger,
   ClassificationCaptureMeta,
+  ClassificationReview,
   ClassificationVote,
   TargetClassification,
   TargetLabel,
@@ -79,7 +80,10 @@ export class ClassificationService implements OnModuleDestroy {
           ...this.state,
           cameras: [...this.state.cameras],
           receivedCameras: [...this.state.receivedCameras],
-          votes: this.state.votes.map((vote) => ({ ...vote })),
+          votes: this.state.votes.map((vote) => ({
+            ...vote,
+            boxes: vote.boxes?.map((box) => ({ ...box })),
+          })),
         }
       : null;
   }
@@ -170,10 +174,10 @@ export class ClassificationService implements OnModuleDestroy {
     try {
       const votes = await this.runOpenCv([...session.captures.values()]);
       const result = voteClassifications(votes);
-      this.complete(result.label, result.confidence, votes);
+      this.complete(result.label, result.confidence, votes, session);
     } catch (error) {
       console.error('[CLASSIFICATION] OpenCV failed:', error);
-      this.complete('unknown', 0, []);
+      this.complete('unknown', 0, [], session);
     }
   }
 
@@ -226,15 +230,17 @@ export class ClassificationService implements OnModuleDestroy {
 
   private finishUnknown(requestId: string): void {
     if (!this.active || this.active.trigger.requestId !== requestId) return;
-    clearTimeout(this.active.timer);
+    const session = this.active;
+    clearTimeout(session.timer);
     this.active = null;
-    this.complete('unknown', 0, []);
+    this.complete('unknown', 0, [], session);
   }
 
   private complete(
     label: TargetLabel,
     confidence: number,
     votes: ClassificationVote[],
+    session: Session,
   ): void {
     if (!this.state) return;
     this.state = {
@@ -249,6 +255,34 @@ export class ClassificationService implements OnModuleDestroy {
       `[CLASSIFICATION] ${this.state.requestId} => ${label} (${confidence.toFixed(2)})`,
     );
     this.broadcast();
+    this.broadcastReview(session, votes);
+  }
+
+  private broadcastReview(session: Session, votes: ClassificationVote[]): void {
+    if (session.captures.size === 0) return;
+    const review: ClassificationReview = {
+      type: 'classification_review',
+      requestId: session.trigger.requestId,
+      createdAt: Date.now(),
+      images: session.trigger.cameraIds.flatMap((cameraId) => {
+        const capture = session.captures.get(cameraId);
+        if (!capture) return [];
+        const vote = votes.find((item) => item.cameraId === cameraId) ?? null;
+        return [
+          {
+            cameraId,
+            mime: 'image/jpeg' as const,
+            jpegBase64: capture.jpeg.toString('base64'),
+            capturedUs: capture.meta.capturedUs,
+            frameId: capture.meta.frameId,
+            width: vote?.imageWidth ?? 1280,
+            height: vote?.imageHeight ?? 720,
+            vote,
+          },
+        ];
+      }),
+    };
+    this.events.broadcast('classification_review', review);
   }
 
   private broadcast(): void {

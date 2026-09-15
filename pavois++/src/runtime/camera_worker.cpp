@@ -234,7 +234,6 @@ void CameraWorker::stream_attitude_only(
 
 void CameraWorker::operator()() {
     if (!cfg_.enabled) return;
-    if (app_.pin_threads) pin_current_thread(1);
 
     const CameraIntrinsics intr = intrinsics_from(cfg_);
     CameraPose pose = pose_from(cfg_);
@@ -255,6 +254,9 @@ void CameraWorker::operator()() {
         return;
     }
 
+    // Spawn rpicam/FFmpeg before pinning: child processes inherit affinity.
+    // Otherwise all camera/ISP helper threads are confined to detector CPU1.
+    if (app_.pin_threads) pin_current_thread(1);
     MotionDetector detector(cfg_, processing_executor_.get());
     DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
     detector.set_debug(debug.active());

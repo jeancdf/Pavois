@@ -32,6 +32,19 @@ Détails complets (déploiement Pi, systemd, calibration IMU, mode GPS,
 caméras RTSP) : [pavois++/README.md](pavois++/README.md) et
 [pavois++/DEPLOYMENT_PI.md](pavois++/DEPLOYMENT_PI.md).
 
+### Rejouer une session enregistrée dans toute la chaîne
+
+`scripts/pavois_replay_bench.sh` monte le banc complet sur un seul poste : un
+`pavois_detect` par caméra rejouant les images enregistrées sur leur horloge de
+capture d'origine, le `vps` qui fusionne, et le frontend qui affiche les pistes
+et la vidéo. Aucune Pi n'est sollicitée et rien n'est déployé.
+
+```bash
+scripts/pavois_replay_bench.sh --recording /chemin/rec-AAAAMMJJ-HHMMSSZ-auto
+```
+
+Voir `--help` pour les options (fenêtre temporelle, résolution, sans frontend).
+
 ## Lancer `vps` (backend)
 
 ```bash

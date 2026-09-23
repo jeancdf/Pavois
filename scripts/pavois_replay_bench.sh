@@ -1,0 +1,422 @@
+#!/usr/bin/env bash
+# Replay a recorded three-camera session through the whole Pavois stack.
+#
+# Stands up, on this machine, what the bench does on the Pi rig:
+#
+#   3 x pavois_detect   one per camera, each replaying that camera's recorded
+#                       frames on their ORIGINAL capture clock, exactly as a Pi
+#                       would -- one camera per process, so each emits raw
+#                       observations and the VPS does the cross-camera fusion
+#   vps                 NestJS: UDP 41234 in, WebSocket 3002 out, preview JPEGs
+#   frontend-angular    ng serve on 4200, showing the live map, the tracks and
+#                       the camera preview video
+#
+# Nothing here touches the Pis and nothing is deployed. It is a separate
+# harness: it reads the repo, builds into its own work directory, and every
+# process it starts is killed when it exits.
+#
+# Usage:
+#   scripts/pavois_replay_bench.sh --recording /path/to/rec-YYYYmmdd-HHMMSSZ-auto
+#
+# The recording directory is what pi/camstream + the session capture produce:
+#   <cam>.mp4 or <cam>.mjpeg   the video
+#   <cam>.meta.txt             one FrameWallClock=<unix_ns> per frame
+#   <cam>.imu.log              "epoch yaw pitch roll" at 20 Hz (optional)
+#
+# First run extracts the replay frames (a few minutes, several GB) into the
+# work directory and reuses them afterwards.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CAMERAS=(jean tanel walid)
+
+RECORDING=""
+WORK_DIR="${PAVOIS_BENCH_WORK:-$HOME/.cache/pavois/replay-bench}"
+FROM_S=120          # start this many seconds into the common window
+DURATION_S=0        # 0 = to the end of the overlap
+WIDTH=640
+HEIGHT=360
+FOV_DEG=41.0        # OV5647 in its 1080p crop mode, scaled to 16:9
+SKIP_FRONTEND=0
+KEEP_FRAMES=0
+
+# Rail geometry: 1 m rig, adjacent baseline 3/7 m. Physical order seen from
+# behind the cameras is walid - jean - tanel (frontend-angular rail-bench.ts).
+declare -A RAIL_X=( [jean]=0.0 [tanel]=0.4286 [walid]=-0.4286 )
+
+die() { printf '\n[bench] ERROR: %s\n' "$*" >&2; exit 1; }
+log() { printf '[bench] %s\n' "$*"; }
+
+usage() {
+  sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --recording)   RECORDING="${2:?}"; shift 2 ;;
+    --work-dir)    WORK_DIR="${2:?}"; shift 2 ;;
+    --from)        FROM_S="${2:?}"; shift 2 ;;
+    --duration)    DURATION_S="${2:?}"; shift 2 ;;
+    --width)       WIDTH="${2:?}"; shift 2 ;;
+    --height)      HEIGHT="${2:?}"; shift 2 ;;
+    --fov)         FOV_DEG="${2:?}"; shift 2 ;;
+    --skip-frontend) SKIP_FRONTEND=1; shift ;;
+    --keep-frames) KEEP_FRAMES=1; shift ;;
+    -h|--help)     usage ;;
+    *)             die "unknown argument: $1 (try --help)" ;;
+  esac
+done
+
+[ -n "$RECORDING" ] || die "--recording is required (try --help)"
+[ -d "$RECORDING" ] || die "recording directory not found: $RECORDING"
+RECORDING="$(cd "$RECORDING" && pwd)"
+
+# ---------------------------------------------------------------- preflight --
+log "checking prerequisites"
+for tool in cmake ffmpeg node npm python3 pg_isready; do
+  command -v "$tool" >/dev/null || die "missing required tool: $tool"
+done
+pg_isready -q || die "PostgreSQL is not accepting connections. The vps calls
+       prisma \$connect() on boot and will not start without it. Start your
+       local postgres, or run the stack with docker compose instead."
+
+for cam in "${CAMERAS[@]}"; do
+  [ -f "$RECORDING/$cam.meta.txt" ] || die "missing $cam.meta.txt in $RECORDING"
+  [ -f "$RECORDING/$cam.mp4" ] || [ -f "$RECORDING/$cam.mjpeg" ] \
+    || die "missing $cam.mp4 or $cam.mjpeg in $RECORDING"
+done
+
+mkdir -p "$WORK_DIR"
+FRAMES_DIR="$WORK_DIR/frames"
+RUN_DIR="$WORK_DIR/run"
+rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR" "$FRAMES_DIR"
+log "work directory: $WORK_DIR"
+
+PIDS=()
+cleanup() {
+  local rc=$?
+  trap - EXIT INT TERM
+  printf '\n[bench] shutting down\n'
+  for pid in "${PIDS[@]:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+  # give children a moment, then insist
+  sleep 2
+  for pid in "${PIDS[@]:-}"; do
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  done
+  exit $rc
+}
+trap cleanup EXIT INT TERM
+
+# ------------------------------------------------------- build the detector --
+log "building pavois_detect"
+cmake -S "$REPO_ROOT/pavois++" -B "$WORK_DIR/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+cmake --build "$WORK_DIR/build" --parallel "$(nproc)" --target pavois_detect >/dev/null
+DETECT="$WORK_DIR/build/pavois_detect"
+[ -x "$DETECT" ] || die "pavois_detect did not build"
+
+# ------------------------------------------------- work out the time window --
+# Every camera has its own first/last frame time. The usable window is the
+# intersection, so all three really are showing the same moment.
+log "resolving the common time window"
+WINDOW_JSON="$RUN_DIR/window.json"
+python3 - "$RECORDING" "$FROM_S" "$DURATION_S" "$WINDOW_JSON" "${CAMERAS[@]}" <<'PY'
+import json, pathlib, sys
+rec, from_s, dur_s, out = sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), sys.argv[4]
+cams = sys.argv[5:]
+ts = {}
+for c in cams:
+    ts[c] = [int(l.split('=', 1)[1])
+             for l in (pathlib.Path(rec) / f"{c}.meta.txt").read_text().splitlines()
+             if l.startswith("FrameWallClock=")]
+    if not ts[c]:
+        raise SystemExit(f"{c}.meta.txt has no FrameWallClock lines")
+start = max(v[0] for v in ts.values())
+end = min(v[-1] for v in ts.values())
+t0 = start + int(from_s * 1e9)
+t1 = end if dur_s <= 0 else min(end, t0 + int(dur_s * 1e9))
+if t1 <= t0:
+    raise SystemExit(f"empty window: --from {from_s}s is past the end of the overlap "
+                     f"({(end-start)/1e9:.1f}s of common footage)")
+plan = {"overlap_s": (end - start) / 1e9, "window_s": (t1 - t0) / 1e9, "cams": {}}
+for c in cams:
+    idx = [i for i, t in enumerate(ts[c]) if t0 <= t <= t1]
+    plan["cams"][c] = {"start": idx[0], "count": len(idx),
+                       "first_us": ts[c][idx[0]] // 1000,
+                       "timestamps": [t // 1000 for t in ts[c][idx[0]:idx[0] + len(idx)]]}
+pathlib.Path(out).write_text(json.dumps(plan))
+print(f"[bench] common footage {plan['overlap_s']:.1f}s, replaying {plan['window_s']:.1f}s")
+for c in cams:
+    print(f"[bench]   {c}: {plan['cams'][c]['count']} frames from index {plan['cams'][c]['start']}")
+PY
+
+# --------------------------------------------------- extract (cached) frames --
+# Cache key covers everything that changes the pixels, so a different window or
+# resolution does not silently reuse the wrong frames.
+CACHE_KEY="$(printf '%s|%s|%s|%s|%s' "$RECORDING" "$FROM_S" "$DURATION_S" "$WIDTH" "$HEIGHT" | md5sum | cut -c1-12)"
+CACHE_DIR="$FRAMES_DIR/$CACHE_KEY"
+if [ -f "$CACHE_DIR/.complete" ]; then
+  log "reusing cached frames ($CACHE_DIR)"
+else
+  log "extracting replay frames -- first run for this window, this takes a few minutes"
+  rm -rf "$CACHE_DIR"
+  for cam in "${CAMERAS[@]}"; do
+    dst="$CACHE_DIR/$cam"; mkdir -p "$dst"
+    start=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['cams'][sys.argv[2]]['start'])" "$WINDOW_JSON" "$cam")
+    count=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['cams'][sys.argv[2]]['count'])" "$WINDOW_JSON" "$cam")
+    if [ -f "$RECORDING/$cam.mp4" ]; then input=(-i "$RECORDING/$cam.mp4")
+    else input=(-f mjpeg -i "$RECORDING/$cam.mjpeg"); fi
+    log "  $cam: $count frames"
+    ffmpeg -nostdin -loglevel error -y "${input[@]}" \
+      -vf "select='gte(n\,$start)',scale=$WIDTH:$HEIGHT,format=gray" \
+      -vsync 0 -frames:v "$count" -f image2 "$dst/%06d.pgm"
+    echo 30 > "$dst/fps.txt"
+  done
+  # Timestamps last: ReplaySource refuses a timestamps.txt whose length does not
+  # match the frame count, which is exactly the mistake worth catching here.
+  python3 - "$WINDOW_JSON" "$CACHE_DIR" "${CAMERAS[@]}" <<'PY'
+import json, pathlib, sys
+plan = json.load(open(sys.argv[1])); root = pathlib.Path(sys.argv[2])
+for c in sys.argv[3:]:
+    d = root / c
+    n = len(list(d.glob("*.pgm")))
+    want = plan["cams"][c]["timestamps"]
+    if n != len(want):
+        raise SystemExit(f"{c}: extracted {n} frames but planned {len(want)}")
+    (d / "timestamps.txt").write_text("\n".join(str(t) for t in want) + "\n")
+PY
+  touch "$CACHE_DIR/.complete"
+  log "frames cached at $CACHE_DIR"
+fi
+
+# --------------------------------------------------------- camera attitudes --
+# Use each node's own BNO08x median over the window when the log is there.
+# NOTE: the BNO08x measures its own housing, not the optical axis, and the
+# offset differs per unit (pi/README.md). These values make the cones point
+# roughly right; they are NOT a calibrated extrinsic, so the fused 3D position
+# is indicative only until pavois_imu_calib has been run on the rig.
+declare -A HEADING ELEVATION ROLL
+for cam in "${CAMERAS[@]}"; do
+  if [ -f "$RECORDING/$cam.imu.log" ]; then
+    read -r h e r <<<"$(python3 - "$RECORDING/$cam.imu.log" "$WINDOW_JSON" "$cam" <<'PY'
+import json, pathlib, statistics, sys
+rows = [l.split() for l in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+rows = [[float(x) for x in r] for r in rows if len(r) == 4]
+plan = json.load(open(sys.argv[2]))["cams"][sys.argv[3]]
+lo = plan["first_us"] / 1e6
+hi = lo + 10 ** 9
+sel = [r for r in rows if r[0] >= lo] or rows
+print(f"{statistics.median(r[1] for r in sel):.2f} "
+      f"{-statistics.median(r[2] for r in sel):.2f} "
+      f"{statistics.median(r[3] for r in sel):.2f}")
+PY
+)"
+    HEADING[$cam]=$h; ELEVATION[$cam]=$e; ROLL[$cam]=$r
+  else
+    HEADING[$cam]=0.0; ELEVATION[$cam]=20.0; ROLL[$cam]=0.0
+  fi
+done
+
+# -------------------------------------------------------------- vps backend --
+export UDP_HMAC_SECRET="${UDP_HMAC_SECRET:-pavois-replay-bench-secret}"
+
+# The backend refuses the tokens published in .env.example (dev-pavois-token and
+# friends) and fails at boot rather than start with bypassable auth, so the bench
+# mints a real one. Kept in the work directory so the browser's stored session
+# keeps working across runs and you only paste it once.
+TOKEN_FILE="$WORK_DIR/ws_token"
+if [ ! -s "$TOKEN_FILE" ]; then
+  (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$TOKEN_FILE")
+fi
+WS_TOKEN="$(cat "$TOKEN_FILE")"
+PGUSER_NAME="${PGUSER:-$(id -un)}"
+DB_URL="${DATABASE_URL:-postgresql://$PGUSER_NAME@localhost:5432/pavois_bench?schema=public&host=/var/run/postgresql}"
+
+log "preparing the database"
+psql -qtA -d postgres -c "SELECT 1 FROM pg_database WHERE datname='pavois_bench'" 2>/dev/null | grep -q 1 \
+  || psql -qtA -d postgres -c "CREATE DATABASE pavois_bench" >/dev/null 2>&1 \
+  || die "could not create the pavois_bench database as '$PGUSER_NAME'.
+       Either grant that role CREATEDB, or export DATABASE_URL pointing at a
+       database you can already reach."
+
+if [ ! -d "$REPO_ROOT/vps/node_modules" ]; then
+  log "installing vps dependencies (first run)"
+  (cd "$REPO_ROOT/vps" && npm install --no-audit --no-fund) >"$RUN_DIR/vps-install.log" 2>&1 \
+    || { tail -20 "$RUN_DIR/vps-install.log"; die "vps npm install failed, see $RUN_DIR/vps-install.log"; }
+fi
+
+log "applying database migrations"
+(cd "$REPO_ROOT/vps" && DATABASE_URL="$DB_URL" npx prisma migrate deploy) >"$RUN_DIR/prisma.log" 2>&1 \
+  || { tail -20 "$RUN_DIR/prisma.log"; die "prisma migrate deploy failed, see $RUN_DIR/prisma.log"; }
+
+# Build explicitly rather than leaning on `nest start`. nest-cli deletes dist/
+# on every build while tsc keeps an incremental tsbuildinfo, so a stale
+# tsbuildinfo makes the compiler believe dist/ is already current and emit
+# nothing -- `nest start` then dies on a missing dist/main.
+log "building vps"
+rm -f "$REPO_ROOT/vps/tsconfig.build.tsbuildinfo"
+(cd "$REPO_ROOT/vps" && npm run build) >"$RUN_DIR/vps-build.log" 2>&1 \
+  || { tail -25 "$RUN_DIR/vps-build.log"; die "vps build failed, see $RUN_DIR/vps-build.log"; }
+[ -f "$REPO_ROOT/vps/dist/main.js" ] || die "vps build produced no dist/main.js"
+
+log "starting vps (UDP 41234, WebSocket/HTTP 3002)"
+(
+  cd "$REPO_ROOT/vps"
+  DATABASE_URL="$DB_URL" \
+  UDP_PORT=41234 UDP_HOST=127.0.0.1 PORT=3002 \
+  WS_AUTH_TOKEN="$WS_TOKEN" \
+  UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \
+  ALLOWED_ORIGINS="http://localhost:4200" \
+  CLASSIFICATION_ENABLED=false \
+  node dist/main >"$RUN_DIR/vps.log" 2>&1
+) &
+PIDS+=($!)
+
+log "waiting for the vps to come up"
+for i in $(seq 1 90); do
+  if (exec 3<>/dev/tcp/127.0.0.1/3002) 2>/dev/null; then exec 3<&- 3>&-; break; fi
+  if ! kill -0 "${PIDS[-1]}" 2>/dev/null; then
+    tail -25 "$RUN_DIR/vps.log"; die "vps exited during startup, see $RUN_DIR/vps.log"
+  fi
+  sleep 2
+  [ "$i" = 90 ] && { tail -25 "$RUN_DIR/vps.log"; die "vps did not open port 3002"; }
+done
+log "vps is up"
+
+# ---------------------------------------------------------------- frontend --
+if [ "$SKIP_FRONTEND" = 0 ]; then
+  # The Angular CLI refuses to run on Node < 22, while the vps is happy on 20.
+  # Rather than force one version on the whole machine, find a new enough Node
+  # just for `ng serve` and leave everything else on whatever is default.
+  FE_NODE_BIN=""
+  node_major() { "$1" --version 2>/dev/null | sed 's/^v//' | cut -d. -f1; }
+  if [ "$(node_major node)" -ge 22 ] 2>/dev/null; then
+    FE_NODE_BIN="$(dirname "$(command -v node)")"
+  else
+    while IFS= read -r candidate; do
+      [ -x "$candidate/node" ] || continue
+      if [ "$(node_major "$candidate/node")" -ge 22 ] 2>/dev/null; then FE_NODE_BIN="$candidate"; fi
+    done < <(find "$HOME/.nvm/versions/node" -maxdepth 2 -type d -name bin 2>/dev/null | sort -V)
+  fi
+  if [ -z "$FE_NODE_BIN" ]; then
+    log "WARNING: the Angular CLI needs Node >= 22 and none was found."
+    log "         Skipping the frontend; the vps and detectors still run."
+    log "         Install one (nvm install 22) and re-run to get the UI."
+    SKIP_FRONTEND=1
+  else
+    log "frontend will use node $("$FE_NODE_BIN/node" --version) from $FE_NODE_BIN"
+  fi
+fi
+
+if [ "$SKIP_FRONTEND" = 0 ]; then
+  if [ ! -d "$REPO_ROOT/frontend-angular/node_modules" ]; then
+    log "installing frontend dependencies (first run)"
+    (cd "$REPO_ROOT/frontend-angular" && PATH="$FE_NODE_BIN:$PATH" npm install --no-audit --no-fund) >"$RUN_DIR/fe-install.log" 2>&1 \
+      || { tail -20 "$RUN_DIR/fe-install.log"; die "frontend npm install failed, see $RUN_DIR/fe-install.log"; }
+  fi
+  # The repo's proxy.conf.json forwards /api only. The dev build derives its
+  # WebSocket URL from the page origin, so /ws needs forwarding too or the map
+  # never receives a track. Generated here rather than edited in the repo.
+  cat > "$RUN_DIR/proxy.conf.json" <<JSON
+{
+  "/api": { "target": "http://localhost:3002", "secure": false, "pathRewrite": { "^/api": "" } },
+  "/ws":  { "target": "http://localhost:3002", "secure": false, "ws": true, "pathRewrite": { "^/ws": "" } }
+}
+JSON
+  log "starting frontend (ng serve on 4200)"
+  (
+    cd "$REPO_ROOT/frontend-angular"
+    PATH="$FE_NODE_BIN:$PATH" npx ng serve --configuration=development --port 4200 \
+      --proxy-config "$RUN_DIR/proxy.conf.json" >"$RUN_DIR/frontend.log" 2>&1
+  ) &
+  PIDS+=($!)
+fi
+
+# --------------------------------------------------------------- detectors --
+# One process per camera, as on the rig. With a single enabled camera each
+# process emits raw observations and the VPS performs the cross-camera fusion.
+log "starting ${#CAMERAS[@]} detector processes"
+for cam in "${CAMERAS[@]}"; do
+  conf="$RUN_DIR/$cam.conf"
+  cat > "$conf" <<CONF
+# Generated by scripts/pavois_replay_bench.sh -- one camera, as on a Pi.
+frames=-1
+replay_loop=true
+replay_realtime=true
+processing_threads=2
+observation_log=$RUN_DIR/obs
+
+output_host=127.0.0.1
+output_port=41234
+
+preview.enabled=true
+preview.host=127.0.0.1
+preview.http_port=3002
+preview.http_path=/api/preview
+preview.fps=4
+preview.width=320
+
+classification.enabled=false
+imu.enabled=false
+
+camera.0.id=$cam
+camera.0.device=$CACHE_DIR/$cam
+camera.0.enabled=true
+camera.0.width=$WIDTH
+camera.0.height=$HEIGHT
+camera.0.fov_deg=$FOV_DEG
+camera.0.x=${RAIL_X[$cam]}
+camera.0.y=0.0
+camera.0.z=0.0
+camera.0.heading_deg=${HEADING[$cam]}
+camera.0.elevation_deg=${ELEVATION[$cam]}
+camera.0.roll_deg=${ROLL[$cam]}
+camera.0.rail_pose_enabled=true
+camera.0.rail_x=${RAIL_X[$cam]}
+camera.0.rail_y=0.0
+camera.0.rail_z=0.0
+camera.0.rail_heading_deg=${HEADING[$cam]}
+camera.0.rail_elevation_deg=${ELEVATION[$cam]}
+camera.0.rail_roll_deg=${ROLL[$cam]}
+CONF
+  UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \
+    "$DETECT" --config "$conf" >"$RUN_DIR/$cam.tracks.txt" 2>"$RUN_DIR/$cam.log" &
+  PIDS+=($!)
+  log "  $cam replaying (heading ${HEADING[$cam]}, elevation ${ELEVATION[$cam]})"
+done
+
+cat <<BANNER
+
+  ============================================================
+   Pavois replay bench is running
+  ============================================================
+   frontend .......... http://localhost:4200
+   vps ............... http://localhost:3002   UDP 41234
+   detectors ......... ${CAMERAS[*]}  (looping the recording)
+   logs .............. $RUN_DIR
+
+   LOG IN with this token (the field is pre-filled with the
+   repo's placeholder, which the backend rejects on purpose):
+
+       $WS_TOKEN
+
+   The browser remembers it, so this is a first-run step only.
+
+   The footage is replayed on its recorded clock, so the three
+   cameras stay in step and the VPS can fuse them.
+
+   NOTE: camera headings come from each node's BNO08x, which
+   measures its housing rather than the optical axis. Bearings
+   are indicative; run pavois_imu_calib on the rig before
+   trusting the fused 3D position.
+
+   Ctrl-C to stop everything.
+  ============================================================
+
+BANNER
+
+[ "$KEEP_FRAMES" = 1 ] || true
+wait

@@ -8,6 +8,8 @@
 namespace pavois {
 
 struct CameraConfig {
+    bool replay_loop = true;      // replay dirs: restart at the end
+    bool replay_realtime = true;  // replay dirs: pace at the recorded rate
     std::string id = "CAM-01";
     std::string device = "/dev/video0";
     int width = 1280;
@@ -19,16 +21,45 @@ struct CameraConfig {
     // --- detection ---
     std::uint8_t diff_threshold = 14;     // base foreground threshold (grey levels)
     double bg_learn_rate = 0.05;          // running-average background alpha
-    double bg_learn_rate_fg = 0.02;       // bounded alpha under an active blob
+    // Alpha under an active blob. This must be far slower than bg_learn_rate:
+    // a hovering target sits on the same pixels, so at 0.02 (tau ~1.7 s at
+    // 30 fps) the background converges onto the target and it disappears.
+    double bg_learn_rate_fg = 0.002;      // bounded alpha under an active blob
+    // Frames a pixel stays on the slow alpha after it was last inside a blob.
+    // Without this the protection collapses the moment the target starts to
+    // fade: the blob drops below threshold, the pixel loses its slow alpha, and
+    // the fast alpha finishes absorbing it. Bounds how long a stale region can
+    // resist a genuine background change.
+    int bg_hold_frames = 90;
+    // Upper bound on CONSECUTIVE protected frames for one pixel. Protection
+    // must not be permanent: a genuine, lasting scene change would otherwise
+    // hold the background hostage and read as a target forever.
+    int bg_hold_max_frames = 1800;
     double adaptive_k = 2.2;              // threshold = base + k * noise_sigma
     int blur_radius = 1;                  // box-blur radius before differencing
     int morph_open = 1;                   // erode/dilate iterations (speckle kill)
     int morph_close = 2;                  // dilate/erode iterations (fill gaps)
     std::size_t min_blob_area = 12;
-    double max_blob_area_ratio = 0.45;    // reject global illumination events
+    // Largest a single blob may be, as a fraction of the frame, before it is
+    // rejected as scenery rather than a target. This used to double as the
+    // illumination-event threshold at 0.45, which let a frame-filling region
+    // (a door opening, a light switching) pass as a target indefinitely.
+    double max_blob_area_ratio = 0.12;
+    // Fraction of the frame that must exceed threshold before the whole frame
+    // is treated as a global illumination event and detection is skipped.
+    double illumination_hot_ratio = 0.45;
     double min_blob_fill_ratio = 0.10;    // area / bbox area (reject thin streaks)
     double max_blob_aspect = 6.0;         // reject long thin artefacts
-    int border_ignore_px = 6;             // drop blobs hugging the frame edge
+    // Blobs whose CENTROID is this close to the edge are dropped. Testing the
+    // bounding box instead discards a large target that is merely half out of
+    // frame, which is exactly when a second camera still sees it.
+    int border_ignore_px = 6;
+    // The border margin exists to cull sensor speckle at the frame edge, which
+    // is always small. A blob at least this many times min_blob_area is a real
+    // object entering or leaving frame, and is kept (with the clipped-centroid
+    // quality penalty) instead of being thrown away at exactly the moment a
+    // second camera still has it.
+    double border_keep_area_mult = 4.0;
     int confirm_m = 2;                    // confirmed if seen in M of last N frames
     int confirm_n = 3;
     double centroid_process_noise = 600.0;  // 2D Kalman on the centroid (px^2/s^3)
@@ -115,8 +146,17 @@ struct AppConfig {
     std::string output_host;
     int output_port = 0;
 
+    // Replay playback, for running a recorded session as a test. Looping and
+    // real-time pacing are what a live rig looks like; a bounded, as-fast-as-
+    // possible run is what a repeatable scoring run needs.
+    bool replay_loop = true;
+    bool replay_realtime = true;
+
     std::string debug_dir;
     int debug_every = 15;
+    // Per-camera detection trace for offline scoring. Each worker writes
+    // "<observation_log>.<camera_id>.csv"; empty disables it entirely.
+    std::string observation_log;
 
     // Live IMU (BNO055 on I2C, or a file for tests). Offsets map chip
     // axes onto the camera optical frame.

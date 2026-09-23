@@ -72,6 +72,29 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
       imu_(std::move(imu)),
       emit_raw_observations_(emit_raw_observations) {}
 
+// One row per processed frame: what the detector saw, before fusion. Lets an
+// offline scorer measure per-camera recall against ground truth, which the
+// fused track line alone cannot show.
+void CameraWorker::trace_detection(std::ofstream& out, const GrayFrame& frame,
+                                   const DetectionResult& detection) {
+    if (!out.is_open()) return;
+    out << frame.frame_id << ',' << frame.captured_us << ','
+        << (detection.has_blob ? 1 : 0) << ',' << (detection.confirmed ? 1 : 0)
+        << ',' << std::fixed << std::setprecision(2) << detection.cx << ','
+        << detection.cy << ',' << detection.area << ','
+        << std::setprecision(4) << detection.quality << ','
+        << std::setprecision(3) << detection.snr << ','
+        << detection.fill_ratio << ',' << detection.blobs.size();
+    // Every candidate, not just the winner: the worker submits all of them to
+    // fusion, so scoring only the top-ranked one would understate what fusion
+    // actually receives.
+    for (std::size_t i = 0; i < detection.blobs.size() && i < 8; ++i) {
+        out << ';' << std::setprecision(1) << detection.blobs[i].cx << ':'
+            << detection.blobs[i].cy << ':' << detection.blobs[i].area;
+    }
+    out << '\n';
+}
+
 void CameraWorker::log_line(const std::string& line) {
     std::lock_guard<std::mutex> lock(log_mutex_);
     std::cerr << line << '\n';
@@ -238,6 +261,17 @@ void CameraWorker::operator()() {
     DebugSink debug(app_.debug_dir, app_.debug_every, cfg_.id);
     detector.set_debug(debug.active());
 
+    std::ofstream trace;
+    if (!app_.observation_log.empty()) {
+        trace.open(app_.observation_log + "." + cfg_.id + ".csv");
+        if (trace.is_open()) {
+            trace << "frame,captured_us,has_blob,confirmed,cx,cy,area,quality,"
+                     "snr,fill,blobs\n";
+        } else {
+            log_line("camera " + cfg_.id + " observation log open failed");
+        }
+    }
+
     GrayFrame frame;
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
@@ -251,6 +285,11 @@ void CameraWorker::operator()() {
             udp_sender_ ? udp_sender_->take_capture_request(cfg_.id)
                         : std::nullopt;
         if (!source->read_frame(frame)) {
+            if (source->at_end()) {
+                log_line("camera " + cfg_.id + " replay complete after " +
+                         std::to_string(frame_id) + " frames");
+                return;
+            }
             log_line("camera " + cfg_.id + " read failed: " +
                      source->last_error());
             stream_attitude_only(imu_.get(), pose);
@@ -266,6 +305,7 @@ void CameraWorker::operator()() {
         maybe_send_preview(frame, frame.captured_us, last_preview_us);
 
         const DetectionResult det = detector.process(frame);
+        trace_detection(trace, frame, det);
         if (capture_request) {
             send_classification_capture(frame, det, *capture_request);
         }

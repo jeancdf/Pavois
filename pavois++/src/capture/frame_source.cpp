@@ -26,12 +26,14 @@ std::unique_ptr<FrameSource> make_frame_source(const CameraConfig& cfg) {
     }
 
     if (dev.rfind("replay:", 0) == 0) {
-        return std::make_unique<ReplaySource>(dev.substr(7), /*loop=*/true, /*realtime=*/true);
+        return std::make_unique<ReplaySource>(dev.substr(7), cfg.replay_loop,
+                                             cfg.replay_realtime);
     }
 
     std::error_code ec;
     if (std::filesystem::is_directory(dev, ec)) {
-        return std::make_unique<ReplaySource>(dev, true, true);
+        return std::make_unique<ReplaySource>(dev, cfg.replay_loop,
+                                             cfg.replay_realtime);
     }
 
     auto cam = std::make_unique<V4L2Camera>(dev, cfg.width, cfg.height);

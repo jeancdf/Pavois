@@ -84,6 +84,8 @@ private:
     std::vector<float> diff_;
     std::vector<std::uint8_t> mask_;
     std::vector<std::uint8_t> fg_mask_;  // dilated, for slow background update
+    std::vector<std::uint16_t> fg_hold_;    // frames of slow-alpha protection left
+    std::vector<std::uint16_t> fg_streak_;  // consecutive frames actually protected
     std::vector<std::uint8_t> cc_visited_;
     std::vector<int> cc_stack_;
 

@@ -91,6 +91,8 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         h_ = frame.height;
         bg_.resize(frame.size());
         noise_.assign(frame.size(), 4.0f);
+        fg_hold_.assign(frame.size(), 0);
+        fg_streak_.assign(frame.size(), 0);
         for_each_range(executor_, 0, frame.size(),
                        [&](std::size_t first, std::size_t last) {
             for (std::size_t i = first; i < last; ++i) {
@@ -136,6 +138,9 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Global brightness bias (exposure / white-balance drift): the mean signed
     // delta over the whole frame is dominated by the illumination shift, not by
     // the tiny target, so subtracting it makes the detector shift-invariant.
+    // Deliberately offset-only. Modelling auto-exposure as gain+offset needs
+    // enough variance in the background to identify the gain; on a low-texture
+    // scene it is ill-conditioned and corrupts every pixel.
     double bias = 0.0;
     for (std::size_t i = 0; i < frame.size(); ++i) {
         bias += static_cast<double>(blur_[i]) - bg_[i];
@@ -169,7 +174,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // and let the background catch up fast.
     const double hot_ratio = static_cast<double>(hot.load(std::memory_order_relaxed)) /
                              static_cast<double>(frame.size());
-    const bool illumination_event = hot_ratio > cfg_.max_blob_area_ratio;
+    const bool illumination_event = hot_ratio > cfg_.illumination_hot_ratio;
 
     std::vector<Blob> blobs;
     if (!illumination_event) {
@@ -188,6 +193,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         double fill = 0.0;
         double snr = 0.0;
         double score = 0.0;
+        bool clipped = false;   // bounding box touches the frame edge
     };
     std::vector<Candidate> candidates;
     candidates.reserve(blobs.size());
@@ -200,10 +206,22 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         if (fill < cfg_.min_blob_fill_ratio) continue;
         const double aspect = static_cast<double>(std::max(bw, bh)) / static_cast<double>(std::max(1, std::min(bw, bh)));
         if (aspect > cfg_.max_blob_aspect) continue;
-        if (bl.x0 < b || bl.y0 < b || bl.x1 >= w_ - b || bl.y1 >= h_ - b) continue;
 
         const double cx = bl.wx / std::max(1e-6, bl.wsum);
         const double cy = bl.wy / std::max(1e-6, bl.wsum);
+        // Reject on the CENTROID, not the bounding box: a target crossing the
+        // frame edge keeps a centroid well inside and stays detectable. Even in
+        // the margin, keep a blob that is far too big to be edge speckle --
+        // that is a real object on its way in or out of frame.
+        const bool in_margin =
+            cx < b || cy < b || cx >= w_ - b || cy >= h_ - b;
+        const double edge_keep_area =
+            cfg_.border_keep_area_mult * static_cast<double>(cfg_.min_blob_area);
+        if (in_margin && static_cast<double>(bl.area) < edge_keep_area) continue;
+        // A clipped bounding box means the measured centroid is biased toward
+        // frame centre, so flag it and let quality carry the uncertainty.
+        const bool clipped =
+            bl.x0 <= 0 || bl.y0 <= 0 || bl.x1 >= w_ - 1 || bl.y1 >= h_ - 1;
         double continuity = 0.0;
         if (have_last_) {
             const double dist = std::hypot(cx - last_cx_, cy - last_cy_);
@@ -216,7 +234,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             static_cast<std::size_t>(std::clamp<int>(static_cast<int>(cy), 0, h_ - 1)) * w_ +
             std::clamp<int>(static_cast<int>(cx), 0, w_ - 1);
         const double noise_here = std::max(1.0, static_cast<double>(noise_[ci]));
-        candidates.push_back({&bl, cx, cy, fill, bl.energy / noise_here, score});
+        candidates.push_back({&bl, cx, cy, fill, bl.energy / noise_here, score, clipped});
     }
     std::stable_sort(candidates.begin(), candidates.end(),
                      [](const Candidate& a, const Candidate& b) {
@@ -282,7 +300,11 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             for (int x = std::max(0, blob.x0 - pad);
                  x <= std::min(w_ - 1, blob.x1 + pad); ++x) {
                 const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
-                if (mask_[bi]) fg_mask_[bi] = 1;
+                if (mask_[bi]) {
+                    fg_mask_[bi] = 1;
+                    fg_hold_[bi] =
+                        static_cast<std::uint16_t>(std::max(0, cfg_.bg_hold_frames));
+                }
             }
         }
     }
@@ -302,10 +324,13 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             const double snr_score = std::min(1.0, candidate.snr / 6.0);
             const double fill_score = std::clamp(candidate.fill / 0.6, 0.0, 1.0);
             const double filter_score = index == 0 ? tight : 0.5;
-            const double quality = std::clamp(
+            double quality = std::clamp(
                 0.15 + 0.35 * support + 0.25 * snr_score +
                     0.15 * fill_score + 0.10 * filter_score,
                 0.0, 1.0);
+            // Clipped target: the centroid is biased, so the bearing is worth
+            // less to triangulation even though the detection itself is real.
+            if (candidate.clipped) quality *= 0.6;
             out.blobs.push_back({
                 index == 0 ? out.cx : candidate.cx,
                 index == 0 ? out.cy : candidate.cy,
@@ -331,9 +356,29 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     for_each_range(executor_, 0, frame.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
-            const float rate = (fg_mask_[i] && !illumination_event)
-                                   ? a_fg
-                                   : a_catchup;
+            // Recently-foreground pixels keep the slow alpha even once the blob
+            // has faded, which is what stops a hovering target being absorbed.
+            bool held = false;
+            if (fg_hold_[i] > 0) {
+                held = true;
+                if (!illumination_event) --fg_hold_[i];
+                else fg_hold_[i] = 0;
+            }
+            bool protect = (fg_mask_[i] || held) && !illumination_event;
+            if (protect) {
+                // Bounded: once a pixel has been protected for this long without
+                // a break it is scenery that changed, not a target, so let the
+                // background learn it.
+                if (fg_streak_[i] >= cfg_.bg_hold_max_frames) {
+                    protect = false;
+                    fg_hold_[i] = 0;
+                } else {
+                    ++fg_streak_[i];
+                }
+            } else {
+                fg_streak_[i] = 0;
+            }
+            const float rate = protect ? a_fg : a_catchup;
             bg_[i] += rate * (static_cast<float>(blur_[i]) - bg_[i]);
             // Update the noise estimate only from quiet pixels, and only from
             // small residuals, so it remains a floor and never chases signal.

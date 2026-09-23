@@ -36,6 +36,22 @@ bool ReplaySource::open() {
         double v = 0.0;
         if (fps_in >> v && v > 0.0) fps_ = v;
     }
+
+    // Recorded capture times, one per frame, in the same order as the sorted
+    // files. Only trusted when the count matches, so a stale file can never
+    // silently pair a frame with another frame's timestamp.
+    timestamps_.clear();
+    std::ifstream ts_in(dir_ + "/timestamps.txt");
+    if (ts_in) {
+        std::uint64_t t = 0;
+        while (ts_in >> t) timestamps_.push_back(t);
+        if (timestamps_.size() != files_.size()) {
+            last_error_ = "timestamps.txt has " + std::to_string(timestamps_.size()) +
+                          " entries for " + std::to_string(files_.size()) + " frames in " + dir_;
+            return false;
+        }
+    }
+
     base_us_ = wall_clock_us();
     index_ = 0;
     frame_count_ = 0;
@@ -56,7 +72,8 @@ bool ReplaySource::read_frame(GrayFrame& out) {
         index_ = 0;
     }
 
-    const std::string& path = files_[index_++];
+    const std::size_t file_index = index_++;
+    const std::string& path = files_[file_index];
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         last_error_ = "cannot open " + path;
@@ -82,11 +99,27 @@ bool ReplaySource::read_frame(GrayFrame& out) {
 
     const std::uint64_t dt_us = static_cast<std::uint64_t>(1e6 / fps_);
     out.frame_id = frame_count_;
-    out.captured_us = base_us_ + frame_count_ * dt_us;
+    if (!timestamps_.empty()) {
+        // Replay the recorded clock. Every loop pass is shifted by one full
+        // span so timestamps stay monotonic across repeats.
+        const std::uint64_t span =
+            timestamps_.back() - timestamps_.front() + dt_us;
+        const std::uint64_t laps = frame_count_ / files_.size();
+        out.captured_us = timestamps_[file_index] + laps * span;
+    } else {
+        out.captured_us = base_us_ + frame_count_ * dt_us;
+    }
     ++frame_count_;
 
     if (realtime_) {
-        const std::uint64_t target = base_us_ + frame_count_ * dt_us;
+        // Pace against elapsed wall time since open(), using the recorded
+        // spacing when we have it so a variable-rate recording replays at its
+        // true speed rather than a nominal constant fps.
+        const std::uint64_t offset =
+            timestamps_.empty()
+                ? frame_count_ * dt_us
+                : out.captured_us - timestamps_.front() + dt_us;
+        const std::uint64_t target = base_us_ + offset;
         const std::uint64_t now = wall_clock_us();
         if (target > now) {
             std::this_thread::sleep_for(std::chrono::microseconds(target - now));

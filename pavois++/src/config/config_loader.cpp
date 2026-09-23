@@ -51,15 +51,19 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "diff_threshold") c.diff_threshold = static_cast<std::uint8_t>(std::stoi(v));
         else if (f == "bg_learn_rate") c.bg_learn_rate = std::stod(v);
         else if (f == "bg_learn_rate_fg") c.bg_learn_rate_fg = std::stod(v);
+        else if (f == "bg_hold_frames") c.bg_hold_frames = std::stoi(v);
         else if (f == "adaptive_k") c.adaptive_k = std::stod(v);
         else if (f == "blur_radius") c.blur_radius = std::stoi(v);
         else if (f == "morph_open") c.morph_open = std::stoi(v);
         else if (f == "morph_close") c.morph_close = std::stoi(v);
         else if (f == "min_blob_area") c.min_blob_area = static_cast<std::size_t>(std::stoul(v));
         else if (f == "max_blob_area_ratio") c.max_blob_area_ratio = std::stod(v);
+        else if (f == "illumination_hot_ratio") c.illumination_hot_ratio = std::stod(v);
+        else if (f == "bg_hold_max_frames") c.bg_hold_max_frames = std::stoi(v);
         else if (f == "min_blob_fill_ratio") c.min_blob_fill_ratio = std::stod(v);
         else if (f == "max_blob_aspect") c.max_blob_aspect = std::stod(v);
         else if (f == "border_ignore_px") c.border_ignore_px = std::stoi(v);
+        else if (f == "border_keep_area_mult") c.border_keep_area_mult = std::stod(v);
         else if (f == "confirm_m") c.confirm_m = std::stoi(v);
         else if (f == "confirm_n") c.confirm_n = std::stoi(v);
         else if (f == "centroid_process_noise") c.centroid_process_noise = std::stod(v);
@@ -127,6 +131,9 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "output_host") cfg.output_host = v;
         else if (key == "output_port") cfg.output_port = std::stoi(v);
         else if (key == "debug_dir") cfg.debug_dir = v;
+        else if (key == "observation_log") cfg.observation_log = v;
+        else if (key == "replay_loop") cfg.replay_loop = parse_bool(v);
+        else if (key == "replay_realtime") cfg.replay_realtime = parse_bool(v);
         else if (key == "debug_every") cfg.debug_every = std::stoi(v);
         else if (key == "imu.enabled") cfg.imu_enabled = parse_bool(v);
         else if (key == "imu.kind") cfg.imu_kind = v;
@@ -298,7 +305,11 @@ AppConfig load_config_file(const std::string& path) {
     config.processing_threads = std::clamp(config.processing_threads, 1, 8);
     config.classification_quality =
         std::clamp(config.classification_quality, 50, 95);
-    for (auto& cam : config.cameras) finalize_camera(cam);
+    for (auto& cam : config.cameras) {
+        cam.replay_loop = config.replay_loop;
+        cam.replay_realtime = config.replay_realtime;
+        finalize_camera(cam);
+    }
     return config;
 }
 

@@ -11,6 +11,7 @@
 #include "pavois/transport/udp_sender.hpp"
 
 #include <cstdint>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -38,6 +39,8 @@ public:
 
 private:
     void log_line(const std::string& line);
+    void trace_detection(std::ofstream& out, const GrayFrame& frame,
+                         const DetectionResult& detection);
     void emit(const TrackUpdate& update);
     void maybe_emit_attitude(const CameraPose& pose,
                              const std::string& calib_token,

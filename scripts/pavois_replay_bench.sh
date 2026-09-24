@@ -95,17 +95,22 @@ rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR" "$FRAMES_DIR"
 log "work directory: $WORK_DIR"
 
 PIDS=()
+# Each service is started inside a subshell, so $! is the subshell rather than
+# the node/detector process underneath it. Signalling only that PID leaves the
+# real server running and the port bound, so signal the whole process GROUP.
+# `set -m` puts every background job in its own group, and negating the PID
+# addresses that group.
+set -m
 cleanup() {
   local rc=$?
   trap - EXIT INT TERM
   printf '\n[bench] shutting down\n'
-  for pid in "${PIDS[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
-  done
-  # give children a moment, then insist
-  sleep 2
-  for pid in "${PIDS[@]:-}"; do
-    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  for sig in TERM KILL; do
+    for pid in "${PIDS[@]:-}"; do
+      [ -n "$pid" ] || continue
+      kill -"$sig" -- "-$pid" 2>/dev/null || kill -"$sig" "$pid" 2>/dev/null || true
+    done
+    [ "$sig" = TERM ] && sleep 3
   done
   exit $rc
 }

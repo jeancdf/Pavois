@@ -10,6 +10,7 @@ namespace pavois {
 struct CameraConfig {
     bool replay_loop = true;      // replay dirs: restart at the end
     bool replay_realtime = true;  // replay dirs: pace at the recorded rate
+    std::uint64_t replay_anchor_us = 0;  // shared wall-clock start, 0 = open()
     std::string id = "CAM-01";
     std::string device = "/dev/video0";
     int width = 1280;
@@ -155,6 +156,10 @@ struct AppConfig {
     // possible run is what a repeatable scoring run needs.
     bool replay_loop = true;
     bool replay_realtime = true;
+    // Wall-clock instant at which every replay camera presents its first
+    // recorded frame. Set it to the same value in each process of a multi-
+    // camera replay so their recorded clocks stay in step.
+    std::uint64_t replay_anchor_us = 0;
 
     std::string debug_dir;
     int debug_every = 15;

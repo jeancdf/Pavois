@@ -135,6 +135,9 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "observation_log") cfg.observation_log = v;
         else if (key == "replay_loop") cfg.replay_loop = parse_bool(v);
         else if (key == "replay_realtime") cfg.replay_realtime = parse_bool(v);
+        else if (key == "replay_anchor_us") {
+            cfg.replay_anchor_us = static_cast<std::uint64_t>(std::stoull(v));
+        }
         else if (key == "debug_every") cfg.debug_every = std::stoi(v);
         else if (key == "imu.enabled") cfg.imu_enabled = parse_bool(v);
         else if (key == "imu.kind") cfg.imu_kind = v;
@@ -309,6 +312,7 @@ AppConfig load_config_file(const std::string& path) {
     for (auto& cam : config.cameras) {
         cam.replay_loop = config.replay_loop;
         cam.replay_realtime = config.replay_realtime;
+        cam.replay_anchor_us = config.replay_anchor_us;
         finalize_camera(cam);
     }
     return config;

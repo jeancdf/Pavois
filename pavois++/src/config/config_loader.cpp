@@ -115,6 +115,7 @@ bool apply_global_field(AppConfig& cfg, const std::string& key, const std::strin
         else if (key == "fusion_window_ms") cfg.fusion_window_ms = std::stoi(v);
         else if (key == "fusion_emit_interval_ms") cfg.fusion_emit_interval_ms = std::stoi(v);
         else if (key == "fusion_max_range_m") cfg.fusion_max_range_m = std::stod(v);
+        else if (key == "fusion_min_range_m") cfg.fusion_min_range_m = std::stod(v);
         else if (key == "fusion_min_parallax_deg") cfg.fusion_min_parallax_deg = std::stod(v);
         else if (key == "fusion_max_residual_m") cfg.fusion_max_residual_m = std::stod(v);
         else if (key == "fusion_support_radius_m") cfg.fusion_support_radius_m = std::stod(v);

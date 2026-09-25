@@ -183,6 +183,7 @@ int run(int argc, char** argv) {
     fusion_settings.triangulation.min_parallax_deg = config.fusion_min_parallax_deg;
     fusion_settings.triangulation.max_residual_m = config.fusion_max_residual_m;
     fusion_settings.triangulation.max_range_m = config.fusion_max_range_m;
+    fusion_settings.triangulation.min_range_m = config.fusion_min_range_m;
     fusion_settings.triangulation.ransac_iterations = config.fusion_ransac_iterations;
     fusion_settings.tracker.gate_mahalanobis = config.track_gate_mahalanobis;
     fusion_settings.tracker.match_distance_m = config.track_match_distance_m;

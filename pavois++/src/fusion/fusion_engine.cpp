@@ -1,6 +1,7 @@
 #include "pavois/fusion/fusion_engine.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace pavois {
@@ -60,6 +61,21 @@ std::vector<Observation> FusionEngine::time_align_locked(std::uint64_t t_ref) co
     return aligned;
 }
 
+bool FusionEngine::plausible_locked(const TrackUpdate& update) const {
+    const double min_range = settings_.triangulation.min_range_m;
+    if (min_range <= 0.0) return true;
+    for (const auto& [cam, hist] : history_) {
+        (void)cam;
+        if (hist.empty()) continue;
+        const CameraPose& pose = hist.back().pose;
+        const double dx = update.x - pose.x;
+        const double dy = update.y - pose.y;
+        const double dz = update.z - pose.z;
+        if (std::sqrt(dx * dx + dy * dy + dz * dz) < min_range) return false;
+    }
+    return true;
+}
+
 std::vector<TrackUpdate> FusionEngine::submit(const Observation& obs) {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -92,7 +108,7 @@ std::vector<TrackUpdate> FusionEngine::submit(const Observation& obs) {
                << " res=" << tri.residual_m << "m par=" << tri.parallax_deg
                << "deg conf=" << tri.confidence;
             if (auto up = tracker_.update(tri.point, now, tri.confidence, tri.cameras)) {
-                out.push_back(*up);
+                if (plausible_locked(*up)) out.push_back(*up);
             }
         } else {
             st << "fuse reject: " << tri.reject_reason << " (n=" << aligned.size() << ")";
@@ -110,7 +126,7 @@ std::vector<TrackUpdate> FusionEngine::submit(const Observation& obs) {
             const bool dup = std::any_of(out.begin(), out.end(), [&](const TrackUpdate& e) {
                 return e.object_id == u.object_id;
             });
-            if (!dup) out.push_back(u);
+            if (!dup && plausible_locked(u)) out.push_back(u);
         }
     }
     return out;

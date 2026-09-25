@@ -16,7 +16,7 @@ struct Solve {
 };
 
 Solve solve_subset(const std::vector<Observation>& obs, const std::vector<int>& idx,
-                   double max_range_m) {
+                   double max_range_m, double min_range_m) {
     Solve s;
     std::vector<Ray> rays;
     std::vector<double> weights;
@@ -33,7 +33,9 @@ Solve solve_subset(const std::vector<Observation>& obs, const std::vector<int>& 
     for (std::size_t k = 0; k < rays.size(); ++k) {
         const Vec3 to_p = v_sub(p, rays[k].origin);
         if (v_dot(to_p, rays[k].direction) <= 0.0) return s;
-        if (max_range_m > 0.0 && v_norm(to_p) > max_range_m * 1.5) return s;
+        const double range = v_norm(to_p);
+        if (max_range_m > 0.0 && range > max_range_m * 1.5) return s;
+        if (min_range_m > 0.0 && range < min_range_m) return s;
     }
 
     double rsum = 0.0;
@@ -68,7 +70,7 @@ TriangulationResult triangulate(const std::vector<Observation>& obs,
 
     auto consider = [&](const std::vector<int>& idx) {
         if (idx.size() < 2) return;
-        const Solve s = solve_subset(obs, idx, cfg.max_range_m);
+        const Solve s = solve_subset(obs, idx, cfg.max_range_m, cfg.min_range_m);
         if (!s.ok) return;
         if (s.parallax < cfg.min_parallax_deg) return;
         // Every contributing ray must agree with the solution, not just on

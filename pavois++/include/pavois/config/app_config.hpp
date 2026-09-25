@@ -127,6 +127,10 @@ struct AppConfig {
     int fusion_window_ms = 20;
     int fusion_emit_interval_ms = 60;
     double fusion_max_range_m = 60.0;
+    // Reject a fused point closer than this to any camera: cheirality only
+    // proves the target is in front of the lens, not that the intersection is
+    // physically possible.
+    double fusion_min_range_m = 0.5;
     double fusion_min_parallax_deg = 2.0;
     double fusion_max_residual_m = 3.0;
     double fusion_support_radius_m = 2.5;   // reserved / legacy

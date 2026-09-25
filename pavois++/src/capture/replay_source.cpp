@@ -12,8 +12,10 @@
 namespace pavois {
 namespace fs = std::filesystem;
 
-ReplaySource::ReplaySource(std::string dir, bool loop, bool realtime)
-    : dir_(std::move(dir)), loop_(loop), realtime_(realtime) {}
+ReplaySource::ReplaySource(std::string dir, bool loop, bool realtime,
+                           std::uint64_t anchor_us)
+    : dir_(std::move(dir)), loop_(loop), realtime_(realtime),
+      anchor_us_(anchor_us) {}
 
 bool ReplaySource::open() {
     std::error_code ec;
@@ -52,7 +54,9 @@ bool ReplaySource::open() {
         }
     }
 
-    base_us_ = wall_clock_us();
+    // A shared anchor keeps sibling processes on one timeline; without it each
+    // starts its own.
+    base_us_ = anchor_us_ != 0 ? anchor_us_ : wall_clock_us();
     index_ = 0;
     frame_count_ = 0;
     last_error_.clear();
@@ -70,6 +74,24 @@ bool ReplaySource::read_frame(GrayFrame& out) {
             return false;
         }
         index_ = 0;
+    }
+
+    // Catch-up: when the machine cannot sustain the recorded rate, present the
+    // frame that is due NOW rather than the next one in the queue. A live
+    // camera drops frames under load; a replay that instead falls further and
+    // further behind drifts away from its sibling processes, and cross-camera
+    // fusion needs them on the same instant. Without this the three replays of
+    // one session wander seconds apart against a 20 ms fusion window.
+    if (realtime_ && !timestamps_.empty()) {
+        const std::uint64_t now = wall_clock_us();
+        while (index_ + 1 < files_.size()) {
+            const std::uint64_t due =
+                base_us_ + (timestamps_[index_ + 1] - timestamps_.front());
+            if (due > now) break;
+            ++index_;
+            ++frame_count_;
+            ++dropped_;
+        }
     }
 
     const std::size_t file_index = index_++;

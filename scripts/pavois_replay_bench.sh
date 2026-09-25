@@ -308,6 +308,22 @@ for i in $(seq 1 90); do
 done
 log "vps is up"
 
+# ------------------------------------------- align the vps to the rail rig --
+# The vps triangulates from each camera's STORED GPS position, not from the rail
+# pose the detector sends (that only feeds the rail debug view). Its defaults put
+# jean and tanel 1 m apart and walid 4 m away, which is not this rig: three
+# cameras on a 1 m rail with 0.4286 m between neighbours. With the wrong baseline
+# the bearings cannot agree and fusion rejects nearly every frame with
+# "no subset passed parallax/residual gates".
+#
+# So push the rail layout in as GPS, around whatever origin the vps already holds
+# for the first camera. The rail runs east-west, matching RAIL_X.
+log "aligning the vps camera positions with the rail geometry"
+if ! python3 "$REPO_ROOT/scripts/lib/pavois_bench_align_cameras.py" "$WS_TOKEN" "${CAMERAS[*]}" \
+      "${RAIL_X[jean]} ${RAIL_X[tanel]} ${RAIL_X[walid]}"; then
+  log "WARNING: could not set camera positions; fusion geometry may be wrong"
+fi
+
 # ---------------------------------------------------------------- frontend --
 if [ "$SKIP_FRONTEND" = 0 ]; then
   # The Angular CLI refuses to run on Node < 22, while the vps is happy on 20.
@@ -360,7 +376,14 @@ fi
 # --------------------------------------------------------------- detectors --
 # One process per camera, as on the rig. With a single enabled camera each
 # process emits raw observations and the VPS performs the cross-camera fusion.
-log "starting ${#CAMERAS[@]} detector processes"
+# One shared wall-clock origin for all three replays. Each process otherwise
+# paces from its own open(), so the few hundred ms between launches becomes a
+# permanent offset between their recorded clocks -- measured at 1.6 s, against a
+# 20 ms fusion window, which means the VPS almost never sees two cameras at the
+# same instant and reports "need >= 2 observations". The lead time covers
+# process startup so nobody starts already behind.
+REPLAY_ANCHOR_US=$(( ($(date +%s) + 6) * 1000000 ))
+log "starting ${#CAMERAS[@]} detector processes (shared replay start in 6 s)"
 for cam in "${CAMERAS[@]}"; do
   conf="$RUN_DIR/$cam.conf"
   cat > "$conf" <<CONF
@@ -368,6 +391,7 @@ for cam in "${CAMERAS[@]}"; do
 frames=-1
 replay_loop=true
 replay_realtime=true
+replay_anchor_us=$REPLAY_ANCHOR_US
 processing_threads=2
 observation_log=$RUN_DIR/obs
 

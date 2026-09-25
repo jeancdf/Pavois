@@ -19,7 +19,14 @@ namespace pavois {
 // Playback is paced in real time and loops unless `loop` is false.
 class ReplaySource : public FrameSource {
 public:
-    explicit ReplaySource(std::string dir, bool loop = true, bool realtime = true);
+    // anchor_us: wall-clock time at which the FIRST recorded frame should be
+    // presented. Separate processes replaying the same session must share it,
+    // or each paces from its own open() and the launch stagger becomes a
+    // permanent offset between their recorded clocks -- far wider than
+    // fusion_window_ms, so cross-camera fusion never aligns. 0 = pace from
+    // open(), which is right for a single process.
+    explicit ReplaySource(std::string dir, bool loop = true, bool realtime = true,
+                          std::uint64_t anchor_us = 0);
 
     bool open() override;
     bool read_frame(GrayFrame& out) override;
@@ -32,6 +39,8 @@ private:
     std::string dir_;
     bool loop_ = true;
     bool realtime_ = true;
+    std::uint64_t anchor_us_ = 0;
+    std::uint64_t dropped_ = 0;
     double fps_ = 30.0;
     std::vector<std::string> files_;
     std::vector<std::uint64_t> timestamps_;  // Unix us, one per file, may be empty

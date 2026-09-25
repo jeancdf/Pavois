@@ -149,6 +149,7 @@ export class FusionService {
   private readonly minParallaxDeg = envNumber('FUSION_MIN_PARALLAX_DEG', 2);
   private readonly maxResidualM = envNumber('FUSION_MAX_RESIDUAL_M', 3);
   private readonly maxRangeM = envNumber('FUSION_MAX_RANGE_M', 60);
+  private readonly minRangeM = envNumber('FUSION_MIN_RANGE_M', 0.5);
   private readonly deques = new Map<string, FusionObservation[]>();
   // Survivant à la purge du deque : âge / active restent lisibles.
   private readonly lastSeen = new Map<string, CameraLastSeen>();
@@ -238,7 +239,7 @@ export class FusionService {
     }
     this.rawIntersections =
       rawTriObs.length >= 2
-        ? pairIntersections(rawTriObs, this.maxRangeM).map((intersection) => ({
+        ? pairIntersections(rawTriObs, this.maxRangeM, this.minRangeM).map((intersection) => ({
             ...intersection,
             timestampUs: tRefUs,
           }))
@@ -269,6 +270,7 @@ export class FusionService {
       minParallaxDeg: this.minParallaxDeg,
       maxResidualM: this.maxResidualM,
       maxRangeM: this.maxRangeM,
+      minRangeM: this.minRangeM,
     });
     this.lastFuse = toLastFuse(result);
     this.advanceTracker(result, tRefUs);

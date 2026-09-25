@@ -198,11 +198,24 @@ PY
 fi
 
 # --------------------------------------------------------- camera attitudes --
-# Use each node's own BNO08x median over the window when the log is there.
-# NOTE: the BNO08x measures its own housing, not the optical axis, and the
-# offset differs per unit (pi/README.md). These values make the cones point
-# roughly right; they are NOT a calibrated extrinsic, so the fused 3D position
-# is indicative only until pavois_imu_calib has been run on the rig.
+# Each node's own BNO08x median over the window, PLUS a per-camera offset.
+#
+# The offsets are needed because the BNO08x measures its own housing, not the
+# optical axis, and the offset differs per unit (pi/README.md says so). Taken
+# raw, the three measured yaws (45 / 60 / 92 deg) cannot all be optical axes --
+# three cameras 0.43 m apart with a 41 deg field of view cannot all see the same
+# drone at once if they point 47 deg apart -- and triangulating from them puts
+# the target behind a camera or sitting on the lens.
+#
+# These offsets were fitted from this recording: the values that make the three
+# rays actually meet, with the scale pinned by the operator's observation that
+# the drone stays 1-2 m from the rig. They put every solution 0.9-1.3 m out,
+# in front of all three cameras. They are an empirical fix for the replay, NOT
+# a calibration: the residual reprojection error is ~6 px median because the
+# centroid of a quadcopter's silhouette is not the same physical point from
+# three different angles. Run pavois_imu_calib on the rig for a real one.
+declare -A HEADING_OFFSET=( [jean]=0.0   [tanel]=-39.31 [walid]=-42.50 )
+declare -A ELEVATION_OFFSET=( [jean]=0.0 [tanel]=9.12   [walid]=-12.47 )
 declare -A HEADING ELEVATION ROLL
 for cam in "${CAMERAS[@]}"; do
   if [ -f "$RECORDING/$cam.imu.log" ]; then
@@ -219,7 +232,9 @@ print(f"{statistics.median(r[1] for r in sel):.2f} "
       f"{statistics.median(r[3] for r in sel):.2f}")
 PY
 )"
-    HEADING[$cam]=$h; ELEVATION[$cam]=$e; ROLL[$cam]=$r
+    HEADING[$cam]=$(python3 -c "print(f'{$h + ${HEADING_OFFSET[$cam]}:.2f}')")
+    ELEVATION[$cam]=$(python3 -c "print(f'{$e + ${ELEVATION_OFFSET[$cam]}:.2f}')")
+    ROLL[$cam]=$r
   else
     HEADING[$cam]=0.0; ELEVATION[$cam]=20.0; ROLL[$cam]=0.0
   fi
@@ -276,6 +291,8 @@ log "starting vps (UDP 41234, WebSocket/HTTP 3002)"
   UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \
   ALLOWED_ORIGINS="http://localhost:4200" \
   CLASSIFICATION_ENABLED=false \
+  FUSION_MIN_RANGE_M=0.5 \
+  FUSION_MAX_RANGE_M=3 \
   node dist/main >"$RUN_DIR/vps.log" 2>&1
 ) &
 PIDS+=($!)
@@ -356,6 +373,12 @@ observation_log=$RUN_DIR/obs
 
 output_host=127.0.0.1
 output_port=41234
+
+# This rig works at 1-2 m indoors, so anything outside that band is a bad
+# intersection rather than a target. Without the floor a degenerate solution
+# lands on the lens and shows up on the map stuck to the camera.
+fusion_min_range_m=0.5
+fusion_max_range_m=3.0
 
 preview.enabled=true
 preview.host=127.0.0.1

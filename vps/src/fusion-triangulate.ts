@@ -15,6 +15,14 @@ export interface TriangulationConfig {
   minParallaxDeg: number; // default 2
   maxResidualM: number; // default 3
   maxRangeM: number; // default 60
+  /**
+   * Closest a solution may sit to ANY camera. Cheirality only proves the point
+   * is in front of the lens; a poorly conditioned set of bearings can collapse
+   * onto a point centimetres away and pass every other gate, which shows up on
+   * the map as a target sitting on the camera. Nothing this system is built to
+   * see can be that close, so treat it as a failed intersection.
+   */
+  minRangeM: number; // default 0.5
 }
 
 export interface TriangulateObservation {
@@ -47,6 +55,7 @@ const DEFAULT_CFG: TriangulationConfig = {
   minParallaxDeg: 2,
   maxResidualM: 3,
   maxRangeM: 60,
+  minRangeM: 0.5,
 };
 
 const NEED_OBS = 'need >= 2 observations';
@@ -80,6 +89,7 @@ function solveSubset(
   obs: TriangulateObservation[],
   idx: number[],
   maxRangeM: number,
+  minRangeM: number,
 ): Solve {
   const s: Solve = {
     ok: false,
@@ -102,7 +112,9 @@ function solveSubset(
   for (const r of rays) {
     const toP = vSub(p, r.origin);
     if (vDot(toP, r.direction) <= 0) return s;
-    if (maxRangeM > 0 && vNorm(toP) > maxRangeM * 1.5) return s;
+    const range = vNorm(toP);
+    if (maxRangeM > 0 && range > maxRangeM * 1.5) return s;
+    if (minRangeM > 0 && range < minRangeM) return s;
   }
 
   let rsum = 0;
@@ -126,6 +138,7 @@ function solveSubset(
 export function pairIntersections(
   obs: TriangulateObservation[],
   maxRangeM = DEFAULT_CFG.maxRangeM,
+  minRangeM = DEFAULT_CFG.minRangeM,
 ): PairIntersection[] {
   const intersections: PairIntersection[] = [];
   for (let i = 0; i < obs.length; ++i) {
@@ -157,6 +170,9 @@ export function pairIntersections(
           dot * vDot(first.direction, betweenOrigins)) /
         denominator;
       if (firstDistance <= 0 || secondDistance <= 0) continue;
+      if (minRangeM > 0 && (firstDistance < minRangeM || secondDistance < minRangeM)) {
+        continue;
+      }
       if (
         maxRangeM > 0 &&
         (firstDistance > maxRangeM * 1.5 || secondDistance > maxRangeM * 1.5)
@@ -209,7 +225,7 @@ export function triangulate(
 
   const consider = (idx: number[]): void => {
     if (idx.length < 2) return;
-    const s = solveSubset(obs, idx, c.maxRangeM);
+    const s = solveSubset(obs, idx, c.maxRangeM, c.minRangeM);
     if (!s.ok) return;
     if (s.parallax < c.minParallaxDeg) return;
     // Every contributing ray must agree with the solution, not just on

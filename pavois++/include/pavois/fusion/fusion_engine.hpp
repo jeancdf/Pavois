@@ -37,6 +37,11 @@ private:
 
     mutable std::mutex mutex_;
     FusionSettings settings_;
+    // A coasted track is a Kalman prediction, not a measurement, so it can
+    // drift somewhere the geometry rules out even though every triangulation
+    // was gated. Drop those before they reach the map.
+    bool plausible_locked(const TrackUpdate& update) const;
+
     std::unordered_map<std::string, std::deque<Observation>> history_;
     Tracker tracker_;
     std::uint64_t last_emit_us_ = 0;

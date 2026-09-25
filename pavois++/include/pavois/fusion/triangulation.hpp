@@ -13,6 +13,12 @@ struct TriangulationConfig {
     double min_parallax_deg = 2.0;
     double max_residual_m = 3.0;
     double max_range_m = 60.0;
+    // Closest a solution may be to ANY camera. Cheirality alone only says the
+    // target is in front of the lens, so a badly-conditioned set of bearings
+    // can collapse onto a point centimetres away and still pass every other
+    // gate. Nothing the system is built to see can be that close, so treat it
+    // as a failed intersection rather than a track sitting on the camera.
+    double min_range_m = 0.5;
     int ransac_iterations = 24;
 };
 

@@ -57,6 +57,11 @@ bool ReplaySource::open() {
     // A shared anchor keeps sibling processes on one timeline; without it each
     // starts its own.
     base_us_ = anchor_us_ != 0 ? anchor_us_ : wall_clock_us();
+    span_us_ = timestamps_.empty()
+                   ? 0
+                   : timestamps_.back() - timestamps_.front() +
+                         static_cast<std::uint64_t>(1e6 / fps_);
+    lap_ = 0;
     index_ = 0;
     frame_count_ = 0;
     last_error_.clear();
@@ -74,6 +79,11 @@ bool ReplaySource::read_frame(GrayFrame& out) {
             return false;
         }
         index_ = 0;
+        ++lap_;
+        // Move the schedule on by one pass. Without this every frame of the
+        // next lap is already "due", the catch-up below races to the end, and
+        // the pace target runs away into the future -- which stalls playback.
+        base_us_ += span_us_;
     }
 
     // Catch-up: when the machine cannot sustain the recorded rate, present the
@@ -91,6 +101,11 @@ bool ReplaySource::read_frame(GrayFrame& out) {
             ++index_;
             ++frame_count_;
             ++dropped_;
+        }
+        // Falling a whole pass behind means the schedule itself is stale;
+        // re-anchor rather than sprint through laps that are already history.
+        if (span_us_ > 0 && now > base_us_ + span_us_) {
+            base_us_ = now - (timestamps_[index_] - timestamps_.front());
         }
     }
 
@@ -122,12 +137,9 @@ bool ReplaySource::read_frame(GrayFrame& out) {
     const std::uint64_t dt_us = static_cast<std::uint64_t>(1e6 / fps_);
     out.frame_id = frame_count_;
     if (!timestamps_.empty()) {
-        // Replay the recorded clock. Every loop pass is shifted by one full
+        // Replay the recorded clock; each completed pass shifts it by one full
         // span so timestamps stay monotonic across repeats.
-        const std::uint64_t span =
-            timestamps_.back() - timestamps_.front() + dt_us;
-        const std::uint64_t laps = frame_count_ / files_.size();
-        out.captured_us = timestamps_[file_index] + laps * span;
+        out.captured_us = timestamps_[file_index] + lap_ * span_us_;
     } else {
         out.captured_us = base_us_ + frame_count_ * dt_us;
     }
@@ -137,11 +149,11 @@ bool ReplaySource::read_frame(GrayFrame& out) {
         // Pace against elapsed wall time since open(), using the recorded
         // spacing when we have it so a variable-rate recording replays at its
         // true speed rather than a nominal constant fps.
-        const std::uint64_t offset =
+        const std::uint64_t target =
             timestamps_.empty()
-                ? frame_count_ * dt_us
-                : out.captured_us - timestamps_.front() + dt_us;
-        const std::uint64_t target = base_us_ + offset;
+                ? base_us_ + frame_count_ * dt_us
+                : base_us_ + (timestamps_[file_index] - timestamps_.front()) +
+                      dt_us;
         const std::uint64_t now = wall_clock_us();
         if (target > now) {
             std::this_thread::sleep_for(std::chrono::microseconds(target - now));

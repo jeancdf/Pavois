@@ -41,6 +41,8 @@ private:
     bool realtime_ = true;
     std::uint64_t anchor_us_ = 0;
     std::uint64_t dropped_ = 0;
+    std::uint64_t span_us_ = 0;   // recorded duration of one pass
+    std::uint64_t lap_ = 0;       // completed passes, for monotonic timestamps
     double fps_ = 30.0;
     std::vector<std::string> files_;
     std::vector<std::uint64_t> timestamps_;  // Unix us, one per file, may be empty

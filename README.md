@@ -45,6 +45,31 @@ scripts/pavois_replay_bench.sh --recording /chemin/rec-AAAAMMJJ-HHMMSSZ-auto
 
 Voir `--help` pour les options (fenêtre temporelle, résolution, sans frontend).
 
+### Classifieur de pistes (pattern matching)
+
+Deux scripts transforment des sessions enregistrées en jeu de données puis en
+modèle. `vps/src/fusion-classify.ts` reste l'heuristique par seuils ; ce modèle
+apprend les mêmes entrées à partir de vols réels.
+
+```bash
+# 1. vols -> tableur (ajoute des exemples oiseau/avion générés)
+scripts/pavois_extract_features.py /chemin/rec-... --label drone \
+    --synth-birds 120 --synth-airplanes 120 --out dataset.xlsx
+
+# 2. tableur -> modèle
+scripts/pavois_train_classifier.py dataset.xlsx --out model.joblib
+
+# 3. plus tard : ajouter une session puis réentraîner
+scripts/pavois_extract_features.py /chemin/nouveau-rec --label drone \
+    --append --out dataset.xlsx
+scripts/pavois_train_classifier.py dataset.xlsx --out model.joblib
+```
+
+Les colonnes d'entraînement sont sans échelle (vitesses angulaires, fraction de
+vol stationnaire, rectitude, dynamique de silhouette) : elles restent valables
+tant que les extrinsèques du banc ne sont pas calibrées. `altitude_m` et
+`speed_mps` sont écrites pour lecture mais **exclues de l'entraînement**.
+
 ## Lancer `vps` (backend)
 
 ```bash

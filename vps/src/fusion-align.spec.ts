@@ -1,5 +1,5 @@
 import { FusionObservation } from './fusion.types';
-import { timeAlign, timeAlignFrameGroups } from './fusion-align';
+import { alignCandidates, timeAlignFrameGroups } from './fusion-align';
 
 function observation(
   cameraId: string,
@@ -18,7 +18,9 @@ function observation(
   };
 }
 
-describe('timeAlign', () => {
+describe('alignCandidates', () => {
+  const GATE_PX = 60;
+
   it('lerps two samples at the midpoint', () => {
     const a = observation('A', {
       timestampUs: 0,
@@ -32,11 +34,11 @@ describe('timeAlign', () => {
       y: 20,
       confidence: 0.4,
     });
-    const out = timeAlign(new Map([['A', [a, b]]]), 500, 90);
-    expect(out).toHaveLength(1);
-    expect(out[0].x).toBe(5);
-    expect(out[0].y).toBe(10);
-    expect(out[0].confidence).toBe(0.4);
+    const out = alignCandidates(new Map([['A', [a, b]]]), 500, 90, GATE_PX);
+    expect(out.get('A')).toHaveLength(1);
+    expect(out.get('A')![0].x).toBe(5);
+    expect(out.get('A')![0].y).toBe(10);
+    expect(out.get('A')![0].confidence).toBe(0.4);
   });
 
   it('includes a sample 50 ms before tRef with penalty', () => {
@@ -45,38 +47,70 @@ describe('timeAlign', () => {
       timestampUs: tRefUs - 50000,
       confidence: 0.5,
     });
-    const out = timeAlign(new Map([['A', [obs]]]), tRefUs, 90);
-    expect(out).toHaveLength(1);
-    expect(out[0].confidence).toBe(0.4);
+    const out = alignCandidates(new Map([['A', [obs]]]), tRefUs, 90, GATE_PX);
+    expect(out.get('A')).toHaveLength(1);
+    expect(out.get('A')![0].confidence).toBe(0.4);
     expect(obs.confidence).toBe(0.5);
   });
 
   it('omits a sample 200 ms away', () => {
     const obs = observation('A', { timestampUs: 200000 });
-    const out = timeAlign(new Map([['A', [obs]]]), 0, 90);
-    expect(out).toHaveLength(0);
+    const out = alignCandidates(new Map([['A', [obs]]]), 0, 90, GATE_PX);
+    expect(out.size).toBe(0);
   });
 
   it('aligns two cameras with a sample at tRef', () => {
     const tRefUs = 1000;
-    const jean = observation('jean', { timestampUs: tRefUs });
-    const tanel = observation('tanel', { timestampUs: tRefUs });
-    const out = timeAlign(
+    const out = alignCandidates(
       new Map([
-        ['jean', [jean]],
-        ['tanel', [tanel]],
+        ['jean', [observation('jean', { timestampUs: tRefUs })]],
+        ['tanel', [observation('tanel', { timestampUs: tRefUs })]],
       ]),
       tRefUs,
       90,
+      GATE_PX,
     );
-    expect(out).toHaveLength(2);
-    expect(out.map((o) => o.cameraId).sort()).toEqual(['jean', 'tanel']);
+    expect([...out.keys()].sort()).toEqual(['jean', 'tanel']);
   });
 
-  it('returns [] for an empty map', () => {
-    expect(timeAlign(new Map(), 0, 90)).toEqual([]);
+  it('returns an empty map for no history', () => {
+    expect(alignCandidates(new Map(), 0, 90, GATE_PX).size).toBe(0);
   });
 
+  it('interpolates each object with itself, never across objects', () => {
+    // Two objects far apart; the Pi reorders them between frames.
+    const t0 = [
+      observation('A', { timestampUs: 0, x: 100, y: 100 }),
+      observation('A', { timestampUs: 0, x: 900, y: 500 }),
+    ];
+    const t1 = [
+      observation('A', { timestampUs: 40000, x: 910, y: 500 }),
+      observation('A', { timestampUs: 40000, x: 110, y: 100 }),
+    ];
+    const out = alignCandidates(
+      new Map([['A', [...t0, ...t1]]]),
+      20000,
+      20,
+      GATE_PX,
+    );
+    const xs = out
+      .get('A')!
+      .map((o) => o.x)
+      .sort((a, b) => a - b);
+    expect(xs).toEqual([105, 905]);
+  });
+
+  it('holds an unmatched blob from the nearer frame', () => {
+    const a = observation('A', { timestampUs: 0, x: 100, y: 100 });
+    const b = observation('A', { timestampUs: 40000, x: 800, y: 600 });
+    const out = alignCandidates(new Map([['A', [a, b]]]), 10000, 20, GATE_PX);
+    expect(out.get('A')).toHaveLength(1);
+    expect(out.get('A')![0].x).toBe(100);
+    expect(out.get('A')![0].confidence).toBeCloseTo(0.64);
+  });
+});
+
+describe('timeAlignFrameGroups', () => {
   it('keeps every blob from the nearest frame of each camera', () => {
     const jeanA = observation('jean', {
       frameIndex: 20,

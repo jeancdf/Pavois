@@ -17,50 +17,114 @@ export function lerpObservation(
   return o;
 }
 
-export function timeAlign(
+interface FrameGroup {
+  timestampUs: number;
+  blobs: FusionObservation[];
+}
+
+/** Frames bracketing tRef: latest at or before it, earliest at or after it. */
+function bracketFrames(
+  history: readonly FusionObservation[],
+  tRefUs: number,
+): { lo: FrameGroup | null; hi: FrameGroup | null } {
+  let loUs = -Infinity;
+  let hiUs = Infinity;
+  for (const o of history) {
+    const t = observationTimeUs(o);
+    if (t <= tRefUs && t > loUs) loUs = t;
+    if (t >= tRefUs && t < hiUs) hiUs = t;
+  }
+  const group = (us: number): FrameGroup | null => {
+    if (!Number.isFinite(us)) return null;
+    // Keep the frame's blob order: the Pi sends its best blob first.
+    const blobs = history.filter((o) => observationTimeUs(o) === us);
+    return { timestampUs: us, blobs };
+  };
+  return { lo: group(loUs), hi: group(hiUs) };
+}
+
+/**
+ * Pair every blob of `near` with the closest unused blob of `far` in pixel
+ * space. Interpolating across frames is only valid for the same object.
+ */
+function matchBlobs(
+  near: FusionObservation[],
+  far: FusionObservation[],
+  gatePx: number,
+): (FusionObservation | null)[] {
+  const pairs: { i: number; j: number; d: number }[] = [];
+  for (let i = 0; i < near.length; i++) {
+    for (let j = 0; j < far.length; j++) {
+      const d = Math.hypot(near[i].x - far[j].x, near[i].y - far[j].y);
+      if (d <= gatePx) pairs.push({ i, j, d });
+    }
+  }
+  pairs.sort((a, b) => a.d - b.d);
+  const out: (FusionObservation | null)[] = near.map(() => null);
+  const usedFar = new Set<number>();
+  for (const p of pairs) {
+    if (out[p.i] !== null || usedFar.has(p.j)) continue;
+    out[p.i] = far[p.j];
+    usedFar.add(p.j);
+  }
+  return out;
+}
+
+/**
+ * Every blob of every camera brought to tRef. Blobs of the two frames that
+ * bracket tRef are paired by pixel distance and interpolated; a blob with no
+ * partner, or a camera with only one side, is held as-is (confidence x0.8)
+ * when its frame lies within the window.
+ */
+export function alignCandidates(
   histories: ReadonlyMap<string, readonly FusionObservation[]>,
   tRefUs: number,
   windowMs: number,
-): FusionObservation[] {
+  pairGatePx: number,
+): Map<string, FusionObservation[]> {
   const windowUs = windowMs * 1000;
-  const aligned: FusionObservation[] = [];
+  const out = new Map<string, FusionObservation[]>();
 
-  for (const hist of histories.values()) {
-    if (hist.length === 0) {
-      continue;
-    }
+  for (const [cameraId, history] of histories) {
+    if (history.length === 0) continue;
+    const { lo, hi } = bracketFrames(history, tRefUs);
+    const aligned: FusionObservation[] = [];
 
-    let lo: FusionObservation | undefined;
-    let hi: FusionObservation | undefined;
-    for (const o of hist) {
-      const t = observationTimeUs(o);
-      if (t <= tRefUs && (lo === undefined || t > observationTimeUs(lo))) {
-        lo = o;
+    if (lo && hi && lo.timestampUs === hi.timestampUs) {
+      for (const b of lo.blobs) aligned.push({ ...b });
+    } else if (lo && hi) {
+      const span = hi.timestampUs - lo.timestampUs;
+      const f = (tRefUs - lo.timestampUs) / span;
+      const loIsNear = f < 0.5;
+      const near = loIsNear ? lo : hi;
+      const far = loIsNear ? hi : lo;
+      const nearWithin = Math.abs(near.timestampUs - tRefUs) <= windowUs;
+      const partners = matchBlobs(near.blobs, far.blobs, pairGatePx);
+      near.blobs.forEach((b, i) => {
+        const partner = partners[i];
+        if (partner) {
+          aligned.push(
+            loIsNear
+              ? lerpObservation(b, partner, f)
+              : lerpObservation(partner, b, f),
+          );
+        } else if (nearWithin) {
+          aligned.push({ ...b, confidence: b.confidence * 0.8 });
+        }
+      });
+    } else {
+      const only = lo ?? hi;
+      if (only && Math.abs(only.timestampUs - tRefUs) <= windowUs) {
+        for (const b of only.blobs) {
+          aligned.push({ ...b, confidence: b.confidence * 0.8 });
+        }
       }
-      if (t >= tRefUs && (hi === undefined || t < observationTimeUs(hi))) {
-        hi = o;
-      }
     }
 
-    if (lo !== undefined && hi !== undefined && lo !== hi) {
-      const tLo = observationTimeUs(lo);
-      const span = observationTimeUs(hi) - tLo;
-      const f = span === 0 ? 0 : (tRefUs - tLo) / span;
-      aligned.push(lerpObservation(lo, hi, f));
-    } else if (lo !== undefined && lo === hi) {
-      aligned.push({ ...lo });
-    } else if (lo !== undefined && tRefUs - observationTimeUs(lo) <= windowUs) {
-      const o = { ...lo };
-      o.confidence *= 0.8;
-      aligned.push(o);
-    } else if (hi !== undefined && observationTimeUs(hi) - tRefUs <= windowUs) {
-      const o = { ...hi };
-      o.confidence *= 0.8;
-      aligned.push(o);
-    }
+    if (aligned.length > 0) out.set(cameraId, aligned);
   }
 
-  return aligned;
+  return out;
 }
 
 /**

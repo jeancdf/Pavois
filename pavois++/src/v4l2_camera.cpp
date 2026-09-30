@@ -12,11 +12,37 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <sstream>
 #include <thread>
 #include <utility>
 
 namespace pavois {
+
+namespace {
+
+// Kernel capture time (CLOCK_MONOTONIC) mapped onto the wall clock, so the
+// VPS aligns frames on when they were exposed rather than when this thread
+// got around to dequeuing them. Falls back to "now" when the driver gives
+// no usable monotonic timestamp.
+std::uint64_t buffer_capture_wall_us(const v4l2_buffer& buf) {
+    const std::uint64_t wall = wall_clock_us();
+    if ((buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) != V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC) {
+        return wall;
+    }
+    const std::uint64_t captured =
+        static_cast<std::uint64_t>(buf.timestamp.tv_sec) * 1000000ULL +
+        static_cast<std::uint64_t>(buf.timestamp.tv_usec);
+    timespec now{};
+    if (captured == 0 || clock_gettime(CLOCK_MONOTONIC, &now) != 0) return wall;
+    const std::uint64_t mono = static_cast<std::uint64_t>(now.tv_sec) * 1000000ULL +
+                               static_cast<std::uint64_t>(now.tv_nsec) / 1000ULL;
+    // A stale or future stamp means a clock we do not understand.
+    if (captured > mono || mono - captured > 1000000ULL) return wall;
+    return wall - (mono - captured);
+}
+
+}  // namespace
 
 V4L2Camera::V4L2Camera(std::string device, int requested_width, int requested_height)
     : device_(std::move(device)),
@@ -335,7 +361,7 @@ bool V4L2Camera::dequeue_frame(GrayFrame& out) {
     const auto* data = static_cast<const std::uint8_t*>(buffers_[buf.index].start);
     out.width = width_;
     out.height = height_;
-    out.captured_us = wall_clock_us();
+    out.captured_us = buffer_capture_wall_us(buf);
     out.pixels.resize(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_));
     yuyv_to_gray(data, out.pixels.data(), width_, height_);
 

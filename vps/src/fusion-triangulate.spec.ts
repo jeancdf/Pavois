@@ -153,4 +153,35 @@ describe('triangulate', () => {
     expect(triangulate([obs[0]], cfg).ok).toBe(false);
     expect(triangulate([obs[0]], cfg).rejectReason).toBe(NEED_OBS);
   });
+
+  it('reports a covariance stretched along the viewing direction', () => {
+    const rng = mulberry32(7);
+    const poses = [
+      lookAt({ x: -3, y: 0, z: 2 }, target),
+      lookAt({ x: 3, y: 0, z: 2 }, target),
+    ];
+    const r = triangulate(makeObs(target, poses, intrinsics, 0, rng), cfg);
+    expect(r.ok).toBe(true);
+    const cov = r.covariance!;
+    // Narrow baseline across x: depth (y) is far less certain than x.
+    expect(cov[4]).toBeGreaterThan(cov[0] * 10);
+    expect(r.residualPx).toBeLessThan(0.5);
+  });
+
+  it('weighs rays in pixels so a far camera still counts', () => {
+    const rng = mulberry32(11);
+    const poses = [
+      lookAt({ x: -12, y: -2, z: 2 }, target),
+      lookAt({ x: 11, y: 1, z: 2 }, target),
+      lookAt({ x: 0, y: 25, z: 3 }, target),
+    ];
+    let err = 0;
+    for (let k = 0; k < 20; k++) {
+      const obs = makeObs(target, poses, intrinsics, 1.0, rng);
+      const r = triangulate(obs, cfg);
+      expect(r.ok).toBe(true);
+      err += vNorm(vSub(r.point as Vec3, target));
+    }
+    expect(err / 20).toBeLessThan(0.1);
+  });
 });

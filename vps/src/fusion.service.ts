@@ -1,21 +1,33 @@
-import { Injectable } from '@nestjs/common';
-import { timeAlign, timeAlignFrameGroups } from './fusion-align';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { createWriteStream, type WriteStream } from 'fs';
+import { alignCandidates, timeAlignFrameGroups } from './fusion-align';
 import {
   enuToGps,
   gpsToEnu,
   makeIntrinsics,
+  projectWorldToPixel,
+  reprojectionErrorPx,
+  vNorm,
+  vSub,
   type CameraIntrinsics,
   type CameraPose,
   type GeoOrigin,
   type Vec3,
 } from './fusion-geo';
 import {
+  DEFAULT_TRIANGULATION_CONFIG,
   triangulate,
   pairIntersections,
   type TriangulateObservation,
+  type TriangulationConfig,
   type TriangulationResult,
 } from './fusion-triangulate';
-import { Tracker, type TrackerConfig } from './fusion-tracker';
+import {
+  DEFAULT_TRACKER_CONFIG,
+  Tracker,
+  type PredictedTrack,
+  type TrackerConfig,
+} from './fusion-tracker';
 import {
   FusionCameraState,
   FusionLastFuse,
@@ -34,6 +46,18 @@ interface CameraLastSeen {
   confidence: number;
   hasPose: boolean;
 }
+
+/** One blob of one camera at the fusion tick, ready to triangulate. */
+interface Candidate {
+  cameraId: string;
+  confidence: number;
+  tri: TriangulateObservation;
+  used: boolean;
+}
+
+// Bounds the work one ingest can trigger when data arrives in a burst.
+const MAX_TICKS_PER_INGEST = 64;
+const NO_SUBSET = 'no subset passed parallax/residual gates';
 
 function toWsUpdates(
   tracks: FusionTrack[],
@@ -101,6 +125,27 @@ function trackerConfigFromEnv(): TrackerConfig {
     confirmUpdates: envInt('FUSION_TRACK_CONFIRM', 3),
     maxCoastMs: envInt('FUSION_TRACK_MAX_COAST_MS', 1200),
     maxSpeedMps: envNumber('FUSION_TRACK_MAX_SPEED_MPS', 120),
+    gateChi2: envNumber(
+      'FUSION_TRACK_GATE_CHI2',
+      DEFAULT_TRACKER_CONFIG.gateChi2,
+    ),
+    measFloorM: envNumber(
+      'FUSION_TRACK_MEAS_FLOOR_M',
+      DEFAULT_TRACKER_CONFIG.measFloorM,
+    ),
+  };
+}
+
+function triangulationConfigFromEnv(): TriangulationConfig {
+  const d = DEFAULT_TRIANGULATION_CONFIG;
+  return {
+    minParallaxDeg: envNumber('FUSION_MIN_PARALLAX_DEG', d.minParallaxDeg),
+    maxResidualPx: envNumber('FUSION_MAX_RESIDUAL_PX', d.maxResidualPx),
+    maxResidualM: envNumber('FUSION_MAX_RESIDUAL_M', d.maxResidualM),
+    maxRangeM: envNumber('FUSION_MAX_RANGE_M', d.maxRangeM),
+    minRangeM: envNumber('FUSION_MIN_RANGE_M', d.minRangeM),
+    pixelSigma: envNumber('FUSION_PIXEL_SIGMA', d.pixelSigma),
+    poseSigmaDeg: envNumber('FUSION_POSE_SIGMA_DEG', d.poseSigmaDeg),
   };
 }
 
@@ -109,6 +154,7 @@ function needTwoFuse(): FusionLastFuse {
     ok: false,
     rejectReason: 'need >= 2 observations',
     residualM: null,
+    residualPx: null,
     parallaxDeg: null,
     confidence: null,
     cameras: [],
@@ -122,6 +168,7 @@ function toLastFuse(result: TriangulationResult): FusionLastFuse {
       ok: false,
       rejectReason: result.rejectReason || null,
       residualM: null,
+      residualPx: null,
       parallaxDeg: null,
       confidence: null,
       cameras: result.cameras.slice(),
@@ -133,6 +180,7 @@ function toLastFuse(result: TriangulationResult): FusionLastFuse {
     ok: true,
     rejectReason: null,
     residualM: result.residualM,
+    residualPx: result.residualPx,
     parallaxDeg: result.parallaxDeg,
     confidence: result.confidence,
     cameras: result.cameras.slice(),
@@ -140,43 +188,83 @@ function toLastFuse(result: TriangulationResult): FusionLastFuse {
   };
 }
 
+/** Most cameras first, then the most confident solution. */
+function betterFuse(a: TriangulationResult, b: TriangulationResult): boolean {
+  if (a.cameras.length !== b.cameras.length) {
+    return a.cameras.length > b.cameras.length;
+  }
+  return a.confidence > b.confidence;
+}
+
+/** Predicted track spread projected in pixels, for the association gate. */
+function projectedSigmaPx(track: PredictedTrack, c: Candidate): number {
+  const cov = track.covariance;
+  const sigmaM = Math.sqrt(Math.max(0, (cov[0] + cov[4] + cov[8]) / 3));
+  const pose = c.tri.pose;
+  const range = vNorm(
+    vSub(track.position, { x: pose.x, y: pose.y, z: pose.z }),
+  );
+  const f = 0.5 * (c.tri.intrinsics.fx + c.tri.intrinsics.fy);
+  return range > 1e-6 ? (f * sigmaM) / range : Infinity;
+}
+
+/**
+ * Multi-camera fusion on the VPS.
+ *
+ * Fusion runs on a fixed time grid (FUSION_INTERVAL_MS) held back until
+ * every recently active camera has a frame at or after the tick, or until
+ * FUSION_LATENCY_MS of newer data has arrived. The other Pi frames for the
+ * same instant are then already here, so each camera is interpolated
+ * instead of extrapolated.
+ *
+ * At each tick, blobs are first assigned to existing tracks by projecting
+ * each predicted track into every camera; the remaining blobs form new
+ * candidates (pairs extended by the third camera). Every target is
+ * triangulated on its own, with a covariance handed to the Kalman filter.
+ */
 @Injectable()
-export class FusionService {
+export class FusionService implements OnModuleDestroy {
   private readonly historyWindowMs = envInt('FUSION_HISTORY_MS', 2000);
   private readonly staleAfterMs = envInt('FUSION_STALE_MS', 2000);
   private readonly maxPerCamera = envInt('FUSION_MAX_PER_CAMERA', 256);
   private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 20);
-  private readonly minParallaxDeg = envNumber('FUSION_MIN_PARALLAX_DEG', 2);
-  private readonly maxResidualM = envNumber('FUSION_MAX_RESIDUAL_M', 3);
-  private readonly maxRangeM = envNumber('FUSION_MAX_RANGE_M', 60);
-  private readonly minRangeM = envNumber('FUSION_MIN_RANGE_M', 0.5);
+  private readonly intervalMs = envInt('FUSION_INTERVAL_MS', 40);
+  private readonly latencyMs = envInt('FUSION_LATENCY_MS', 80);
+  private readonly assocGatePx = envNumber('FUSION_ASSOC_GATE_PX', 40);
+  private readonly pairGatePx = envNumber('FUSION_PAIR_GATE_PX', 60);
+  private readonly maxBlobsPerCamera = envInt('FUSION_MAX_BLOBS_PER_CAMERA', 8);
+  private readonly maxTargets = envInt('FUSION_MAX_TARGETS', 8);
+  private readonly triCfg = triangulationConfigFromEnv();
   private readonly deques = new Map<string, FusionObservation[]>();
   // Survivant à la purge du deque : âge / active restent lisibles.
   private readonly lastSeen = new Map<string, CameraLastSeen>();
   private lastFuse: FusionLastFuse | null = null;
   private rawIntersections: FusionRayIntersection[] = [];
-  // 0 = jamais fusionné (sentinelle C++ last_fuse_us_).
-  private lastFuseUs = 0;
+  // Next grid time to fuse at; null until the first observation.
+  private nextTickUs: number | null = null;
   private readonly tracker = new Tracker(trackerConfigFromEnv());
   private tracks: FusionTrack[] = [];
   private pendingTrackUpdates: FusionTrackUpdate[] = [];
   // Origine ENU figée à la première obs GPS.
   private origin: GeoOrigin | null = null;
+  // JSONL of every observation, for offline replay (scripts/fusion-replay).
+  private readonly recorder: WriteStream | null = this.openRecorder();
 
-  ingest(obs: FusionObservation): void {
+  ingest(obs: FusionObservation, nowMs = Date.now()): void {
     if (!obs.cameraId) {
       return;
     }
+    this.recorder?.write(JSON.stringify(obs) + '\n');
     this.captureOrigin(obs);
     const deque = this.deques.get(obs.cameraId) ?? [];
     deque.push(obs);
     this.deques.set(obs.cameraId, deque);
     this.remember(obs);
-    const nowMs = Date.now();
     for (const cameraId of [...this.deques.keys()]) {
       this.prune(cameraId, nowMs);
     }
-    this.tryFuse(obs.timestampUs);
+    this.updateRawIntersections(obs.timestampUs);
+    this.processTicks(obs.timestampUs);
   }
 
   snapshot(nowMs = Date.now()): FusionSnapshot {
@@ -222,11 +310,23 @@ export class FusionService {
     return out;
   }
 
-  private tryFuse(tRefUs: number): void {
-    const intervalUs = this.fusionWindowMs * 1000;
-    const fusionDue =
-      this.lastFuseUs === 0 || tRefUs >= this.lastFuseUs + intervalUs;
+  onModuleDestroy(): void {
+    this.recorder?.end();
+  }
 
+  private openRecorder(): WriteStream | null {
+    const path = process.env.FUSION_RECORD_PATH;
+    if (!path) return null;
+    const stream = createWriteStream(path, { flags: 'a' });
+    stream.on('error', (err) => {
+      console.warn(`[FUSION] enregistrement impossible (${path}) :`, err);
+    });
+    return stream;
+  }
+
+  // Rail debug view: every blob pair of the frames nearest to the newest
+  // observation, before any gate. Geometry samples, never tracks.
+  private updateRawIntersections(tRefUs: number): void {
     const rawAligned = timeAlignFrameGroups(
       this.deques,
       tRefUs,
@@ -239,53 +339,313 @@ export class FusionService {
     }
     this.rawIntersections =
       rawTriObs.length >= 2
-        ? pairIntersections(rawTriObs, this.maxRangeM, this.minRangeM).map((intersection) => ({
-            ...intersection,
-            timestampUs: tRefUs,
-          }))
+        ? pairIntersections(
+            rawTriObs,
+            this.triCfg.maxRangeM,
+            this.triCfg.minRangeM,
+          ).map((intersection) => ({ ...intersection, timestampUs: tRefUs }))
         : [];
-
-    // The production tracker still receives one best candidate per camera.
-    // Multi-target association is intentionally not inferred from raw voxels.
-    const aligned = timeAlign(this.deques, tRefUs, this.fusionWindowMs);
-    if (aligned.length < 2) {
-      if (fusionDue) this.lastFuse = needTwoFuse();
-      return;
-    }
-    const triObs: TriangulateObservation[] = [];
-    for (const item of aligned) {
-      const mapped = this.toTriObs(item);
-      if (mapped) {
-        triObs.push(mapped);
-      }
-    }
-    if (triObs.length < 2) {
-      if (fusionDue) this.lastFuse = needTwoFuse();
-      return;
-    }
-    if (!fusionDue) return;
-
-    this.lastFuseUs = tRefUs;
-    const result = triangulate(triObs, {
-      minParallaxDeg: this.minParallaxDeg,
-      maxResidualM: this.maxResidualM,
-      maxRangeM: this.maxRangeM,
-      minRangeM: this.minRangeM,
-    });
-    this.lastFuse = toLastFuse(result);
-    this.advanceTracker(result, tRefUs);
   }
 
-  private advanceTracker(result: TriangulationResult, tRefUs: number): void {
-    if (result.ok && result.point) {
+  private processTicks(firstUs: number): void {
+    if (this.deques.size === 0) return;
+    const latencyUs = this.latencyMs * 1000;
+    const intervalUs = this.intervalMs * 1000;
+    let watermark = -Infinity;
+    for (const deque of this.deques.values()) {
+      watermark = Math.max(watermark, latestTimestampUs(deque));
+    }
+    let tickUs: number = this.nextTickUs ?? firstUs;
+    // After a long silence, resume near the newest data instead of
+    // replaying every empty tick of the gap.
+    if (watermark - tickUs > this.historyWindowMs * 1000) {
+      tickUs = watermark - latencyUs;
+    }
+    this.nextTickUs = tickUs;
+    for (let guard = 0; guard < MAX_TICKS_PER_INGEST; guard++) {
+      const late = watermark >= tickUs + latencyUs;
+      if (!late && !this.allCovered(tickUs, latencyUs)) return;
+      if (!this.fuseTick(tickUs, late)) return;
+      tickUs += intervalUs;
+      this.nextTickUs = tickUs;
+    }
+    this.nextTickUs = Math.max(tickUs, watermark - latencyUs);
+  }
+
+  // Every camera that reported recently has a frame at or after the tick.
+  // A camera silent for longer than the latency (target out of its view)
+  // is not waited for.
+  private allCovered(tickUs: number, latencyUs: number): boolean {
+    for (const deque of this.deques.values()) {
+      const latest = latestTimestampUs(deque);
+      if (latest < tickUs - latencyUs) continue;
+      if (latest < tickUs) return false;
+    }
+    return true;
+  }
+
+  /** False when the tick must wait for more data (not consumed). */
+  private fuseTick(tickUs: number, late: boolean): boolean {
+    const cands = this.candidatesAt(tickUs);
+    if (cands.size < 2) {
+      this.lastFuse = needTwoFuse();
+      if (!late) return false;
+      this.advanceTracker(tickUs);
+      return true;
+    }
+
+    const applied: TriangulationResult[] = [];
+    this.associateTracks(
+      this.tracker.predictAll(tickUs),
+      cands,
+      tickUs,
+      applied,
+    );
+    this.spawnFromLeftovers(cands, tickUs, applied);
+
+    let best: TriangulationResult | null = null;
+    for (const r of applied) {
+      if (!best || betterFuse(r, best)) best = r;
+    }
+    this.lastFuse = best
+      ? toLastFuse(best)
+      : {
+          ...needTwoFuse(),
+          rejectReason: NO_SUBSET,
+          cameras: [...cands.keys()],
+        };
+    this.advanceTracker(tickUs);
+    return true;
+  }
+
+  private candidatesAt(tickUs: number): Map<string, Candidate[]> {
+    const aligned = alignCandidates(
+      this.deques,
+      tickUs,
+      this.fusionWindowMs,
+      this.pairGatePx,
+    );
+    const out = new Map<string, Candidate[]>();
+    for (const [cameraId, blobs] of aligned) {
+      const list: Candidate[] = [];
+      for (const obs of blobs) {
+        const tri = this.toTriObs(obs);
+        if (tri)
+          list.push({ cameraId, confidence: obs.confidence, tri, used: false });
+      }
+      list.sort((a, b) => b.confidence - a.confidence);
+      if (list.length > 0)
+        out.set(cameraId, list.slice(0, this.maxBlobsPerCamera));
+    }
+    return out;
+  }
+
+  /**
+   * Track-driven association: each predicted track is projected into every
+   * camera and takes the nearest free blob, one blob per track and camera.
+   */
+  private associateTracks(
+    predicted: PredictedTrack[],
+    cands: Map<string, Candidate[]>,
+    tickUs: number,
+    applied: TriangulationResult[],
+  ): void {
+    const live = predicted.filter((t) => !t.updated);
+    if (live.length === 0) return;
+    const assigned = live.map(() => [] as Candidate[]);
+    for (const list of cands.values()) {
+      const pairs: { track: number; cand: Candidate; d: number }[] = [];
+      live.forEach((track, ti) => {
+        for (const cand of list) {
+          const proj = projectWorldToPixel(
+            cand.tri.intrinsics,
+            cand.tri.pose,
+            track.position,
+          );
+          if (!proj) continue;
+          const d = Math.hypot(
+            proj[0] - cand.tri.pixelX,
+            proj[1] - cand.tri.pixelY,
+          );
+          const gate = Math.max(
+            this.assocGatePx,
+            3 * projectedSigmaPx(track, cand),
+          );
+          if (d <= gate) pairs.push({ track: ti, cand, d });
+        }
+      });
+      pairs.sort((a, b) => a.d - b.d);
+      const takenTracks = new Set<number>();
+      const takenCands = new Set<Candidate>();
+      for (const p of pairs) {
+        if (takenTracks.has(p.track) || takenCands.has(p.cand)) continue;
+        takenTracks.add(p.track);
+        takenCands.add(p.cand);
+        assigned[p.track].push(p.cand);
+      }
+    }
+
+    live.forEach((track, ti) => {
+      const mine = assigned[ti];
+      if (mine.length >= 2) {
+        const r = triangulate(
+          mine.map((c) => c.tri),
+          this.triCfg,
+        );
+        if (
+          r.ok &&
+          r.point &&
+          this.tracker.updateTrack(
+            track.id,
+            r.point,
+            tickUs,
+            r.confidence,
+            r.cameras,
+            r.covariance,
+          )
+        ) {
+          for (const i of r.inliers) mine[i].used = true;
+          applied.push(r);
+          return;
+        }
+      }
+      // A confirmed target seen by one camera only still explains that
+      // blob: keep it out of new-target pairing to avoid ghosts.
+      if (track.confirmed && mine.length === 1) mine[0].used = true;
+    });
+  }
+
+  /**
+   * New targets from blobs no track explained: every cross-camera pair is
+   * triangulated, extended with the best-agreeing blob of the other
+   * cameras, then picked greedily (most cameras, lowest residual).
+   */
+  private spawnFromLeftovers(
+    cands: Map<string, Candidate[]>,
+    tickUs: number,
+    applied: TriangulationResult[],
+  ): void {
+    const free = new Map<string, Candidate[]>();
+    for (const [cameraId, list] of cands) {
+      const left = list.filter((c) => !c.used);
+      if (left.length > 0) free.set(cameraId, left);
+    }
+    const cams = [...free.keys()];
+    if (cams.length < 2) return;
+
+    const proposals: { members: Candidate[]; result: TriangulationResult }[] =
+      [];
+    for (let a = 0; a < cams.length; a++) {
+      for (let b = a + 1; b < cams.length; b++) {
+        for (const ca of free.get(cams[a])!) {
+          for (const cb of free.get(cams[b])!) {
+            const proposal = this.propose([ca, cb], cams, free);
+            if (proposal) proposals.push(proposal);
+          }
+        }
+      }
+    }
+    proposals.sort((x, y) =>
+      x.members.length !== y.members.length
+        ? y.members.length - x.members.length
+        : x.result.residualPx - y.result.residualPx,
+    );
+
+    let spawned = 0;
+    for (const { members, result } of proposals) {
+      if (spawned >= this.maxTargets) break;
+      if (members.some((m) => m.used)) continue;
+      for (const m of members) m.used = true;
       this.tracker.update(
-        result.point,
-        tRefUs,
+        result.point!,
+        tickUs,
         result.confidence,
         result.cameras,
+        result.covariance,
       );
+      applied.push(result);
+      spawned += 1;
     }
-    this.tracks = this.tracker.tick(tRefUs);
+  }
+
+  private propose(
+    pair: Candidate[],
+    cams: string[],
+    free: Map<string, Candidate[]>,
+  ): { members: Candidate[]; result: TriangulationResult } | null {
+    const r2 = triangulate(
+      pair.map((c) => c.tri),
+      this.triCfg,
+    );
+    if (!r2.ok || !r2.point) return null;
+    const members = pair.slice();
+    for (const cam of cams) {
+      if (cam === pair[0].cameraId || cam === pair[1].cameraId) continue;
+      let best: Candidate | null = null;
+      let bestErr = this.triCfg.maxResidualPx;
+      for (const c of free.get(cam)!) {
+        const e = reprojectionErrorPx(
+          c.tri.intrinsics,
+          c.tri.pose,
+          r2.point,
+          c.tri.pixelX,
+          c.tri.pixelY,
+        );
+        if (e !== null && e <= bestErr) {
+          bestErr = e;
+          best = c;
+        }
+      }
+      if (best) members.push(best);
+    }
+    if (members.length === 2) {
+      return this.contradicted(r2.point, pair, cams, free)
+        ? null
+        : { members, result: r2 };
+    }
+    const r = triangulate(
+      members.map((c) => c.tri),
+      this.triCfg,
+    );
+    if (!r.ok || !r.point) {
+      return this.contradicted(r2.point, pair, cams, free)
+        ? null
+        : { members: pair, result: r2 };
+    }
+    return { members: r.inliers.map((i) => members[i]), result: r };
+  }
+
+  /**
+   * Negative evidence against a two-camera ghost: another camera that is
+   * reporting blobs at this tick, and whose image contains the point, has
+   * none that agrees with it. Cameras that sent nothing prove nothing.
+   */
+  private contradicted(
+    point: Vec3,
+    pair: Candidate[],
+    cams: string[],
+    free: Map<string, Candidate[]>,
+  ): boolean {
+    for (const cam of cams) {
+      if (cam === pair[0].cameraId || cam === pair[1].cameraId) continue;
+      const any = free.get(cam)![0];
+      const intr = any.tri.intrinsics;
+      const proj = projectWorldToPixel(intr, any.tri.pose, point);
+      if (
+        proj &&
+        proj[0] >= 0 &&
+        proj[1] >= 0 &&
+        proj[0] < intr.imageWidth &&
+        proj[1] < intr.imageHeight
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private advanceTracker(tickUs: number): void {
+    this.tracks = this.tracker.tick(tickUs);
     this.pendingTrackUpdates = this.origin
       ? toWsUpdates(this.tracks, this.origin)
       : [];
@@ -332,6 +692,10 @@ export class FusionService {
   }
 
   private toTriObs(obs: FusionObservation): TriangulateObservation | null {
+    // No heading = no pose: a ray assumed to face north is worse than none.
+    if (!isFiniteNumber(obs.headingDeg)) {
+      return null;
+    }
     const enu = this.enuOf(obs);
     if (!enu) {
       return null;
@@ -340,7 +704,7 @@ export class FusionService {
       x: enu.x,
       y: enu.y,
       z: enu.z,
-      headingDeg: isFiniteNumber(obs.headingDeg) ? obs.headingDeg : 0,
+      headingDeg: obs.headingDeg,
       elevationDeg: isFiniteNumber(obs.elevationDeg) ? obs.elevationDeg : 0,
       rollDeg: isFiniteNumber(obs.rollDeg) ? obs.rollDeg : 0,
     };
@@ -413,8 +777,8 @@ export class FusionService {
         kept.push(item);
       }
     }
-    while (kept.length > this.maxPerCamera) {
-      kept.shift();
+    if (kept.length > this.maxPerCamera) {
+      kept.splice(0, kept.length - this.maxPerCamera);
     }
     if (kept.length === 0) {
       this.deques.delete(cameraId);

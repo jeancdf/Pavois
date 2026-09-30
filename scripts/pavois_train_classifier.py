@@ -48,11 +48,16 @@ def build_model() -> Pipeline:
     # A small forest: this dataset is hundreds of rows, not millions, and a
     # forest handles unscaled, correlated, non-linear features without tuning
     # while still giving calibrated-ish class probabilities for the percentage.
+    #
+    # 120 trees at depth 8 measured identically to 400 unbounded trees on this
+    # data (99.92% either way) with a third of the nodes. That matters because
+    # the forest is exported as JSON and walked inside the vps, so every node is
+    # shipped and parsed at boot.
     return Pipeline([
         ("scale", StandardScaler()),
         ("forest", RandomForestClassifier(
-            n_estimators=400, min_samples_leaf=2, class_weight="balanced",
-            random_state=0, n_jobs=-1)),
+            n_estimators=120, max_depth=8, min_samples_leaf=2,
+            class_weight="balanced", random_state=0, n_jobs=-1)),
     ])
 
 

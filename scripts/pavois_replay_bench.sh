@@ -33,7 +33,9 @@ CAMERAS=(jean tanel walid)
 
 RECORDING=""
 WORK_DIR="${PAVOIS_BENCH_WORK:-$HOME/.cache/pavois/replay-bench}"
-FROM_S=120          # start this many seconds into the common window
+FROM_S=0            # seconds into the common window to start from. 0 = all of
+                    # it. A non-zero default silently truncates a recording
+                    # whose overlap is shorter than the offset.
 DURATION_S=0        # 0 = to the end of the overlap
 WIDTH=640
 HEIGHT=360

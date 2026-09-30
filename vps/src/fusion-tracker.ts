@@ -2,6 +2,7 @@
 import { KalmanCV } from './fusion-kalman';
 import type { Vec3 } from './fusion-geo';
 import type { FusionTrack } from './fusion.types';
+import type { ModelResult } from './fusion-model';
 import {
   classifyKinematics,
   headingDegEnu,
@@ -53,12 +54,26 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+/**
+ * Classifieur appris, branché par FusionService. Reçoit les caméras qui
+ * contribuent à la piste et renvoie null quand il ne peut pas se prononcer
+ * (pas de modèle chargé, fenêtre trop courte) : le barème de fusion-classify
+ * reste alors la réponse.
+ */
+export type ModelClassifier = (cameras: string[]) => ModelResult | null;
+
 export class Tracker {
   private readonly cfg: TrackerConfig;
   private readonly tracks: Track[] = [];
   private nextId = 1;
   // GPS MSL of the ENU origin; z is relative so alt = origin + z.
   private originAltM = 0;
+
+  private modelClassifier: ModelClassifier | null = null;
+
+  setModelClassifier(fn: ModelClassifier | null): void {
+    this.modelClassifier = fn;
+  }
 
   constructor(cfg: Partial<TrackerConfig> = {}) {
     this.cfg = { ...DEFAULT_TRACKER_CONFIG, ...cfg };
@@ -271,7 +286,12 @@ export class Tracker {
       headingRate = headingDeltaDeg(t.lastHeading, heading) / dtS;
     }
     const pos = t.kf.position();
-    const scored = classifyKinematics({
+    // Le modèle appris d'abord : il est entraîné sur des vols réels et sur des
+    // mesures sans échelle, donc il reste valable là où le barème ne l'est pas
+    // (une cible à 1,5 m et 0,2 m/s tombe sous tous ses seuils et ressort
+    // "other"). S'il ne se prononce pas, on retombe sur le barème.
+    const fromModel = this.modelClassifier?.(t.cameras ?? []) ?? null;
+    const scored = fromModel ?? classifyKinematics({
       speedMps: speed,
       accelMps2: accel,
       altM: this.originAltM + pos[2],

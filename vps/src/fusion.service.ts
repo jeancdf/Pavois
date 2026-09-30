@@ -9,6 +9,8 @@ import {
   type GeoOrigin,
   type Vec3,
 } from './fusion-geo';
+import { DetectionWindow } from './fusion-features';
+import { TrackModel } from './fusion-model';
 import {
   triangulate,
   pairIntersections,
@@ -158,16 +160,36 @@ export class FusionService {
   // 0 = jamais fusionné (sentinelle C++ last_fuse_us_).
   private lastFuseUs = 0;
   private readonly tracker = new Tracker(trackerConfigFromEnv());
+  // Fenêtre de détections 2D par caméra, alimentée à chaque obs et lue par le
+  // classifieur appris. Bornée par la durée, pas par le nombre d'images.
+  private readonly windows = new Map<string, DetectionWindow>();
+  private readonly degPerPixel = new Map<string, number>();
+  private modelWired = false;
+  private readonly model =
+    process.env.FUSION_MODEL_ENABLED === 'false' ? null : TrackModel.load();
   private tracks: FusionTrack[] = [];
   private pendingTrackUpdates: FusionTrackUpdate[] = [];
   // Origine ENU figée à la première obs GPS.
   private origin: GeoOrigin | null = null;
 
+  /** Branche le classifieur appris sur le tracker au premier usage. */
+  private ensureModelWired(): void {
+    if (this.modelWired) {
+      return;
+    }
+    this.modelWired = true;
+    this.tracker.setModelClassifier(
+      this.model ? (cameras) => this.classifyWithModel(cameras) : null,
+    );
+  }
+
   ingest(obs: FusionObservation): void {
     if (!obs.cameraId) {
       return;
     }
+    this.ensureModelWired();
     this.captureOrigin(obs);
+    this.rememberDetection(obs);
     const deque = this.deques.get(obs.cameraId) ?? [];
     deque.push(obs);
     this.deques.set(obs.cameraId, deque);
@@ -394,6 +416,56 @@ export class FusionService {
       confidence: obs.confidence,
       hasPose: isFiniteNumber(obs.headingDeg),
     });
+  }
+
+  /** Alimente la fenêtre 2D de la caméra et retient son échelle angulaire. */
+  private rememberDetection(obs: FusionObservation): void {
+    let window = this.windows.get(obs.cameraId);
+    if (!window) {
+      window = new DetectionWindow();
+      this.windows.set(obs.cameraId, window);
+    }
+    window.push({
+      timestampUs: obs.timestampUs,
+      x: obs.x,
+      y: obs.y,
+      area: obs.size,
+      // Le détecteur n'envoie pas le taux de remplissage dans la trame brute ;
+      // 0 est ce que voit aussi l'extracteur hors ligne quand il l'ignore.
+      fill: 0,
+    });
+
+    // Degrés par pixel, défini exactement comme à l'entraînement
+    // (champ de vision / largeur d'image). cx vaut la moitié de la largeur
+    // quand celle-ci n'est pas transmise.
+    const width = obs.imageWidth ?? (obs.cx ? obs.cx * 2 : undefined);
+    if (obs.fovDeg && width && width > 0) {
+      this.degPerPixel.set(obs.cameraId, obs.fovDeg / width);
+    }
+  }
+
+  /**
+   * Mesure la piste avec le modèle appris, ou renvoie null pour laisser le
+   * barème répondre. Prend la caméra contributrice qui a la fenêtre la plus
+   * fournie : c'est celle dont les mesures sont les moins bruitées.
+   */
+  private classifyWithModel(cameras: string[]) {
+    if (!this.model) {
+      return null;
+    }
+    let best: { features: number[]; count: number } | null = null;
+    for (const cameraId of cameras) {
+      const window = this.windows.get(cameraId);
+      const scale = this.degPerPixel.get(cameraId);
+      if (!window || !scale) {
+        continue;
+      }
+      const features = window.features(scale);
+      if (features && (!best || window.size > best.count)) {
+        best = { features, count: window.size };
+      }
+    }
+    return best ? this.model.predict(best.features) : null;
   }
 
   private prune(cameraId: string, nowMs: number): void {

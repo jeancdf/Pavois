@@ -45,6 +45,23 @@ scripts/pavois_replay_bench.sh --recording /chemin/rec-AAAAMMJJ-HHMMSSZ-auto
 
 Voir `--help` pour les options (fenêtre temporelle, résolution, sans frontend).
 
+### Tester le détecteur sur un enregistrement
+
+Rejoue une session enregistrée dans `pavois_detect` et mesure ce qu'il trouve,
+face à une vérité terrain calculée hors ligne (médiane temporelle par pixel,
+indépendante du détecteur). Sort en code 1 sous le seuil, donc utilisable en
+garde-fou avant un déploiement.
+
+```bash
+scripts/pavois_test_recording.py /chemin/rec-AAAAMMJJ-HHMMSSZ
+scripts/pavois_test_recording.py /chemin/rec-... --from 160 --duration 60
+scripts/pavois_test_recording.py /chemin/rec-... --min-fusable 0.98 --json out.json
+```
+
+Le chiffre principal est celui dont dépend la fusion : parmi les images où au
+moins deux caméras voient réellement la cible, sur combien au moins deux
+l'ont détectée.
+
 ### Classifieur de pistes (pattern matching)
 
 Deux scripts transforment des sessions enregistrées en jeu de données puis en

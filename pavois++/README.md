@@ -9,6 +9,9 @@ configuration, systemd installation and automatic deployment from GitHub Actions
 Set `camera.0.device=csi:0` to capture camera 0 locally through `rpicam-vid`
 and FFmpeg; `camera.0.fps` sets its capture rate (default 30). Full-frame
 detector passes use `processing_threads=3` by default.
+`camera.0.capture_format=yuv420` reads uncompressed frames straight from
+`rpicam-vid` instead, without JPEG or FFmpeg; it is on trial, see
+DEPLOYMENT_PI.md.
 
 ## Runtime
 

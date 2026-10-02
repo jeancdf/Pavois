@@ -108,6 +108,14 @@ struct CameraConfig {
     int reconnect_max_attempts = 0;   // 0 => unlimited
     int reconnect_backoff_ms = 500;
 
+    // How CSI frames leave rpicam-vid: "mjpeg" (JPEG decoded by FFmpeg) or
+    // "yuv420" (uncompressed, luminance plane read directly: no JPEG encode,
+    // no decode, no FFmpeg process).
+    std::string capture_format = "mjpeg";
+    // yuv420 only: bytes per luminance row as the ISP writes it. 0 means the
+    // frame width, which is only right for a width that is a multiple of 128.
+    int capture_stride = 0;
+
     // CSI exposure lock. Short shutter limits motion blur; fixed analogue and
     // white-balance gains avoid auto-control jumps becoming foreground.
     std::string exposure_mode = "sport";

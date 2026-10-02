@@ -95,6 +95,8 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "elevation_deg") c.elevation_deg = std::stod(v);
         else if (f == "reconnect_max_attempts") c.reconnect_max_attempts = std::stoi(v);
         else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
+        else if (f == "capture_format") c.capture_format = v;
+        else if (f == "capture_stride") c.capture_stride = std::stoi(v);
         else if (f == "exposure_mode") c.exposure_mode = v;
         else if (f == "shutter_us") c.shutter_us = std::stoi(v);
         else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
@@ -222,6 +224,10 @@ void finalize_camera(CameraConfig& c) {
     if (c.exposure_mode != "normal" && c.exposure_mode != "sport") {
         c.exposure_mode = "sport";
     }
+    if (c.capture_format != "mjpeg" && c.capture_format != "yuv420") {
+        c.capture_format = "mjpeg";
+    }
+    c.capture_stride = std::max(0, c.capture_stride);
     c.shutter_us = std::clamp(c.shutter_us, 100, 1'000'000);
     c.analogue_gain = std::clamp(c.analogue_gain, 1.0, 32.0);
     c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);

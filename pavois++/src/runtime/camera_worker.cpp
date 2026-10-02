@@ -159,7 +159,10 @@ void CameraWorker::maybe_send_preview(const GrayFrame& frame,
 void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
                                     std::uint64_t frame_id,
                                     std::uint64_t& window_start_us,
-                                    std::uint64_t& window_frames) {
+                                    std::uint64_t& window_frames,
+                                    const ImageDiagnostics& diag,
+                                    double exposure_us,
+                                    double gain_db) {
     if (!udp_sender_ || !udp_sender_->valid()) return;
     if (window_start_us == 0) {
         window_start_us = now_us;
@@ -173,12 +176,16 @@ void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
                            ? static_cast<double>(window_frames) / dt_s
                            : 0.0;
     std::ostringstream line;
-    line << "stats," << cfg_.id << ',' << std::fixed << std::setprecision(2)
-         << fps << ',' << frame_id << ',' << now_us;
+    line << "stats,v2," << cfg_.id << ',' << std::fixed << std::setprecision(2)
+         << fps << ',' << frame_id << ',' << now_us << ','
+         << std::setprecision(2) << diag.lum_mean << ','
+         << diag.lum_stddev << ',' << diag.frame_diff << ','
+         << diag.laplacian_var << ',' << exposure_us << ',' << gain_db;
     udp_sender_->send_line(line.str());
     window_start_us = now_us;
     window_frames = 0;
 }
+
 
 void CameraWorker::send_classification_capture(
     const GrayFrame& frame, const DetectionResult& detection,
@@ -273,6 +280,8 @@ void CameraWorker::operator()() {
     }
 
     GrayFrame frame;
+    GrayFrame prev_diag_frame;
+    ImageDiagnostics last_diag;
     std::uint64_t frame_id = 0;
     std::uint64_t emitted = 0;
     std::uint64_t last_att_us = 0;
@@ -298,6 +307,11 @@ void CameraWorker::operator()() {
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 
+        if ((frame_id % 5) == 0) {
+            last_diag = compute_image_diagnostics(frame, &prev_diag_frame);
+            prev_diag_frame = frame;
+        }
+
         std::string calib_token;
         const bool imu_valid = apply_imu_sample(imu_.get(), pose, calib_token);
         maybe_emit_attitude(pose, calib_token, imu_valid, frame.captured_us,
@@ -311,7 +325,8 @@ void CameraWorker::operator()() {
         }
         if (debug.active()) debug.dump(frame, det);
         maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
-                         stats_window_frames);
+                         stats_window_frames, last_diag);
+
 
         if (det.confirmed) {
             for (const auto& blob : det.blobs) {

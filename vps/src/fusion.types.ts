@@ -47,6 +47,8 @@ export interface FusionLastFuse {
   ok: boolean;
   rejectReason: string | null;
   residualM: number | null;
+  // RMS reprojection error of the inlier rays, in pixels.
+  residualPx?: number | null;
   parallaxDeg: number | null;
   confidence: number | null;
   cameras: string[];

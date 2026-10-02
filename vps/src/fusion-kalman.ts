@@ -142,6 +142,8 @@ export class KalmanCV {
     p0: number[],
     processNoise: number,
     measNoise: number,
+    posCov?: number[],
+    velVar = 100,
   ): void {
     this.dim = dim;
     this.q = processNoise;
@@ -152,9 +154,15 @@ export class KalmanCV {
     this.P = Mat.identity(n);
     for (let i = 0; i < dim; i++) {
       this.P.put(i, i, measNoise * measNoise);
-      this.P.put(dim + i, dim + i, 100);
+      this.P.put(dim + i, dim + i, velVar);
     }
     this.inited = true;
+    if (posCov && posCov.length === dim * dim) {
+      const R = this.measR(posCov);
+      for (let i = 0; i < dim; i++) {
+        for (let j = 0; j < dim; j++) this.P.put(i, j, R.at(i, j));
+      }
+    }
   }
 
   initialized(): boolean {
@@ -171,24 +179,30 @@ export class KalmanCV {
     this.P = F.mul(this.P).mul(F.transpose()).add(Q);
   }
 
-  update(z: number[]): void {
+  // measCov: optional dim x dim row-major measurement covariance; falls back
+  // to the isotropic measNoise given at init.
+  update(z: number[], measCov?: number[]): void {
     if (!this.inited) return;
     const n = 2 * this.dim;
     const H = measH(this.dim, n);
-    const R = measR(this.dim, this.r);
+    const R = this.measR(measCov);
     const zz = col(z, this.dim);
     const y = zz.sub(H.mul(this.x));
     const S = H.mul(this.P).mul(H.transpose()).add(R);
     const K = this.P.mul(H.transpose()).mul(S.inverse());
     this.x = this.x.add(K.mul(y));
-    const I = Mat.identity(n);
-    this.P = I.sub(K.mul(H)).mul(this.P);
+    // Joseph form: stays symmetric positive definite with anisotropic R.
+    const IKH = Mat.identity(n).sub(K.mul(H));
+    this.P = IKH.mul(this.P)
+      .mul(IKH.transpose())
+      .add(K.mul(R).mul(K.transpose()));
   }
 
-  gatingDistance(z: number[]): number {
+  // Squared Mahalanobis distance of z to the predicted position.
+  gatingDistance(z: number[], measCov?: number[]): number {
     const n = 2 * this.dim;
     const H = measH(this.dim, n);
-    const R = measR(this.dim, this.r);
+    const R = this.measR(measCov);
     const zz = col(z, this.dim);
     const y = zz.sub(H.mul(this.x));
     const S = H.mul(this.P).mul(H.transpose()).add(R);
@@ -217,6 +231,30 @@ export class KalmanCV {
       s += v * v;
     }
     return Math.sqrt(s);
+  }
+
+  // dim x dim row-major position block of P.
+  positionCovariance(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.dim; i++) {
+      for (let j = 0; j < this.dim; j++) out.push(this.P.at(i, j));
+    }
+    return out;
+  }
+
+  private measR(measCov?: number[]): Mat {
+    if (!measCov || measCov.length !== this.dim * this.dim) {
+      return measR(this.dim, this.r);
+    }
+    const R = new Mat(this.dim, this.dim, 0);
+    for (let i = 0; i < this.dim; i++) {
+      for (let j = 0; j < this.dim; j++) {
+        // Symmetrise: a covariance from a numeric inverse is only nearly so.
+        const v = 0.5 * (measCov[i * this.dim + j] + measCov[j * this.dim + i]);
+        R.put(i, j, v);
+      }
+    }
+    return R;
   }
 
   positionUncertainty(): number {

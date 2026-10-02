@@ -123,4 +123,65 @@ describe('Tracker', () => {
     }
     expect(tr.tick(t)).toHaveLength(0);
   });
+
+  it('does not teleport a confirmed track onto a stray point', () => {
+    const tr = new Tracker(cfg);
+    let t = 0;
+    const p = { x: 0, y: 20, z: 5 };
+    for (let i = 0; i < 6; i++) {
+      t += 40000;
+      p.x += 0.3;
+      tr.update(p, t, 0.8, ['c0', 'c1']);
+    }
+    const id = tr.tick(t)[0].objectId;
+    t += 40000;
+    p.x += 0.3;
+    // 10 m off: the old recovery gate re-initialised the track here.
+    tr.update({ x: p.x + 10, y: p.y, z: p.z }, t, 0.8, ['c0', 'c1']);
+    const after = tr.tick(t);
+    expect(after).toHaveLength(1);
+    expect(after[0].objectId).toBe(id);
+    expect(Math.abs(after[0].x - p.x)).toBeLessThan(1);
+  });
+
+  it('gives a lost track its id back when it reappears nearby', () => {
+    const tr = new Tracker(cfg);
+    let t = 0;
+    const p = { x: 0, y: 20, z: 5 };
+    for (let i = 0; i < 5; i++) {
+      t += 40000;
+      p.x += 0.3;
+      tr.update(p, t, 0.8, ['c0', 'c1']);
+    }
+    const id = tr.tick(t)[0].objectId;
+    // Silent 300 ms, then seen 8 m away (outside the statistical gate).
+    t += 300000;
+    p.x += 8;
+    for (let i = 0; i < 4; i++) {
+      tr.update(p, t, 0.8, ['c0', 'c1']);
+      t += 40000;
+      p.x += 0.3;
+    }
+    const after = tr.tick(t - 40000);
+    expect(after).toHaveLength(1);
+    expect(after[0].objectId).toBe(id);
+  });
+
+  it('uses the measurement covariance to gate confirmed tracks', () => {
+    const tr = new Tracker(cfg);
+    let t = 0;
+    const p = { x: 0, y: 20, z: 5 };
+    const tight = [0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01];
+    for (let i = 0; i < 10; i++) {
+      t += 40000;
+      tr.update(p, t, 0.8, ['c0', 'c1'], tight);
+    }
+    const id = tr.tick(t)[0].objectId;
+    t += 40000;
+    // 3 m off with a 10 cm measurement sigma: a separate object.
+    tr.update({ x: 3, y: 20, z: 5 }, t, 0.8, ['c0', 'c1'], tight);
+    const [track] = tr.tick(t);
+    expect(track.objectId).toBe(id);
+    expect(Math.abs(track.x)).toBeLessThan(0.5);
+  });
 });

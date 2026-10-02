@@ -5,7 +5,8 @@
 // stable, CJS-compatible generator; stick with it until the project itself
 // moves to ESM.
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "library"
 }
 
 datasource db {
@@ -62,6 +63,7 @@ enum AlertStatus {
 }
 
 enum CameraState {
+  EN_ATTENTE
   OK
   DEGRADED_FROZEN
   DEGRADED_BLIND

@@ -1114,6 +1114,10 @@ void test_imu() {
         file << "camera.0.analogue_gain=5.5\n";
         file << "camera.0.awb_red_gain=1.2\n";
         file << "camera.0.awb_blue_gain=1.4\n";
+        file << "camera.0.capture_format=yuv420\n";
+        file << "camera.0.capture_stride=1344\n";
+        file << "camera.1.capture_format=h264\n";
+        file << "camera.1.capture_stride=-8\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
@@ -1131,6 +1135,14 @@ void test_imu() {
                "config fixed AWB red gain");
     check_near(loaded.cameras[0].awb_blue_gain, 1.4, 1e-9,
                "config fixed AWB blue gain");
+    check(loaded.cameras[0].capture_format == "yuv420" &&
+              loaded.cameras[0].capture_stride == 1344,
+          "config uncompressed capture and its row length");
+    check(loaded.cameras.size() == 2 && loaded.cameras[1].capture_format == "mjpeg" &&
+              loaded.cameras[1].capture_stride == 0,
+          "config unknown capture format falls back to mjpeg");
+    check(CameraConfig().capture_format == "mjpeg",
+          "capture stays MJPEG unless a camera asks otherwise");
 
     std::filesystem::remove_all(dir, ec);
 }

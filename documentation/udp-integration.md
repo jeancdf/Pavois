@@ -67,6 +67,22 @@ graph LR
 * Un pipeline de fusion multi-caméras séparé (triangulation, Kalman) tourne sur le VPS.
   Voir [fusion-emplacement.md](fusion-emplacement.md) pour la décision d'architecture.
 
+### G. Réglages à chaud des détecteurs
+* **Pi → VPS (CSV)** : `cfg,cameraId,timestamp,version,width=…,height=…,clé=valeur,…`
+  * Ce que le détecteur applique réellement, émis une fois par seconde et à chaque changement.
+  * `version` vaut `0` tant qu'il suit son fichier de configuration.
+* **VPS → Pi (CSV signé)** : `set,cameraId,version,clé=valeur,…` avec le jeu complet des réglages.
+  * `set,cameraId,0` rend la main au fichier de configuration du Pi.
+  * Le VPS renvoie la commande tant que la version annoncée diffère de celle voulue :
+    une commande perdue ou un Pi qui redémarre se rattrapent en une seconde.
+* **Réglages acceptés** : seuils de détection uniquement, listés avec leurs bornes dans
+  `pavois++/src/config/live_tuning.cpp` (même table côté VPS dans `vps/src/tuning.params.ts`).
+  Ni la taille d'image, ni la cadence, ni la pose ne se changent par cette voie.
+* Un détecteur sans `UDP_HMAC_SECRET` refuse toute commande `set`.
+* **Événement WS** : `"tuning_state"` (état complet du panneau « Réglages »).
+* **API** : `GET /tuning`, `PUT /tuning/detector`, `PUT /tuning/fusion`,
+  `POST /tuning/presets/:id/apply`, protégées par le même jeton que le reste de l'API.
+
 ---
 
 ## 3. Sécurisation

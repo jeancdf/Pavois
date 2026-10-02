@@ -439,4 +439,52 @@ describe('FusionService', () => {
     expect(near({ x: 2 + 7 * 0.2, y: 30, z: 12 })).toBe(true);
     expect(near({ x: other.x - 7 * 0.2, y: other.y, z: other.z })).toBe(true);
   });
+
+  it('applies a triangulation setting between two ticks', () => {
+    expect(service.tuning()).toMatchObject({
+      intervalMs: 33,
+      maxResidualPx: 120,
+      maxRangeM: 60,
+      confirmUpdates: 3,
+    });
+    const nowMs = Date.now();
+    // The target sits about 30 m out: inside the default 60 m range.
+    ingestTriplet(service, TARGET, 1_000_000, nowMs);
+    expect(service.snapshot(nowMs).lastFuse?.ok).toBe(true);
+
+    service.applyTuning({ maxRangeM: 10 });
+    ingestTriplet(service, TARGET, 1_033_000, nowMs);
+    expect(service.snapshot(nowMs).lastFuse).toMatchObject({
+      ok: false,
+      rejectReason: 'no subset passed parallax/residual gates',
+    });
+
+    service.applyTuning({ maxRangeM: 60 });
+    ingestTriplet(service, TARGET, 1_066_000, nowMs);
+    expect(service.snapshot(nowMs).lastFuse?.ok).toBe(true);
+    expect(service.tuning().maxRangeM).toBe(60);
+  });
+
+  it('applies a tracker setting without losing the engine', () => {
+    const nowMs = Date.now();
+    const tracksAfterTwoTicks = (engine: FusionService) => {
+      for (let i = 0; i < 2; i++) {
+        const target = { x: 2 + i * 0.1, y: 30, z: 12 };
+        ingestTriplet(engine, target, 1_000_000 + i * 33_000, nowMs);
+      }
+      return engine.snapshot(nowMs).tracks.length;
+    };
+    // Three fused points are needed by default: two are not enough.
+    expect(tracksAfterTwoTicks(service)).toBe(0);
+
+    const eager = new FusionService();
+    eager.applyTuning({ confirmUpdates: 2 });
+    expect(eager.tuning().confirmUpdates).toBe(2);
+    expect(tracksAfterTwoTicks(eager)).toBe(1);
+  });
+
+  it('ignores a setting that is not a number', () => {
+    service.applyTuning({ maxRangeM: Number.NaN, intervalMs: undefined });
+    expect(service.tuning()).toMatchObject({ maxRangeM: 60, intervalMs: 33 });
+  });
 });

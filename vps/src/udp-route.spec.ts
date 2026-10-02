@@ -86,4 +86,13 @@ describe('routeUdpLine', () => {
     expect(routed.stats.fps).toBeCloseTo(9.8);
     expect(routed.stats.frameIndex).toBe(80);
   });
+
+  it('routes the settings a detector reports', () => {
+    const routed = routeUdpLine('cfg,walid,123,42,width=640,diff_threshold=9');
+    expect(routed.kind).toBe('cfg');
+    if (routed.kind !== 'cfg') return;
+    expect(routed.report.cameraId).toBe('walid');
+    expect(routed.report.version).toBe(42);
+    expect(routed.report.values).toEqual({ width: 640, diff_threshold: 9 });
+  });
 });

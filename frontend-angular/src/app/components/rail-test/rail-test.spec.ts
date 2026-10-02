@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { Component, input, signal } from '@angular/core';
 import { routes } from '../../app.routes';
 import { RailTestPage } from './rail-test';
 import { RailVolume } from '../rail-volume/rail-volume';
+import { TuningPanel } from '../tuning-panel/tuning-panel';
 import { RailBenchService } from '../../services/rail-bench.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { NotificationService } from '../../services/notification.service';
@@ -18,9 +20,14 @@ import type { ClassificationReview } from '../../models/target-classification.mo
 })
 class RailVolumeStub {
   readonly bench = input<unknown>();
-  readonly estimated = input<unknown>();
-  readonly seeing = input<unknown>();
+  readonly tracks = input<unknown[]>([]);
 }
+
+@Component({
+  selector: 'app-tuning-panel',
+  template: '<div class="tuning-stub"></div>',
+})
+class TuningPanelStub {}
 
 describe('RailTestPage', () => {
   const bench = buildRailBenchState({ rangeM: 2.5 });
@@ -95,8 +102,8 @@ describe('RailTestPage', () => {
       ],
     })
       .overrideComponent(RailTestPage, {
-        remove: { imports: [RailVolume] },
-        add: { imports: [RailVolumeStub] },
+        remove: { imports: [RailVolume, TuningPanel] },
+        add: { imports: [RailVolumeStub, TuningPanelStub] },
       })
       .compileComponents();
   });
@@ -155,5 +162,54 @@ describe('RailTestPage', () => {
     expect(text).toContain('jean');
     expect(text).toContain('Cible suivie');
     expect(text).toContain('Écart 0.10 m');
+  });
+
+  it('hands every fused track to the 3D volume', () => {
+    const single = fuseUpdate();
+    const track = {
+      timestampUs: 1_000_000,
+      confidence: 0.9,
+      cameras: ['jean', 'tanel', 'walid'],
+      classification: 'other',
+    };
+    fuseUpdate.set({
+      ...single,
+      tracks: [
+        { ...track, objectId: 6, x: -0.2, y: 1.1, z: 0.4 },
+        { ...track, objectId: 36, x: 0.1, y: 1.2, z: 0.3 },
+      ],
+    });
+    try {
+      const fixture = TestBed.createComponent(RailTestPage);
+      fixture.detectChanges();
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('Pistes 2');
+      const volume = fixture.debugElement.query(By.directive(RailVolumeStub))
+        .componentInstance as RailVolumeStub;
+      expect(volume.tracks()).toHaveLength(2);
+    } finally {
+      fuseUpdate.set(single);
+    }
+  });
+
+  it('opens the settings panel beside the scene on demand', () => {
+    const fixture = TestBed.createComponent(RailTestPage);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const toggle = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent?.trim() === 'Réglages',
+    )!;
+    expect(root.querySelector('app-tuning-panel')).toBeNull();
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    toggle.click();
+    fixture.detectChanges();
+    expect(root.querySelector('.rail-body app-tuning-panel')).not.toBeNull();
+    expect(root.querySelector('.rail-body app-rail-volume')).not.toBeNull();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+
+    toggle.click();
+    fixture.detectChanges();
+    expect(root.querySelector('app-tuning-panel')).toBeNull();
   });
 });

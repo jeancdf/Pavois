@@ -78,6 +78,12 @@
   cursor: default;
 }
 
+.rail-btn[aria-pressed='true'] {
+  color: #0b1220;
+  background: #93c5fd;
+  border-color: #93c5fd;
+}
+
 .rail-status {
   display: flex;
   flex-wrap: wrap;
@@ -153,6 +159,12 @@
   font-size: 11px;
   color: #475569;
   margin: 4px 0 0;
+}
+
+/* Colonne à hauteur de la scène : le panneau défile à l'intérieur. */
+.tuning-col {
+  width: 340px;
+  flex-shrink: 0;
 }
 
 .classification-review {
@@ -283,9 +295,60 @@
   padding: 0 12px 12px;
 }
 
+/* Pas la place pour trois colonnes : la scène et les réglages restent côte à
+   côte, pour voir l'effet d'un curseur, et les cartes des Pi passent dessous. */
+@media (max-width: 1400px) {
+  .rail-body.with-tuning {
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
+
+  .rail-body.with-tuning app-rail-volume,
+  .rail-body.with-tuning .tuning-col {
+    height: 560px;
+  }
+
+  .rail-body.with-tuning app-rail-volume {
+    min-width: 0;
+  }
+
+  .rail-body.with-tuning .tuning-col {
+    width: 320px;
+  }
+
+  .rail-body.with-tuning .pi-panel {
+    order: 3;
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .rail-body.with-tuning .pi-panel h2,
+  .rail-body.with-tuning .pi-panel .hint {
+    width: 100%;
+  }
+
+  .rail-body.with-tuning .pi-card {
+    flex: 1;
+    min-width: 150px;
+  }
+}
+
 @media (max-width: 900px) {
-  .rail-body {
+  .rail-body,
+  .rail-body.with-tuning {
     flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .rail-body.with-tuning app-rail-volume {
+    flex: 0 0 auto;
+    height: 460px;
+  }
+
+  .rail-body.with-tuning .tuning-col {
+    width: 100%;
+    height: auto;
   }
 
   .pi-panel {

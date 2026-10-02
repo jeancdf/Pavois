@@ -12,6 +12,7 @@ import { FuseUpdate } from '../models/fuse-update.model';
 import { RailBenchState } from '../config/rail-bench';
 import { AlertEvent } from '../models/alert.model';
 import { ClassificationReview, TargetClassification } from '../models/target-classification.model';
+import { TuningState } from '../models/tuning.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -29,6 +30,8 @@ export class RealtimeService implements OnDestroy {
   readonly targetClassification = signal<TargetClassification | null>(null);
   readonly classificationReview = signal<ClassificationReview | null>(null);
   readonly railBench = signal<RailBenchState | null>(null);
+  // Réglages à chaud : chargés par TuningService, puis tenus à jour par le backend.
+  readonly tuning = signal<TuningState | null>(null);
   readonly lastDetectionAt = signal<Record<string, number>>({});
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
@@ -138,6 +141,9 @@ export class RealtimeService implements OnDestroy {
             );
             break;
           }
+          case 'tuning_state':
+            this.tuning.set(payload.data as TuningState);
+            break;
           case 'track_update': {
             const track = payload.data as TrackUpdate;
             this.trackUpdates$.next(track);

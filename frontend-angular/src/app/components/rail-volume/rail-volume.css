@@ -24,3 +24,44 @@
   font-size: 11px;
   color: #f59e0b;
 }
+
+.track-legend {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  background: rgba(6, 12, 22, 0.78);
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.track-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.track-legend li.weak {
+  opacity: 0.55;
+}
+
+.track-legend .swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.track-legend .pos {
+  color: #94a3b8;
+}
+
+.track-legend .cams {
+  color: #64748b;
+}

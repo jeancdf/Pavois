@@ -13,6 +13,7 @@ import * as crypto from 'crypto';
 import { ClassificationService } from './classification.service';
 import { TuningService } from './tuning.service';
 import { routeUdpLine } from './udp-route';
+import { CameraHealthService } from './camera-health.service';
 
 const classificationMock = () => ({
   considerFusion: jest.fn().mockReturnValue(null),
@@ -24,6 +25,17 @@ const tuningMock = () => ({
   pendingCommand: jest.fn().mockReturnValue(null),
   pendingCameraIds: jest.fn().mockReturnValue([]),
   state: jest.fn().mockReturnValue({ type: 'tuning_state' }),
+});
+
+const cameraHealthMock = () => ({
+  noteActivity: jest.fn(),
+  ingestStats: jest.fn(),
+  getHealthStatuses: jest.fn().mockReturnValue([]),
+  getGlobalReliability: jest.fn().mockReturnValue({
+    reliability: 'GREEN',
+    activeCameraCount: 3,
+    message: 'OK',
+  }),
 });
 
 describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
@@ -59,10 +71,11 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
         },
         {
           provide: AlertsService,
-          useValue: { onTrackUpdate: jest.fn() },
+          useValue: { processTrackAlert: jest.fn() },
         },
         { provide: ClassificationService, useValue: classificationMock() },
         { provide: TuningService, useValue: tuningMock() },
+        { provide: CameraHealthService, useValue: cameraHealthMock() },
       ],
     }).compile();
 
@@ -124,7 +137,6 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
       const packet = createSignedPacket(payload, secretKey);
 
-      // Corrupt the HMAC bytes (index 8 to 39)
       packet[10] ^= 0xff;
 
       const result = (service as any).verifyUdpPacket(packet, secretKey);
@@ -134,7 +146,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
 
     it('should reject a replayed packet with a timestamp older than 2000 ms (Anti-Replay)', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
-      const oldTimestamp = Date.now() - 5000; // 5 seconds ago
+      const oldTimestamp = Date.now() - 5000;
       const expiredPacket = createSignedPacket(
         payload,
         secretKey,
@@ -203,10 +215,11 @@ describe('UdpService fused track_update', () => {
         },
         {
           provide: AlertsService,
-          useValue: { onTrackUpdate: jest.fn() },
+          useValue: { processTrackAlert: jest.fn() },
         },
         { provide: ClassificationService, useValue: classificationMock() },
         { provide: TuningService, useValue: tuning },
+        { provide: CameraHealthService, useValue: cameraHealthMock() },
       ],
     }).compile();
     return module.get(UdpService);
@@ -286,6 +299,7 @@ describe('UdpService detector settings', () => {
         { provide: AlertsService, useValue: {} },
         { provide: ClassificationService, useValue: classificationMock() },
         { provide: TuningService, useValue: tuning },
+        { provide: CameraHealthService, useValue: cameraHealthMock() },
       ],
     }).compile();
     const udp = module.get(UdpService);

@@ -34,18 +34,15 @@ services:
       dockerfile: Dockerfile
     container_name: pavois-vps-server
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "41234:41234/udp"
       - "3002:3002/tcp"
     env_file:
       - ./vps/.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pavois}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-pavois}?schema=public
+      ALERTS_DATA_DIR: /app/data
     volumes:
-      # Positions des caméras modifiées depuis le frontend (CAMERAS_FILE),
+      # Volume monté pour le journal JSONL (alerts.jsonl, tracks.jsonl, camera-states.jsonl),
       # seul dossier inscriptible du conteneur en lecture seule
       - pavois-data:/app/data
     # SÉCURITÉ NIVEAU 2 : Isolation et Confinement Docker

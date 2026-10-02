@@ -16,7 +16,7 @@ datasource db {
 /// passthrough line. Kept so detections can be reviewed after the fact to
 /// calculate accuracy and spot bad detections.
 model Track {
-  id             String    @id @default(cuid())
+  id             String        @id @default(cuid())
   trackId        String
   lat            Float
   lng            Float
@@ -24,12 +24,12 @@ model Track {
   classification String?
   // Device-side timestamp (µs), as carried on the wire. Not wall-clock.
   timestampUs    Float
-  receivedAt     DateTime  @default(now())
+  receivedAt     DateTime      @default(now())
 
   // Human review for accuracy analysis. Null until someone looks at it.
-  verdict    TrackVerdict?
-  reviewNote String?
-  reviewedAt DateTime?
+  verdict        TrackVerdict?
+  reviewNote     String?
+  reviewedAt     DateTime?
 
   @@index([receivedAt])
   @@index([trackId])
@@ -40,16 +40,71 @@ enum TrackVerdict {
   FALSE_POSITIVE
 }
 
-/// A notable event worth surfacing to an operator (new track, drone
-/// confirmed, ...). Persisted so it survives a
-/// page refresh / no browser being open when it fired.
+enum AlertType {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertCategory {
+  CAMERA_STATUS
+  CAMERA_RECOVERED
+  SYSTEM_BLIND
+  OBJECT_DETECTED
+  TO_VERIFY
+  DRONE_CONFIRMED
+}
+
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum CameraState {
+  OK
+  DEGRADED_FROZEN
+  DEGRADED_BLIND
+  REDUCED_VISIBILITY_NIGHT
+  HORS_SERVICE
+  RECOVERING
+}
+
+/// A notable event worth surfacing to an operator (camera status, object detected,
+/// drone confirmed). Persisted so it survives a page refresh.
 model Alert {
-  id        String   @id @default(cuid())
-  type      String
-  message   String
-  trackId   String?
-  cameraId  String?
-  createdAt DateTime @default(now())
+  id             String        @id @default(cuid())
+  type           AlertType
+  category       AlertCategory
+  status         AlertStatus   @default(NEW)
+  message        String
+  trackId        String?
+  cameraIds      String[]
+  cameraState    CameraState?
+  confidence     Float?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  resolvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([createdAt])
+  @@index([trackId])
+  @@index([status])
+}
+
+/// Audit log of camera state transitions.
+model CameraStateLog {
+  id            String      @id @default(cuid())
+  cameraId      String
+  state         CameraState
+  previousState CameraState?
+  reason        String
+  lumMean       Float?
+  lumStddev     Float?
+  exposureUs    Float?
+  gainDb        Float?
+  createdAt     DateTime    @default(now())
+
+  @@index([cameraId, createdAt])
 }

@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { TrackVerdict } from '@prisma/client';
+import { TrackVerdict } from './track-types';
 
 /** JSON body for PATCH /tracks/:id — human review for accuracy analysis. */
 export class ReviewTrackDto {

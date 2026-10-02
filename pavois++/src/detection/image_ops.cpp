@@ -3,6 +3,8 @@
 #include "pavois/util/parallel_executor.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #include <arm_neon.h>
@@ -250,4 +252,86 @@ void morph_close(std::vector<std::uint8_t>& mask, int width, int height,
     erode(mask, width, height, iterations, executor);
 }
 
+ImageDiagnostics compute_image_diagnostics(const GrayFrame& frame, const GrayFrame* prev_frame) {
+    const auto t_start = std::chrono::steady_clock::now();
+    ImageDiagnostics diag;
+
+    if (frame.empty() || frame.width <= 0 || frame.height <= 0) {
+        return diag;
+    }
+
+    const int width = frame.width;
+    const int height = frame.height;
+    const int step = (width >= 640) ? 4 : 2;
+
+    double sum = 0.0;
+    double sum_sq = 0.0;
+    std::size_t count = 0;
+
+    double diff_sum = 0.0;
+    const bool has_prev = (prev_frame != nullptr && !prev_frame->empty() &&
+                           prev_frame->width == width && prev_frame->height == height);
+
+    for (int y = 0; y < height; y += step) {
+        const std::size_t row_offset = static_cast<std::size_t>(y) * width;
+        for (int x = 0; x < width; x += step) {
+            const std::size_t idx = row_offset + static_cast<std::size_t>(x);
+            const double val = static_cast<double>(frame.pixels[idx]);
+            sum += val;
+            sum_sq += val * val;
+            ++count;
+
+            if (has_prev) {
+                diff_sum += std::abs(val - static_cast<double>(prev_frame->pixels[idx]));
+            }
+        }
+    }
+
+    if (count > 0) {
+        diag.lum_mean = sum / static_cast<double>(count);
+        const double variance = (sum_sq / static_cast<double>(count)) - (diag.lum_mean * diag.lum_mean);
+        diag.lum_stddev = std::sqrt(std::max(0.0, variance));
+        if (has_prev) {
+            diag.frame_diff = diff_sum / static_cast<double>(count);
+        }
+    }
+
+    // 3x3 Laplacian Variance computation
+    double lap_sum = 0.0;
+    double lap_sum_sq = 0.0;
+    std::size_t lap_count = 0;
+
+    for (int y = step; y < height - step; y += step) {
+        const std::size_t r = static_cast<std::size_t>(y) * width;
+        const std::size_t r_up = static_cast<std::size_t>(y - step) * width;
+        const std::size_t r_dn = static_cast<std::size_t>(y + step) * width;
+
+        for (int x = step; x < width - step; x += step) {
+            const std::size_t x_idx = static_cast<std::size_t>(x);
+            const double center = static_cast<double>(frame.pixels[r + x_idx]);
+            const double up     = static_cast<double>(frame.pixels[r_up + x_idx]);
+            const double dn     = static_cast<double>(frame.pixels[r_dn + x_idx]);
+            const double lf     = static_cast<double>(frame.pixels[r + x_idx - step]);
+            const double rg     = static_cast<double>(frame.pixels[r + x_idx + step]);
+
+            const double lap = up + dn + lf + rg - 4.0 * center;
+            lap_sum += lap;
+            lap_sum_sq += lap * lap;
+            ++lap_count;
+        }
+    }
+
+    if (lap_count > 0) {
+        const double lap_mean = lap_sum / static_cast<double>(lap_count);
+        diag.laplacian_var = (lap_sum_sq / static_cast<double>(lap_count)) - (lap_mean * lap_mean);
+        diag.laplacian_var = std::max(0.0, diag.laplacian_var);
+    }
+
+    const auto t_end = std::chrono::steady_clock::now();
+    diag.computation_time_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+    return diag;
+}
+
 }  // namespace pavois
+

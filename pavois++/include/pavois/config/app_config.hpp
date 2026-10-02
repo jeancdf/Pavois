@@ -115,6 +115,9 @@ struct CameraConfig {
     // yuv420 only: bytes per luminance row as the ISP writes it. 0 means the
     // frame width, which is only right for a width that is a multiple of 128.
     int capture_stride = 0;
+    // rpicam-vid --mode, e.g. "1920:1080:10:P". Empty lets rpicam-vid pick the
+    // sensor mode from the output size, which can change the field of view.
+    std::string sensor_mode;
 
     // CSI exposure lock. Short shutter limits motion blur; fixed analogue and
     // white-balance gains avoid auto-control jumps becoming foreground.

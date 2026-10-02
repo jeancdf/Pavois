@@ -8,6 +8,11 @@
 
 export type TuningValues = Record<string, number>;
 
+export interface TuningChoice {
+  value: number;
+  label: string;
+}
+
 export interface TuningParam {
   key: string;
   group: string;
@@ -22,6 +27,10 @@ export interface TuningParam {
   sliderMax?: number;
   step: number;
   integer: boolean;
+  /** Liste fermée : seule une de ces valeurs est acceptée, l'interface montre une liste. */
+  choices?: TuningChoice[];
+  /** Ce que vaut 0 pour ce réglage, quand 0 n'est pas une valeur ordinaire. */
+  zeroLabel?: string;
 }
 
 export interface TuningPreset {
@@ -213,6 +222,51 @@ export const DETECTOR_PARAMS: TuningParam[] = [
     step: 0.01,
     integer: false,
   },
+  // Capture : arguments de rpicam-vid, le Pi redémarre sa caméra (environ une
+  // seconde sans image). 0 garde la valeur du fichier de configuration du Pi.
+  {
+    key: 'capture_width',
+    group: 'Image',
+    label: "Taille d'image",
+    hint: "Pixels de chaque image. Plus petite : plus d'images par seconde sur un Pi chargé, mais une cible lointaine couvre moins de pixels. Même champ de vision à toutes les tailles. Le Pi redémarre sa caméra.",
+    unit: 'px',
+    min: 0,
+    max: 1920,
+    step: 1,
+    integer: true,
+    choices: [
+      { value: 0, label: 'Fichier du Pi' },
+      { value: 640, label: '640 × 360' },
+      { value: 1024, label: '1024 × 576' },
+      { value: 1280, label: '1280 × 720' },
+      { value: 1920, label: '1920 × 1080' },
+    ],
+  },
+  {
+    key: 'shutter_us',
+    group: 'Image',
+    label: 'Temps de pose',
+    hint: "Plus long : image plus claire, mais une cible en mouvement devient floue. Au-delà de 33 000 µs la caméra ne tient plus 30 images par seconde. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
+    unit: 'µs',
+    min: 0,
+    max: 1000000,
+    sliderMax: 33000,
+    step: 100,
+    integer: true,
+    zeroLabel: 'fichier du Pi',
+  },
+  {
+    key: 'analogue_gain',
+    group: 'Image',
+    label: 'Gain',
+    hint: "Amplification du capteur. Plus haut : image plus claire, mais plus de bruit, donc plus de faux blobs. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
+    min: 0,
+    max: 32,
+    sliderMax: 16,
+    step: 0.1,
+    integer: false,
+    zeroLabel: 'fichier du Pi',
+  },
 ];
 
 // Valeurs par défaut de CameraConfig (pavois++/include/pavois/config/app_config.hpp).
@@ -233,6 +287,10 @@ export const DETECTOR_DEFAULTS: TuningValues = {
   bg_learn_rate_fg: 0.002,
   bg_hold_frames: 90,
   illumination_hot_ratio: 0.45,
+  // 0 : chaque Pi garde la taille et l'exposition de son fichier.
+  capture_width: 0,
+  shutter_us: 0,
+  analogue_gain: 0,
 };
 
 export const FUSION_PARAMS: TuningParam[] = [
@@ -521,6 +579,13 @@ export function checkValues(
     }
     if (param.integer && !Number.isInteger(raw)) {
       return { error: `${param.label} : un entier est attendu` };
+    }
+    if (param.choices && !param.choices.some((choice) => choice.value === raw)) {
+      return {
+        error: `${param.label} : ${raw} n'est pas dans la liste (${param.choices
+          .map((choice) => choice.value)
+          .join(', ')})`,
+      };
     }
     values[key] = raw;
   }

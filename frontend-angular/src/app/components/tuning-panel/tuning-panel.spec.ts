@@ -291,6 +291,92 @@ describe('TuningPanel', () => {
     expect(api.setDetector).toHaveBeenCalledWith({ diff_threshold: 10 }, undefined);
   });
 
+  const CAPTURE_PARAMS: TuningParam[] = [
+    {
+      key: 'capture_width',
+      group: 'Image',
+      label: "Taille d'image",
+      hint: 'Pixels de chaque image.',
+      unit: 'px',
+      min: 0,
+      max: 1920,
+      step: 1,
+      integer: true,
+      choices: [
+        { value: 0, label: 'Fichier du Pi' },
+        { value: 640, label: '640 × 360' },
+        { value: 1280, label: '1280 × 720' },
+      ],
+    },
+    {
+      key: 'shutter_us',
+      group: 'Image',
+      label: 'Temps de pose',
+      hint: 'Plus long : plus clair.',
+      unit: 'µs',
+      min: 0,
+      max: 1000000,
+      sliderMax: 33000,
+      step: 100,
+      integer: true,
+      zeroLabel: 'fichier du Pi',
+    },
+  ];
+
+  function captureState(extra: Partial<TuningCameraState> = {}): TuningState {
+    const reported = { ...DEFAULTS, capture_width: 1280, shutter_us: 16000 };
+    return makeState({
+      params: { detector: [...DETECTOR_PARAMS, ...CAPTURE_PARAMS], fusion: FUSION_PARAMS },
+      detectorDefaults: { ...DEFAULTS, capture_width: 0, shutter_us: 0 },
+      cameras: ['jean', 'tanel', 'walid'].map((id) =>
+        camera(id, { reported, width: 1280, height: 720, ...extra }),
+      ),
+    });
+  }
+
+  function note(id: string): string | undefined {
+    return input(`#detector-${id}`)
+      .closest('.control')!
+      .querySelector('small.changed')
+      ?.textContent?.trim();
+  }
+
+  it('offers the image sizes as a list and sends the one chosen', () => {
+    open(captureState());
+    const select = root.querySelector<HTMLSelectElement>('#detector-capture_width')!;
+    expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
+      'Fichier du Pi',
+      '640 × 360',
+      '1280 × 720',
+    ]);
+    expect(select.value).toBe('1280');
+    select.value = '640';
+    select.dispatchEvent(new Event('change'));
+    vi.advanceTimersByTime(0);
+    expect(api.setDetector).toHaveBeenCalledWith({ capture_width: 640 }, undefined);
+  });
+
+  it('says what the Pis really run when a capture setting is left to their file', () => {
+    open(captureState({ mode: 'live', wanted: { ...DEFAULTS, capture_width: 0, shutter_us: 0 } }));
+    expect(note('shutter_us')).toBe('fichier du Pi : 16000 µs');
+    expect(note('capture_width')).toBe('Pi : 1280 × 720');
+    // A setting that matches what the Pis run needs no note.
+    expect(note('diff_threshold')).toBeUndefined();
+  });
+
+  it('says which camera kept its old size when one refused the new one', () => {
+    open(
+      makeState({
+        params: { detector: [...DETECTOR_PARAMS, ...CAPTURE_PARAMS], fusion: FUSION_PARAMS },
+        cameras: [
+          camera('jean', { mode: 'live', wanted: { capture_width: 640 }, reported: { capture_width: 640 } }),
+          camera('tanel', { mode: 'live', wanted: { capture_width: 640 }, reported: { capture_width: 1280 } }),
+        ],
+      }),
+    );
+    expect(note('capture_width')).toBe('Pi : jean 640 × 360 · tanel 1280 × 720');
+  });
+
   it('sends only to the camera that is selected', () => {
     open();
     button('tanel').click();

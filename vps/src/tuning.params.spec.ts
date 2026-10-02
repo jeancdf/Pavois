@@ -67,6 +67,20 @@ describe('checkValues', () => {
     expect(error({ adaptive_k: NaN })).toContain('nombre');
     expect(error([1, 2])).toContain('objet');
     expect(error(null)).toContain('objet');
+    expect(error({ capture_width: 700 })).toContain('liste');
+  });
+
+  it('takes an image size from its list, 0 leaving the Pi on its file', () => {
+    expect(checkValues(DETECTOR_PARAMS, { capture_width: 640 })).toEqual({
+      values: { capture_width: 640 },
+    });
+    expect(
+      checkValues(DETECTOR_PARAMS, {
+        capture_width: 0,
+        shutter_us: 0,
+        analogue_gain: 0,
+      }),
+    ).toEqual({ values: { capture_width: 0, shutter_us: 0, analogue_gain: 0 } });
   });
 });
 
@@ -101,7 +115,8 @@ describe('detector command body', () => {
         'morph_close=2,min_blob_area=12,max_blob_area_ratio=0.12,' +
         'min_blob_fill_ratio=0.1,max_blob_aspect=6,border_ignore_px=6,' +
         'confirm_m=2,confirm_n=3,bg_learn_rate=0.05,bg_learn_rate_fg=0.002,' +
-        'bg_hold_frames=90,illumination_hot_ratio=0.45',
+        'bg_hold_frames=90,illumination_hot_ratio=0.45,' +
+        'capture_width=0,shutter_us=0,analogue_gain=0',
     );
   });
 

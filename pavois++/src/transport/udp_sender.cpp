@@ -147,11 +147,11 @@ void UdpSender::send_line(const std::string& line) {
     }
 }
 
-std::optional<UdpSender::CaptureRequest> UdpSender::take_capture_request(
-    const std::string& camera_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (fd_ < 0) return std::nullopt;
+void UdpSender::drain_commands() {
+    if (fd_ < 0) return;
 
+    const char* secret = std::getenv("UDP_HMAC_SECRET");
+    const bool signed_link = secret && *secret;
     char buffer[2048];
     while (true) {
         const ssize_t size = ::recv(fd_, buffer, sizeof(buffer), MSG_DONTWAIT);
@@ -163,7 +163,7 @@ std::optional<UdpSender::CaptureRequest> UdpSender::take_capture_request(
         }
         std::string payload;
         const std::string packet(buffer, buffer + size);
-        if (!verify_packet(packet, std::getenv("UDP_HMAC_SECRET"), payload)) {
+        if (!verify_packet(packet, secret, payload)) {
             last_error_ = "invalid UDP command signature";
             continue;
         }
@@ -175,16 +175,62 @@ std::optional<UdpSender::CaptureRequest> UdpSender::take_capture_request(
         std::stringstream stream(payload);
         std::string part;
         while (std::getline(stream, part, ',')) parts.push_back(part);
-        if (parts.size() != 4 || parts[0] != "capture") continue;
-        try {
-            CaptureRequest request{parts[2], std::stoull(parts[3])};
-            if (!parts[1].empty() && !request.request_id.empty() &&
-                request.expires_ms >= now_ms()) {
-                capture_requests_[parts[1]] = std::move(request);
+        if (parts.empty()) continue;
+
+        if (parts[0] == "capture") {
+            if (parts.size() != 4) continue;
+            try {
+                CaptureRequest request{parts[2], std::stoull(parts[3])};
+                if (!parts[1].empty() && !request.request_id.empty() &&
+                    request.expires_ms >= now_ms()) {
+                    capture_requests_[parts[1]] = std::move(request);
+                }
+            } catch (...) {
             }
-        } catch (...) {
+            continue;
+        }
+
+        if (parts[0] == "set") {
+            // A setting changes what the detector reports. Unlike a photo
+            // request it is never taken from an unauthenticated sender.
+            if (!signed_link) {
+                last_error_ = "set command refused: UDP_HMAC_SECRET is not set";
+                continue;
+            }
+            if (parts.size() < 3 || parts[1].empty()) continue;
+            ConfigUpdate update;
+            try {
+                update.version = std::stoull(parts[2]);
+            } catch (...) {
+                continue;
+            }
+            for (std::size_t i = 3; i < parts.size(); ++i) {
+                const auto eq = parts[i].find('=');
+                if (eq == std::string::npos || eq == 0) continue;
+                update.fields.emplace_back(parts[i].substr(0, eq),
+                                           parts[i].substr(eq + 1));
+            }
+            config_updates_[parts[1]] = std::move(update);
         }
     }
+}
+
+std::optional<UdpSender::ConfigUpdate> UdpSender::take_config_update(
+    const std::string& camera_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    drain_commands();
+    const auto found = config_updates_.find(camera_id);
+    if (found == config_updates_.end()) return std::nullopt;
+    ConfigUpdate update = std::move(found->second);
+    config_updates_.erase(found);
+    return update;
+}
+
+std::optional<UdpSender::CaptureRequest> UdpSender::take_capture_request(
+    const std::string& camera_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fd_ < 0) return std::nullopt;
+    drain_commands();
 
     const auto found = capture_requests_.find(camera_id);
     if (found == capture_requests_.end()) return std::nullopt;

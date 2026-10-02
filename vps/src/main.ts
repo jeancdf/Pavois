@@ -1,6 +1,13 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[SAFETY NET] Promesse rejetée non gérée :', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[SAFETY NET] Exception non captée :', error);
+});
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -24,7 +31,9 @@ async function bootstrap() {
   app.use(helmet());
 
   // 2. Configuration CORS Stricte (pas d'origine '*')
-  const rawOrigins = process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:8080,http://localhost:3000';
+  const rawOrigins =
+    process.env.ALLOWED_ORIGINS ||
+    'http://localhost:4200,http://localhost:5173,http://localhost:8080,http://localhost:3000';
   const allowedOrigins = rawOrigins.split(',').map((o) => o.trim());
 
   app.enableCors({
@@ -33,7 +42,7 @@ async function bootstrap() {
         callback(null, true);
       } else {
         console.warn(`[CORS] Requête rejetée pour l'origine non autorisée : ${origin}`);
-        callback(new Error('Origine non autorisée par la politique CORS'));
+        callback(null, false);
       }
     },
     credentials: true,

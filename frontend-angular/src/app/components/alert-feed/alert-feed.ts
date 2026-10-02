@@ -7,7 +7,7 @@ import { AuthService } from '../../services/auth.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { PersistedAlert } from '../../models/alert.model';
 
-const MAX_ITEMS = 15;
+const MAX_ITEMS = 20;
 
 @Component({
   selector: 'app-alert-feed',
@@ -19,19 +19,41 @@ export class AlertFeed implements OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
-  private readonly subscription: Subscription;
+  private readonly subscriptions: Subscription[] = [];
 
   readonly items = signal<PersistedAlert[]>([]);
 
   constructor() {
     void this.loadHistory();
-    // Alertes nouvellement diffusées, en tête de liste sans re-fetch.
-    this.subscription = this.realtime.alerts$.subscribe((alert) => {
-      this.items.update((current) => [
-        { ...alert, id: `live-${Date.now()}`, createdAt: new Date().toISOString() },
-        ...current,
-      ].slice(0, MAX_ITEMS));
-    });
+
+    // Ingestion des nouvelles alertes émises par WS
+    this.subscriptions.push(
+      this.realtime.alerts$.subscribe((alert) => {
+        this.items.update((current) => {
+          const exists = current.some((a) => a.id === alert.id);
+          if (exists) {
+            return current.map((a) => (a.id === alert.id ? alert : a));
+          }
+          return [alert, ...current].slice(0, MAX_ITEMS);
+        });
+      }),
+    );
+
+    // Ingestion des alertes mises à jour (Synchro WS Acquittement / Résolution)
+    this.subscriptions.push(
+      this.realtime.alertUpdated$.subscribe((updatedAlert) => {
+        this.items.update((current) =>
+          current.map((item) =>
+            item.id === updatedAlert.id ? { ...item, ...updatedAlert } : item,
+          ),
+        );
+      }),
+    );
+  }
+
+  acknowledge(alert: PersistedAlert): void {
+    if (alert.status === 'RESOLVED') return;
+    this.realtime.acknowledgeAlert(alert.id);
   }
 
   private async loadHistory(): Promise<void> {
@@ -50,6 +72,6 @@ export class AlertFeed implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.subscription.unsubscribe();
+    this.subscriptions.forEach((sub) => sub.unsubscribe());
   }
 }

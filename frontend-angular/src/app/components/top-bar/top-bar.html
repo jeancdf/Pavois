@@ -13,6 +13,42 @@
     <a routerLink="/test-rail" routerLinkActive="active">Test rail</a>
   </nav>
 
+  <!-- Reliability Status Badge -->
+  <div
+    class="reliability-badge"
+    [class.rel-green]="systemHealth().reliability === 'GREEN'"
+    [class.rel-orange]="systemHealth().reliability === 'ORANGE'"
+    [class.rel-red]="systemHealth().reliability === 'RED'"
+    [title]="systemHealth().message"
+  >
+    <span class="rel-icon"></span>
+    <span class="rel-text">
+      @if (systemHealth().reliability === 'GREEN') {
+        3/3 OK (3D Nominal)
+      } @else if (systemHealth().reliability === 'ORANGE') {
+        2/3 OK (3D Dégradé)
+      } @else {
+        {{ systemHealth().activeCameraCount }}/3 OK (Direction Uniquement)
+      }
+    </span>
+  </div>
+
+  <!-- Camera Status Badges -->
+  <div class="cam-badges">
+    @for (cam of cameraSummaries(); track cam.id) {
+      <span
+        class="cam-badge"
+        [class.cam-ok]="cam.state === 'OK'"
+        [class.cam-warn]="cam.state === 'DEGRADED_FROZEN' || cam.state === 'REDUCED_VISIBILITY_NIGHT'"
+        [class.cam-err]="cam.state === 'HORS_SERVICE' || cam.state === 'DEGRADED_BLIND'"
+        [class.cam-v1]="cam.isV1"
+        [title]="cam.name + ': ' + cam.diagnosticText"
+      >
+        {{ cam.name }}: {{ cam.diagnosticText }}
+      </span>
+    }
+  </div>
+
   <div class="kpis">
     <div class="kpi">
       <span class="kpi-label">DÉTECTIONS</span>
@@ -22,20 +58,6 @@
     <div class="kpi">
       <span class="kpi-label">PISTES</span>
       <span class="kpi-value kpi-tracks">{{ realtime.activeTrackCount() }}</span>
-    </div>
-    <div class="kpi-sep"></div>
-    <div class="kpi">
-      <span class="kpi-label">IMU</span>
-      <span
-        class="kpi-value"
-        [class.kpi-warn]="imuTrustedCount() < imuLiveCount()"
-        title="IMU calibrées / IMU actives"
-      >{{ imuTrustedCount() }}/{{ imuLiveCount() }}</span>
-    </div>
-    <div class="kpi-sep"></div>
-    <div class="kpi">
-      <span class="kpi-label">PREVIEW</span>
-      <span class="kpi-value">{{ previewLiveCount() }}</span>
     </div>
     <div class="kpi-sep"></div>
     <div class="kpi">

@@ -10,6 +10,8 @@
 #include "pavois/transport/http_poster.hpp"
 #include "pavois/transport/udp_sender.hpp"
 
+#include "pavois/detection/image_ops.hpp"
+
 #include <cstdint>
 #include <fstream>
 #include <memory>
@@ -54,7 +56,10 @@ private:
                             std::uint64_t& last_preview_us);
     void maybe_emit_stats(std::uint64_t now_us, std::uint64_t frame_id,
                           std::uint64_t& window_start_us,
-                          std::uint64_t& window_frames);
+                          std::uint64_t& window_frames,
+                          const ImageDiagnostics& diag,
+                          double exposure_us = 0.0,
+                          double gain_db = 0.0);
     void apply_config_update(const UdpSender::ConfigUpdate& update,
                              MotionDetector& detector);
     void maybe_emit_config(const GrayFrame& frame, std::uint64_t now_us,

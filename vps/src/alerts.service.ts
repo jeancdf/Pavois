@@ -78,8 +78,8 @@ export class AlertsService {
 
     if (!alertId) {
       // Étape 1 : Création de la nouvelle alerte d'objet détecté
-      let category = AlertCategory.OBJECT_DETECTED;
-      let type = AlertType.INFO;
+      let category: AlertCategory = AlertCategory.OBJECT_DETECTED;
+      let type: AlertType = AlertType.INFO;
       let message = `Objet détecté (Piste ${track.trackId})`;
 
       if (confidence >= 0.75 && isDrone) {

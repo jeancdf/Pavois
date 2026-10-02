@@ -10,8 +10,9 @@ import { CameraPreview } from '../models/camera-preview.model';
 import { CameraStats } from '../models/camera-stats.model';
 import { FuseUpdate } from '../models/fuse-update.model';
 import { RailBenchState } from '../config/rail-bench';
-import { AlertEvent } from '../models/alert.model';
+import { AlertEvent, PersistedAlert } from '../models/alert.model';
 import { ClassificationReview, TargetClassification } from '../models/target-classification.model';
+import { CameraHealthStatus, SystemHealthUpdate, CameraStatusUpdatePayload } from '../models/camera-health.model';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -19,12 +20,17 @@ const RECONNECT_DELAY_MS = 2000;
 export class RealtimeService implements OnDestroy {
   readonly connected = signal(false);
   readonly connectedSince = signal<number | null>(null);
-  // Positions stockées par le backend : envoyées à la connexion puis à chaque modification
   readonly cameraConfigs = signal<CameraGpsConfig[]>([]);
   readonly cameras = computed(() => buildCameraPositions(this.cameraConfigs()));
   readonly imuByCamera = signal<Record<string, ImuSample>>({});
   readonly previewByCamera = signal<Record<string, CameraPreview>>({});
   readonly statsByCamera = signal<Record<string, CameraStats>>({});
+  readonly cameraHealthByCamera = signal<Record<string, CameraHealthStatus>>({});
+  readonly systemHealth = signal<SystemHealthUpdate>({
+    reliability: 'GREEN',
+    activeCameraCount: 3,
+    message: 'Système 3D Nominal (3/3 Caméras OK)',
+  });
   readonly fuseUpdate = signal<FuseUpdate | null>(null);
   readonly targetClassification = signal<TargetClassification | null>(null);
   readonly classificationReview = signal<ClassificationReview | null>(null);
@@ -33,8 +39,8 @@ export class RealtimeService implements OnDestroy {
   readonly rawDetections$ = new Subject<RawDetection>();
   readonly trackUpdates$ = new Subject<TrackUpdate>();
   readonly alerts$ = new Subject<AlertEvent>();
+  readonly alertUpdated$ = new Subject<AlertEvent>();
 
-  // Compteurs KPI — mis à jour en temps réel dans le handler de messages
   readonly totalDetections = signal(0);
   readonly activeTrackCount = signal(0);
   private readonly seenTrackIds = new Set<string>();
@@ -44,7 +50,6 @@ export class RealtimeService implements OnDestroy {
   private destroyed = false;
 
   constructor(private readonly authService: AuthService) {
-    // Déclenche la connexion dès que l'utilisateur est authentifié
     effect(() => {
       if (this.authService.isAuthenticated()) {
         this.connect();
@@ -53,7 +58,6 @@ export class RealtimeService implements OnDestroy {
   }
 
   private connect(): void {
-    // Évite une double connexion si une est déjà en cours ou ouverte
     if (
       this.ws &&
       (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
@@ -119,6 +123,19 @@ export class RealtimeService implements OnDestroy {
             }
             break;
           }
+          case 'camera_status_update': {
+            const update = payload.data as CameraStatusUpdatePayload;
+            if (update?.status?.cameraId) {
+              this.cameraHealthByCamera.update((current) => ({
+                ...current,
+                [update.status.cameraId]: update.status,
+              }));
+            }
+            if (update?.globalUpdate) {
+              this.systemHealth.set(update.globalUpdate);
+            }
+            break;
+          }
           case 'fuse_update':
             this.fuseUpdate.set(payload.data as FuseUpdate);
             break;
@@ -150,6 +167,9 @@ export class RealtimeService implements OnDestroy {
           case 'alert':
             this.alerts$.next(payload.data as AlertEvent);
             break;
+          case 'alert_updated':
+            this.alertUpdated$.next(payload.data as AlertEvent);
+            break;
         }
       } catch {
         console.error('RealtimeService: message WebSocket invalide', event.data);
@@ -161,7 +181,6 @@ export class RealtimeService implements OnDestroy {
       this.connectedSince.set(null);
       this.ws = null;
 
-      // Code 4001 = token refusé par le serveur → déconnexion forcée, pas de reconnexion
       if (event.code === 4001) {
         this.authService.clearToken();
         return;
@@ -173,6 +192,17 @@ export class RealtimeService implements OnDestroy {
     };
 
     ws.onerror = () => ws.close();
+  }
+
+  acknowledgeAlert(alertId: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          event: 'acknowledge_alert',
+          data: { alertId },
+        }),
+      );
+    }
   }
 
   imuOf(cameraId: string): ImuSample | undefined {
@@ -187,8 +217,11 @@ export class RealtimeService implements OnDestroy {
     return this.statsByCamera()[cameraId];
   }
 
+  healthOf(cameraId: string): CameraHealthStatus | undefined {
+    return this.cameraHealthByCamera()[cameraId];
+  }
+
   private storeImuSample(
-    // calibration/valid absents si le VPS n'est pas à jour.
     sample: Omit<ImuSample, 'receivedAt' | 'calibration' | 'valid'> &
       Partial<Pick<ImuSample, 'calibration' | 'valid'>>,
   ): void {

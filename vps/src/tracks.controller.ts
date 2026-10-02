@@ -11,8 +11,7 @@ import {
 import { AuthTokenGuard } from './access-control';
 import { TracksService } from './tracks.service';
 import { ReviewTrackDto } from './tracks.dto';
-import { TrackVerdict } from '@prisma/client';
-import type { Track } from '@prisma/client';
+import { TrackVerdict, Track } from './track-types';
 
 @Controller('tracks')
 @UseGuards(AuthTokenGuard)

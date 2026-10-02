@@ -46,7 +46,74 @@
   background: #1e293b;
 }
 
+/* Reliability Badge */
+.reliability-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.rel-green {
+  background: #10b98120;
+  color: #10b981;
+  border: 1px solid #10b98140;
+}
+
+.rel-orange {
+  background: #f59e0b20;
+  color: #f59e0b;
+  border: 1px solid #f59e0b40;
+}
+
+.rel-red {
+  background: #ef444420;
+  color: #ef4444;
+  border: 1px solid #ef444440;
+}
+
+/* Cam Badges */
+.cam-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cam-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+
+.cam-ok {
+  background: #10b98115;
+  color: #34d399;
+}
+
+.cam-warn {
+  background: #f59e0b15;
+  color: #fbbf24;
+}
+
+.cam-err {
+  background: #ef444415;
+  color: #f87171;
+}
+
+.cam-v1 {
+  border: 1px dashed #64748b;
+}
+
 /* KPIs */
+
 .kpis {
   display: flex;
   align-items: center;

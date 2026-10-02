@@ -3,6 +3,12 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { RealtimeService } from '../../services/realtime.service';
 import { imuQuality } from '../../utils/imu-quality';
 
+const CAM_NAMES: Record<string, string> = {
+  jean: 'CAM 1',
+  tanel: 'CAM 2',
+  walid: 'CAM 3',
+};
+
 @Component({
   selector: 'app-top-bar',
   imports: [RouterLink, RouterLinkActive],
@@ -12,14 +18,15 @@ import { imuQuality } from '../../utils/imu-quality';
 export class TopBar implements OnDestroy {
   readonly realtime = inject(RealtimeService);
   readonly uptime = signal(0);
-  // Horloge propre : uptime reste à 0 hors connexion et ne rafraîchirait plus.
   private readonly now = signal(Date.now());
+
   private readonly imuQualities = computed(() => {
     const now = this.now();
     return Object.values(this.realtime.imuByCamera()).map((sample) =>
       imuQuality(sample, now),
     );
   });
+
   readonly imuLiveCount = computed(
     () => this.imuQualities().filter((quality) => quality !== 'silencieuse').length,
   );
@@ -31,6 +38,31 @@ export class TopBar implements OnDestroy {
     return Object.values(this.realtime.previewByCamera()).filter(
       (preview) => now - preview.receivedAt < 2000,
     ).length;
+  });
+
+  readonly systemHealth = computed(() => this.realtime.systemHealth());
+
+  readonly cameraSummaries = computed(() => {
+    const healths = this.realtime.cameraHealthByCamera();
+    const stats = this.realtime.statsByCamera();
+    const cameraIds = ['jean', 'tanel', 'walid'];
+
+    return cameraIds.map((id) => {
+      const h = healths[id];
+      const s = stats[id];
+      const name = CAM_NAMES[id] || id.toUpperCase();
+      const state = h ? h.state : 'OK';
+      const isV1 = s && s.version === 'v1';
+      const diagnosticText = isV1 ? 'DIAGNOSTIC_LIMITÉ' : state;
+
+      return {
+        id,
+        name,
+        state,
+        diagnosticText,
+        isV1,
+      };
+    });
   });
 
   private uptimeTimer: ReturnType<typeof setInterval> | null = null;

@@ -15,7 +15,13 @@ export class AlertTriggerService {
     private readonly notifications: NotificationService,
   ) {
     realtime.alerts$.subscribe((alert) => {
-      notifications.push(alert.type, alert.message);
+      const toastType: ToastType =
+        alert.type === 'CRITICAL'
+          ? 'alert'
+          : alert.type === 'WARNING'
+            ? 'warning'
+            : 'info';
+      notifications.push(toastType, alert.message);
     });
   }
 }

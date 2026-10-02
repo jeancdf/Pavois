@@ -3,16 +3,23 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { EventsGateway } from './events.gateway';
 import {
   Alert,
   AlertType,
   AlertCategory,
   AlertStatus,
   CameraState,
-} from '@prisma/client';
+} from './alert-types';
+import {
+  ALERT_STORE,
+  AlertStore,
+  CAMERA_LOG_STORE,
+  CameraStateLogStore,
+} from './stores/alert-store.interface';
+import { EventsGateway } from './events.gateway';
 import { DiscordNotificationChannel } from './discord-notification.channel';
 import {
   CameraHealthService,
@@ -46,29 +53,28 @@ export class AlertsService {
   private trackCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(ALERT_STORE) private readonly alertStore: AlertStore,
+    @Inject(CAMERA_LOG_STORE) private readonly cameraLogStore: CameraStateLogStore,
+    @Inject(forwardRef(() => EventsGateway))
     private readonly eventsGateway: EventsGateway,
     private readonly discordChannel: DiscordNotificationChannel,
     private readonly cameraHealth: CameraHealthService,
   ) {
-    // Écoute des changements d'état des caméras
     this.cameraHealth.onStateChange((status, globalUpdate) => {
       this.handleCameraStateChange(status, globalUpdate);
     });
 
-    // Nettoyage périodique des pistes perdues (> 5s)
-    this.trackCleanupTimer = setInterval(() => this.cleanupLostTracks(), 2000);
+    this.trackCleanupTimer = setInterval(
+      () => void this.cleanupLostTracks().catch((err) => this.logger.error(`Erreur cleanup tracks : ${err}`)),
+      1000,
+    );
   }
 
   /**
-   * Traitement évolutif des événements d'objets volants (Feature B).
-   * Seuil 1 : OBJET DÉTECTÉ (info, écran)
-   * Seuil 2 : À VÉRIFIER (warning, 40-75%)
-   * Seuil 3 : DRONE CONFIRMÉ (critical, >75% + 3-points + Discord)
+   * Entrée de données depuis la détection de pistes (Feature B).
    */
-  async onTrackUpdate(track: TrackAlertInput): Promise<void> {
-    const now = Date.now();
-    this.activeTrackLastSeen.set(track.trackId, now);
+  async processTrackAlert(track: TrackAlertInput): Promise<void> {
+    this.activeTrackLastSeen.set(track.trackId, Date.now());
 
     const confidence = track.confidence ?? 0.5;
     const isDrone = track.classification === 'drone';
@@ -92,8 +98,9 @@ export class AlertsService {
         message = `À VÉRIFIER — Piste ${track.trackId} (Levée de doute requise)`;
       }
 
-      const alert = await this.prisma.alert.create({
-        data: {
+      let alert: Alert;
+      try {
+        alert = await this.alertStore.create({
           type,
           category,
           status: AlertStatus.NEW,
@@ -101,8 +108,26 @@ export class AlertsService {
           trackId: track.trackId,
           cameraIds,
           confidence,
-        },
-      });
+        });
+      } catch (err) {
+        this.logger.warn(`Échec de persistance de l'alerte piste : ${err}`);
+        alert = {
+          id: `temp-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          type,
+          category,
+          status: AlertStatus.NEW,
+          message,
+          trackId: track.trackId,
+          cameraIds,
+          cameraState: null,
+          confidence,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          resolvedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
 
       alertId = alert.id;
       this.activeTrackAlerts.set(track.trackId, alertId);
@@ -118,9 +143,7 @@ export class AlertsService {
       }
     } else {
       // Étape 2 : Évolution de l'alerte existante (Le niveau ne redescend JAMAIS)
-      const existing = await this.prisma.alert.findUnique({
-        where: { id: alertId },
-      });
+      const existing = await this.alertStore.findUnique(alertId).catch(() => null);
       if (!existing || existing.status === AlertStatus.RESOLVED) return;
 
       let nextCategory = existing.category;
@@ -155,17 +178,17 @@ export class AlertsService {
       }
 
       if (shouldUpdate) {
-        const updated = await this.prisma.alert.update({
-          where: { id: alertId },
-          data: {
-            type: nextType,
-            category: nextCategory,
-            message: nextMessage,
-            confidence,
-            cameraIds,
-          },
-        });
-        this.eventsGateway.broadcast('alert_updated', updated);
+        const updated = await this.alertStore.update(alertId, {
+          type: nextType,
+          category: nextCategory,
+          message: nextMessage,
+          confidence,
+          cameraIds,
+        }).catch(() => null);
+
+        if (updated) {
+          this.eventsGateway.broadcast('alert_updated', updated);
+        }
       }
     }
   }
@@ -177,7 +200,9 @@ export class AlertsService {
     status: CameraHealthStatus,
     globalUpdate: SystemHealthUpdate,
   ): void {
-    void this.processCameraStateChange(status, globalUpdate);
+    void this.processCameraStateChange(status, globalUpdate).catch((err) => {
+      this.logger.error(`Erreur processCameraStateChange : ${err}`);
+    });
   }
 
   private async processCameraStateChange(
@@ -186,22 +211,18 @@ export class AlertsService {
   ): Promise<void> {
     // 1. Enregistrement dans le log d'état
     try {
-      await this.prisma.cameraStateLog.create({
-        data: {
-          cameraId: status.cameraId,
-          state: status.state,
-          previousState: status.previousState,
-          reason: status.reason,
-          lumMean: status.lumMean,
-          lumStddev: status.lumStddev,
-          exposureUs: status.exposureUs,
-          gainDb: status.gainDb,
-        },
+      await this.cameraLogStore.createStateLog({
+        cameraId: status.cameraId,
+        state: status.state,
+        previousState: status.previousState,
+        reason: status.reason,
+        lumMean: status.lumMean,
+        lumStddev: status.lumStddev,
+        exposureUs: status.exposureUs,
+        gainDb: status.gainDb,
       });
     } catch (err) {
-      this.logger.warn(
-        `Échec de journalisation CameraStateLog : ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Échec de journalisation CameraStateLog : ${err}`);
     }
 
     // 2. Émission d'alerte selon la gravité de l'état
@@ -232,10 +253,14 @@ export class AlertsService {
       // Résolution de l'incident précédent s'il existait
       const existingAlertId = this.cameraIncidentAlerts.get(status.cameraId);
       if (existingAlertId) {
-        await this.prisma.alert.update({
-          where: { id: existingAlertId },
-          data: { status: AlertStatus.RESOLVED, resolvedAt: new Date() },
-        });
+        try {
+          await this.alertStore.update(existingAlertId, {
+            status: AlertStatus.RESOLVED,
+            resolvedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          this.logger.warn(`Échec de résolution de l'alerte caméra : ${err}`);
+        }
         this.cameraIncidentAlerts.delete(status.cameraId);
       }
 
@@ -250,17 +275,36 @@ export class AlertsService {
       }
     }
 
-    if (status.state !== CameraState.OK) {
-      const alert = await this.prisma.alert.create({
-        data: {
+    if (status.state !== CameraState.OK && status.state !== CameraState.EN_ATTENTE) {
+      let alert: Alert;
+      try {
+        alert = await this.alertStore.create({
           type,
           category,
           status: AlertStatus.NEW,
           message,
           cameraIds: [status.cameraId],
           cameraState: status.state,
-        },
-      });
+        });
+      } catch (err) {
+        this.logger.warn(`Échec de création d'alerte caméra : ${err}`);
+        alert = {
+          id: `temp-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          type,
+          category,
+          status: AlertStatus.NEW,
+          message,
+          trackId: null,
+          cameraIds: [status.cameraId],
+          cameraState: status.state,
+          confidence: null,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          resolvedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
 
       this.cameraIncidentAlerts.set(status.cameraId, alert.id);
       this.eventsGateway.broadcast('alert', alert);
@@ -277,14 +321,34 @@ export class AlertsService {
 
     // 3. Gestion de l'alerte SYSTÈME AVEUGLE (Fiabilité globale ROUGE <= 1 caméra OK)
     if (globalUpdate.reliability === 'RED' && !this.systemBlindAlertId) {
-      const blindAlert = await this.prisma.alert.create({
-        data: {
+      let blindAlert: Alert;
+      try {
+        blindAlert = await this.alertStore.create({
           type: AlertType.CRITICAL,
           category: AlertCategory.SYSTEM_BLIND,
           status: AlertStatus.NEW,
           message: `🚨 ${globalUpdate.message}`,
-        },
-      });
+        });
+      } catch (err) {
+        this.logger.warn(`Échec de création d'alerte système aveugle : ${err}`);
+        blindAlert = {
+          id: `temp-blind-${Date.now()}`,
+          type: AlertType.CRITICAL,
+          category: AlertCategory.SYSTEM_BLIND,
+          status: AlertStatus.NEW,
+          message: `🚨 ${globalUpdate.message}`,
+          trackId: null,
+          cameraIds: [],
+          cameraState: null,
+          confidence: null,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          resolvedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
       this.systemBlindAlertId = blindAlert.id;
       this.eventsGateway.broadcast('alert', blindAlert);
 
@@ -298,10 +362,14 @@ export class AlertsService {
       globalUpdate.reliability !== 'RED' &&
       this.systemBlindAlertId
     ) {
-      await this.prisma.alert.update({
-        where: { id: this.systemBlindAlertId },
-        data: { status: AlertStatus.RESOLVED, resolvedAt: new Date() },
-      });
+      try {
+        await this.alertStore.update(this.systemBlindAlertId, {
+          status: AlertStatus.RESOLVED,
+          resolvedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        this.logger.warn(`Échec de résolution alerte système aveugle : ${err}`);
+      }
       this.systemBlindAlertId = null;
     }
 
@@ -316,7 +384,7 @@ export class AlertsService {
    * Action d'acquittement sécurisée et authentifiée par un opérateur.
    */
   async acknowledge(alertId: string, operatorUsername: string): Promise<Alert> {
-    const alert = await this.prisma.alert.findUnique({ where: { id: alertId } });
+    const alert = await this.alertStore.findUnique(alertId).catch(() => null);
 
     if (!alert) {
       throw new NotFoundException(`Alerte non trouvée : ${alertId}`);
@@ -334,14 +402,15 @@ export class AlertsService {
       return alert;
     }
 
-    const updated = await this.prisma.alert.update({
-      where: { id: alertId },
-      data: {
-        status: AlertStatus.ACKNOWLEDGED,
-        acknowledgedAt: new Date(),
-        acknowledgedBy: operatorUsername,
-      },
+    const updated = await this.alertStore.update(alertId, {
+      status: AlertStatus.ACKNOWLEDGED,
+      acknowledgedAt: new Date().toISOString(),
+      acknowledgedBy: operatorUsername,
     });
+
+    if (!updated) {
+      throw new BadRequestException('Échec d\'actualisation de l\'alerte');
+    }
 
     this.logger.log(
       `Alerte ${alertId} acquittée par l'opérateur '${operatorUsername}'`,
@@ -354,16 +423,7 @@ export class AlertsService {
   }
 
   list(options: ListAlertsOptions = {}): Promise<Alert[]> {
-    const limit = Math.min(
-      Math.max(options.limit ?? DEFAULT_LIMIT, 1),
-      MAX_LIMIT,
-    );
-    return this.prisma.alert.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      where: options.status ? { status: options.status } : undefined,
-      ...(options.before ? { cursor: { id: options.before }, skip: 1 } : {}),
-    });
+    return this.alertStore.findMany(options);
   }
 
   /**
@@ -379,13 +439,15 @@ export class AlertsService {
         const alertId = this.activeTrackAlerts.get(trackId);
         if (alertId) {
           try {
-            const updated = await this.prisma.alert.update({
-              where: { id: alertId },
-              data: { status: AlertStatus.RESOLVED, resolvedAt: new Date() },
+            const updated = await this.alertStore.update(alertId, {
+              status: AlertStatus.RESOLVED,
+              resolvedAt: new Date().toISOString(),
             });
-            this.eventsGateway.broadcast('alert_updated', updated);
+            if (updated) {
+              this.eventsGateway.broadcast('alert_updated', updated);
+            }
           } catch {
-            // Ignorer si déjà supprimée
+            // Ignorer
           }
           this.activeTrackAlerts.delete(trackId);
         }

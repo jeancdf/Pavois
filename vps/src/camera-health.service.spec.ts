@@ -1,5 +1,5 @@
 import { CameraHealthService } from './camera-health.service';
-import { CameraState } from '@prisma/client';
+import { CameraState } from './alert-types';
 
 describe('CameraHealthService', () => {
   let service: CameraHealthService;
@@ -13,19 +13,23 @@ describe('CameraHealthService', () => {
     service.onModuleDestroy();
   });
 
-  it('initializes default cameras in OK state', () => {
+  it('initializes default cameras in EN_ATTENTE state', () => {
     const statuses = service.getHealthStatuses();
     expect(statuses).toHaveLength(3);
-    expect(statuses.every((s) => s.state === CameraState.OK)).toBe(true);
+    expect(statuses.every((s) => s.state === CameraState.EN_ATTENTE)).toBe(true);
   });
 
   it('calculates GREEN global reliability when 3 cameras are OK', () => {
+    for (const cam of ['jean', 'tanel', 'walid']) {
+      service.noteActivity(cam);
+    }
     const globalState = service.getGlobalReliability();
     expect(globalState.reliability).toBe('GREEN');
     expect(globalState.activeCameraCount).toBe(3);
   });
 
   it('triggers DEGRADED_BLIND when an individual camera experiences a brutal luminance drop', () => {
+    service.noteActivity('jean');
     // Normal baseline ingest
     service.ingestStats({
       type: 'camera_stats',
@@ -67,6 +71,9 @@ describe('CameraHealthService', () => {
 
   it('triggers REDUCED_VISIBILITY_NIGHT (NOT fault) when ALL cameras drop together (Cloud / Night)', () => {
     const now = Date.now();
+    for (const cam of ['jean', 'tanel', 'walid']) {
+      service.noteActivity(cam);
+    }
     // Baseline ingest
     for (const cam of ['jean', 'tanel', 'walid']) {
       service.ingestStats({

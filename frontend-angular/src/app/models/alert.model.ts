@@ -11,6 +11,7 @@ export type AlertCategory =
 export type AlertStatus = 'NEW' | 'ACKNOWLEDGED' | 'RESOLVED';
 
 export type CameraState =
+  | 'EN_ATTENTE'
   | 'OK'
   | 'DEGRADED_FROZEN'
   | 'DEGRADED_BLIND'

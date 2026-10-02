@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { CameraState } from '@prisma/client';
+import { CameraState } from './alert-types';
 import { CameraStats } from './udp-stats';
 
 export interface CameraHealthStatus {
@@ -54,9 +54,9 @@ export class CameraHealthService implements OnModuleInit, OnModuleDestroy {
       this.cameraStates.set(id, {
         cameraId: id,
         displayName: CAMERA_NAME_MAP[id] || id.toUpperCase(),
-        state: CameraState.OK,
+        state: CameraState.EN_ATTENTE,
         previousState: null,
-        reason: 'Initialisé OK',
+        reason: 'En attente du premier paquet UDP',
         lastSeenMs: Date.now(),
         lastFrameIndex: 0,
         lumMean: 100,
@@ -91,6 +91,16 @@ export class CameraHealthService implements OnModuleInit, OnModuleDestroy {
     current.lastSeenMs = Date.now();
     if (typeof frameIndex === 'number' && frameIndex > current.lastFrameIndex) {
       current.lastFrameIndex = frameIndex;
+    }
+
+    if (current.state === CameraState.EN_ATTENTE) {
+      current.previousState = CameraState.EN_ATTENTE;
+      current.state = CameraState.OK;
+      current.reason = 'Premier paquet UDP reçu — Caméra active';
+      const globalReliability = this.getGlobalReliability();
+      if (this.onStateChangeCallback) {
+        this.onStateChangeCallback(current, globalReliability);
+      }
     }
   }
 
@@ -191,9 +201,18 @@ export class CameraHealthService implements OnModuleInit, OnModuleDestroy {
       let nextState: CameraState = status.state;
       let reason = status.reason;
 
-      // Evaluation Order (Strict Priority):
+      // 0. EN_ATTENTE (Délai de grâce au démarrage)
+      if (status.state === CameraState.EN_ATTENTE) {
+        const initialGraceSec = Number(process.env.CAMERA_INITIAL_GRACE_SECONDS) || 10;
+        if (timeSinceLastSeenSec > initialGraceSec) {
+          nextState = CameraState.HORS_SERVICE;
+          reason = `Silence UDP initial (> ${initialGraceSec}s sans paquet)`;
+        } else {
+          continue;
+        }
+      }
       // 1. HORS_SERVICE (Silence UDP > 3s)
-      if (timeSinceLastSeenSec > timeoutSec) {
+      else if (timeSinceLastSeenSec > timeoutSec) {
         nextState = CameraState.HORS_SERVICE;
         reason = `Silence UDP (> ${timeoutSec}s sans paquet)`;
       }

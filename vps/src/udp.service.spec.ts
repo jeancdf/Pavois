@@ -11,9 +11,21 @@ import { TracksService } from './tracks.service';
 import { AlertsService } from './alerts.service';
 import * as crypto from 'crypto';
 import { ClassificationService } from './classification.service';
+import { CameraHealthService } from './camera-health.service';
 
 const classificationMock = () => ({
   considerFusion: jest.fn().mockReturnValue(null),
+});
+
+const cameraHealthMock = () => ({
+  noteActivity: jest.fn(),
+  ingestStats: jest.fn(),
+  getHealthStatuses: jest.fn().mockReturnValue([]),
+  getGlobalReliability: jest.fn().mockReturnValue({
+    reliability: 'GREEN',
+    activeCameraCount: 3,
+    message: 'OK',
+  }),
 });
 
 describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
@@ -52,6 +64,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
           useValue: { onTrackUpdate: jest.fn() },
         },
         { provide: ClassificationService, useValue: classificationMock() },
+        { provide: CameraHealthService, useValue: cameraHealthMock() },
       ],
     }).compile();
 
@@ -113,7 +126,6 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
       const packet = createSignedPacket(payload, secretKey);
 
-      // Corrupt the HMAC bytes (index 8 to 39)
       packet[10] ^= 0xff;
 
       const result = (service as any).verifyUdpPacket(packet, secretKey);
@@ -123,7 +135,7 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
 
     it('should reject a replayed packet with a timestamp older than 2000 ms (Anti-Replay)', () => {
       const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
-      const oldTimestamp = Date.now() - 5000; // 5 seconds ago
+      const oldTimestamp = Date.now() - 5000;
       const expiredPacket = createSignedPacket(
         payload,
         secretKey,
@@ -182,6 +194,7 @@ describe('UdpService fused track_update', () => {
           useValue: { onTrackUpdate: jest.fn() },
         },
         { provide: ClassificationService, useValue: classificationMock() },
+        { provide: CameraHealthService, useValue: cameraHealthMock() },
       ],
     }).compile();
     const udp = module.get(UdpService);

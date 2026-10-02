@@ -87,6 +87,15 @@ export class Tracker {
     this.originAltM = altM;
   }
 
+  config(): TrackerConfig {
+    return { ...this.cfg };
+  }
+
+  /** Changes settings while tracks are alive; they keep their state. */
+  configure(cfg: Partial<TrackerConfig>): void {
+    Object.assign(this.cfg, cfg);
+  }
+
   /** Every track predicted to tsUs, confirmed first, then most hits. */
   predictAll(tsUs: number): PredictedTrack[] {
     const out: PredictedTrack[] = [];

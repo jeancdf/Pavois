@@ -18,16 +18,26 @@
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
 #include "pavois/config/app_config.hpp"
+#include "pavois/config/live_tuning.hpp"
 #include "pavois/runtime/camera_worker.hpp"
 #include "pavois/sensors/imu.hpp"
 #include "pavois/util/jpeg_gray.hpp"
 #include "pavois/util/parallel_executor.hpp"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <openssl/hmac.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -1104,6 +1114,10 @@ void test_imu() {
         file << "camera.0.analogue_gain=5.5\n";
         file << "camera.0.awb_red_gain=1.2\n";
         file << "camera.0.awb_blue_gain=1.4\n";
+        file << "camera.0.capture_format=yuv420\n";
+        file << "camera.0.capture_stride=1344\n";
+        file << "camera.1.capture_format=h264\n";
+        file << "camera.1.capture_stride=-8\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
@@ -1121,6 +1135,14 @@ void test_imu() {
                "config fixed AWB red gain");
     check_near(loaded.cameras[0].awb_blue_gain, 1.4, 1e-9,
                "config fixed AWB blue gain");
+    check(loaded.cameras[0].capture_format == "yuv420" &&
+              loaded.cameras[0].capture_stride == 1344,
+          "config uncompressed capture and its row length");
+    check(loaded.cameras.size() == 2 && loaded.cameras[1].capture_format == "mjpeg" &&
+              loaded.cameras[1].capture_stride == 0,
+          "config unknown capture format falls back to mjpeg");
+    check(CameraConfig().capture_format == "mjpeg",
+          "capture stays MJPEG unless a camera asks otherwise");
 
     std::filesystem::remove_all(dir, ec);
 }
@@ -1153,6 +1175,238 @@ void test_jpeg_preview() {
     check(!encode_gray_jpeg(empty, 55, none), "empty frame rejected");
 }
 
+// ===========================================================================
+// live settings pushed by the VPS
+// ===========================================================================
+std::uint64_t unix_ms() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+}
+
+// Same framing as the VPS: 8-byte timestamp, HMAC-SHA256, payload.
+std::string signed_packet(const std::string& payload, const std::string& secret) {
+    const std::uint64_t ms = unix_ms();
+    std::string timestamp(8, '\0');
+    for (int i = 0; i < 8; ++i)
+        timestamp[i] = static_cast<char>((ms >> (56 - 8 * i)) & 0xff);
+    const std::string signed_data = timestamp + payload;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int size = 0;
+    HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
+         reinterpret_cast<const unsigned char*>(signed_data.data()),
+         signed_data.size(), digest, &size);
+    return timestamp + std::string(reinterpret_cast<char*>(digest), size) + payload;
+}
+
+LiveSettings split_settings(const std::string& line) {
+    LiveSettings fields;
+    std::stringstream stream(line);
+    std::string part;
+    while (std::getline(stream, part, ',')) {
+        const auto eq = part.find('=');
+        if (eq != std::string::npos)
+            fields.emplace_back(part.substr(0, eq), part.substr(eq + 1));
+    }
+    return fields;
+}
+
+void test_live_tuning() {
+    group("live tuning");
+
+    {
+        CameraConfig cfg;
+        check(apply_live_setting(cfg, "diff_threshold", "20") && cfg.diff_threshold == 20,
+              "a live setting is applied");
+        check(apply_live_setting(cfg, "diff_threshold", "999") && cfg.diff_threshold == 255,
+              "a value above the range is clamped");
+        check(apply_live_setting(cfg, "min_blob_area", "0") && cfg.min_blob_area == 1,
+              "a value below the range is clamped");
+        check(apply_live_setting(cfg, "morph_close", "2.6") && cfg.morph_close == 3,
+              "an integer setting is rounded");
+        const CameraConfig before = cfg;
+        check(!apply_live_setting(cfg, "width", "640") && cfg.width == before.width,
+              "the capture size is not a live setting");
+        check(!apply_live_setting(cfg, "fps", "60") && cfg.fps == before.fps,
+              "the capture rate is not a live setting");
+        check(!apply_live_setting(cfg, "heading_deg", "90") &&
+                  cfg.heading_deg == before.heading_deg,
+              "the pose is not a live setting");
+        check(!apply_live_setting(cfg, "adaptive_k", "abc") &&
+                  cfg.adaptive_k == before.adaptive_k,
+              "a malformed value is refused");
+        check(!apply_live_setting(cfg, "adaptive_k", "1.5x"), "trailing garbage is refused");
+        check(!apply_live_setting(cfg, "adaptive_k", "nan"), "NaN is refused");
+        check(!apply_live_setting(cfg, "adaptive_k", ""), "an empty value is refused");
+    }
+
+    {
+        CameraConfig tuned;
+        tuned.diff_threshold = 9;
+        tuned.adaptive_k = 1.75;
+        tuned.blur_radius = 2;
+        tuned.min_blob_area = 5;
+        tuned.max_blob_area_ratio = 0.25;
+        tuned.bg_learn_rate_fg = 0.004;
+        tuned.confirm_m = 3;
+        tuned.confirm_n = 5;
+        CameraConfig restored;
+        check(apply_live_settings(restored, split_settings(format_live_settings(tuned))) == 0,
+              "every reported setting is accepted back");
+        check(format_live_settings(restored) == format_live_settings(tuned),
+              "reported settings survive a round trip");
+        check(restored.diff_threshold == 9 && restored.min_blob_area == 5 &&
+                  restored.confirm_n == 5 && std::fabs(restored.adaptive_k - 1.75) < 1e-9 &&
+                  std::fabs(restored.bg_learn_rate_fg - 0.004) < 1e-9,
+              "round trip restores the values themselves");
+
+        CameraConfig cfg;
+        apply_live_settings(cfg, {{"confirm_m", "5"}, {"confirm_n", "2"}});
+        check(cfg.confirm_m == 5 && cfg.confirm_n == 5, "confirm_n never drops below confirm_m");
+        check(apply_live_settings(cfg, {{"width", "640"}, {"blur_radius", "2"}}) == 1 &&
+                  cfg.blur_radius == 2,
+              "a refused field does not block the others");
+    }
+
+    // A faint 3x3 target: under the default thresholds, above the tuned ones.
+    {
+        CameraConfig cfg;
+        cfg.width = 96;
+        cfg.height = 64;
+        MotionDetector detector(cfg);
+        GrayFrame frame;
+        frame.width = cfg.width;
+        frame.height = cfg.height;
+        std::uint64_t t_us = 1'000'000;
+        int step = 0;
+        auto next = [&](bool with_target) {
+            frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height), 100);
+            if (with_target) {
+                const int x0 = 12 + (2 * step++) % 70;
+                for (int y = 30; y < 33; ++y)
+                    for (int x = x0; x < x0 + 3; ++x)
+                        frame.pixels[static_cast<std::size_t>(y) * frame.width + x] = 130;
+            }
+            frame.captured_us = t_us += 33'333;
+            return detector.process(frame);
+        };
+        for (int i = 0; i < 14; ++i) next(false);
+
+        int before = 0;
+        for (int i = 0; i < 30; ++i) before += next(true).has_blob ? 1 : 0;
+        check(before == 0, "faint target stays under the default thresholds");
+
+        CameraConfig tuned = cfg;
+        apply_live_settings(tuned, {{"diff_threshold", "4"},
+                                    {"adaptive_k", "1"},
+                                    {"min_blob_area", "4"},
+                                    {"morph_open", "0"}});
+        detector.set_config(tuned);
+        int after = 0, confirmed = 0;
+        for (int i = 0; i < 30; ++i) {
+            const auto r = next(true);
+            after += r.has_blob ? 1 : 0;
+            confirmed += r.confirmed ? 1 : 0;
+        }
+        check(after >= 28, "tuned thresholds take effect on the very next frames");
+        check(confirmed >= 26, "tuned detections are confirmed");
+
+        // A new blur radius restarts the background warm-up, then detects again.
+        tuned.blur_radius = 2;
+        detector.set_config(tuned);
+        int during = 0, resumed = 0;
+        for (int i = 0; i < 12; ++i) during += next(true).has_blob ? 1 : 0;
+        for (int i = 0; i < 30; ++i) resumed += next(true).has_blob ? 1 : 0;
+        check(during == 0, "a blur change relearns the background before detecting");
+        check(resumed >= 20, "detection resumes after the relearn");
+    }
+
+    // Commands as the VPS sends them, over a real loopback socket.
+    {
+        const int server = ::socket(AF_INET, SOCK_DGRAM, 0);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t addr_len = sizeof(addr);
+        const bool bound =
+            server >= 0 &&
+            ::bind(server, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0 &&
+            ::getsockname(server, reinterpret_cast<sockaddr*>(&addr), &addr_len) == 0;
+        check(bound, "loopback UDP server binds");
+        if (bound) {
+            const std::string secret = "selftest-secret";
+            ::unsetenv("UDP_HMAC_SECRET");
+            UdpSender sender;
+            check(sender.open("127.0.0.1", ntohs(addr.sin_port)), "detector opens its UDP link");
+            sender.send_line("hello");
+
+            timeval timeout{1, 0};
+            ::setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            char buffer[256];
+            sockaddr_in peer{};
+            socklen_t peer_len = sizeof(peer);
+            const bool heard = ::recvfrom(server, buffer, sizeof(buffer), 0,
+                                          reinterpret_cast<sockaddr*>(&peer), &peer_len) > 0;
+            check(heard, "server learns the detector endpoint");
+
+            auto send = [&](const std::string& packet) {
+                ::sendto(server, packet.data(), packet.size(), 0,
+                         reinterpret_cast<sockaddr*>(&peer), peer_len);
+            };
+            // Datagrams keep their order on loopback, so once a later command
+            // has arrived, every earlier one has been seen and judged.
+            auto await_capture = [&](const std::string& camera) {
+                for (int i = 0; i < 200; ++i) {
+                    if (sender.take_capture_request(camera)) return true;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+                return false;
+            };
+            auto await_config = [&](const std::string& camera) {
+                for (int i = 0; i < 200; ++i) {
+                    if (auto update = sender.take_config_update(camera)) return update;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+                return std::optional<UdpSender::ConfigUpdate>{};
+            };
+            const std::string expires = std::to_string(unix_ms() + 60'000);
+
+            send("set,jean,7,diff_threshold=20\n");
+            send("capture,jean,request-1," + expires + "\n");
+            check(heard && await_capture("jean"), "unsigned capture still works without a secret");
+            check(!sender.take_config_update("jean"),
+                  "an unsigned set command is refused without a secret");
+
+            ::setenv("UDP_HMAC_SECRET", secret.c_str(), 1);
+            send(signed_packet("set,jean,7,diff_threshold=20,min_blob_area=30\n", secret));
+            const auto update = await_config("jean");
+            check(update && update->version == 7 && update->fields.size() == 2 &&
+                      update->fields[0].first == "diff_threshold" &&
+                      update->fields[0].second == "20" &&
+                      update->fields[1].first == "min_blob_area" &&
+                      update->fields[1].second == "30",
+                  "a signed set command is parsed");
+            check(!sender.take_config_update("jean"), "a set command is delivered once");
+
+            send(signed_packet("set,jean,8,diff_threshold=1\n", "another-secret"));
+            send("set,jean,9,diff_threshold=1\n");
+            send(signed_packet("set,tanel,3,adaptive_k=2\n", secret));
+            const auto other = await_config("tanel");
+            check(other && other->version == 3, "a set command reaches the camera it names");
+            check(!sender.take_config_update("jean"),
+                  "forged and unsigned set commands are refused");
+
+            send(signed_packet("set,jean,0\n", secret));
+            const auto reset = await_config("jean");
+            check(reset && reset->version == 0 && reset->fields.empty(),
+                  "version 0 carries no field: back to the config file");
+            ::unsetenv("UDP_HMAC_SECRET");
+        }
+        if (server >= 0) ::close(server);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -1169,6 +1423,7 @@ int main() {
     test_replay();
     test_imu();
     test_jpeg_preview();
+    test_live_tuning();
 
     std::printf("\n%d/%d checks passed\n", g_checks - g_failures, g_checks);
     if (g_failures) {

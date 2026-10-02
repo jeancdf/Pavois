@@ -1,0 +1,190 @@
+<section class="tuning">
+  <h2>Réglages</h2>
+
+  @if (state(); as current) {
+    <div class="preset">
+      <label class="field">
+        Preset
+        <select (change)="applyPreset($event)" [disabled]="busy()">
+          @if (!current.activePresetId) {
+            <option value="" selected disabled>Personnalisé</option>
+          }
+          @for (preset of current.presets; track preset.id) {
+            <option [value]="preset.id" [selected]="preset.id === current.activePresetId">
+              {{ preset.name }}
+            </option>
+          }
+        </select>
+      </label>
+      @if (activePreset(); as preset) {
+        @if (!preset.builtin) {
+          <button type="button" class="ghost" (click)="deletePreset(preset.id)" [disabled]="busy()">
+            {{ confirmingDelete() === preset.id ? 'Confirmer' : 'Supprimer' }}
+          </button>
+        }
+      }
+    </div>
+    <p class="preset-desc">
+      @if (activePreset(); as preset) {
+        {{ preset.description || 'Preset enregistré.' }}
+      } @else {
+        Des valeurs ont été changées à la main.
+      }
+    </p>
+    <form class="save" (submit)="savePreset($event)">
+      <input
+        type="text"
+        maxlength="40"
+        placeholder="Nom du preset"
+        aria-label="Nom du preset à enregistrer"
+        [value]="presetName()"
+        (input)="presetName.set($any($event.target).value)"
+      />
+      <button type="submit" [disabled]="busy() || !presetName().trim()">Enregistrer</button>
+    </form>
+
+    <header class="section">
+      <h3>Détection <small>sur les Pi</small></h3>
+      <button
+        type="button"
+        class="ghost"
+        (click)="resetDetector()"
+        [disabled]="busy() || !current.detectorCommands"
+        title="Chaque Pi visé reprend son fichier de configuration"
+      >
+        Config des Pi
+      </button>
+    </header>
+    @if (!current.detectorCommands) {
+      <p class="notice">
+        Réglage des détecteurs indisponible : UDP_HMAC_SECRET n’est pas défini sur le VPS, les Pi
+        refuseraient la commande.
+      </p>
+    }
+    <div class="targets" role="group" aria-label="Caméras visées">
+      <button type="button" [class.on]="target() === allCameras" (click)="selectTarget(allCameras)">
+        Toutes
+      </button>
+      @for (camera of current.cameras; track camera.cameraId) {
+        <button
+          type="button"
+          [class.on]="target() === camera.cameraId"
+          (click)="selectTarget(camera.cameraId)"
+        >
+          {{ camera.cameraId }}
+        </button>
+      }
+    </div>
+    <ul class="cameras">
+      @for (camera of current.cameras; track camera.cameraId) {
+        @let status = syncStatus(camera);
+        <li>
+          <strong>{{ camera.cameraId }}</strong>
+          <span class="size">
+            {{ camera.width && camera.height ? camera.width + '×' + camera.height : '—' }}
+          </span>
+          <span
+            class="sync"
+            [class.ok]="status.tone === 'ok'"
+            [class.wait]="status.tone === 'wait'"
+          >
+            {{ status.label }}
+          </span>
+        </li>
+      }
+    </ul>
+
+    @for (group of detectorGroups(); track group.name) {
+      <fieldset [disabled]="!current.detectorCommands">
+        <legend>{{ group.name }}</legend>
+        @for (param of group.params; track param.key) {
+          <div class="control">
+            <label [for]="'detector-' + param.key" [title]="param.hint">{{ param.label }}</label>
+            <span class="value">
+              <input
+                type="number"
+                [attr.aria-label]="param.label + ', valeur'"
+                [min]="param.min"
+                [max]="param.max"
+                [step]="param.step"
+                [value]="detectorValue(param)"
+                (change)="commit('detector', param, $event)"
+              />
+              @if (param.unit) {
+                <span class="unit">{{ param.unit }}</span>
+              }
+            </span>
+            <input
+              type="range"
+              [id]="'detector-' + param.key"
+              [min]="param.sliderMin ?? param.min"
+              [max]="param.sliderMax ?? param.max"
+              [step]="param.step"
+              [value]="detectorValue(param)"
+              (input)="slide('detector', param, $event)"
+              (change)="commit('detector', param, $event)"
+            />
+            @if (mixedValues(param); as values) {
+              <small class="mixed">{{ values }}</small>
+            }
+          </div>
+        }
+      </fieldset>
+    }
+
+    <header class="section">
+      <h3>Fusion <small>sur le VPS</small></h3>
+      <button
+        type="button"
+        class="ghost"
+        (click)="resetFusion()"
+        [disabled]="busy()"
+        title="Le moteur reprend les valeurs lues au démarrage du VPS"
+      >
+        Valeurs de démarrage
+      </button>
+    </header>
+    @for (group of fusionGroups(); track group.name) {
+      <fieldset>
+        <legend>{{ group.name }}</legend>
+        @for (param of group.params; track param.key) {
+          <div class="control">
+            <label [for]="'fusion-' + param.key" [title]="param.hint">{{ param.label }}</label>
+            <span class="value">
+              <input
+                type="number"
+                [attr.aria-label]="param.label + ', valeur'"
+                [min]="param.min"
+                [max]="param.max"
+                [step]="param.step"
+                [value]="fusionValue(param)"
+                (change)="commit('fusion', param, $event)"
+              />
+              @if (param.unit) {
+                <span class="unit">{{ param.unit }}</span>
+              }
+            </span>
+            <input
+              type="range"
+              [id]="'fusion-' + param.key"
+              [min]="param.sliderMin ?? param.min"
+              [max]="param.sliderMax ?? param.max"
+              [step]="param.step"
+              [value]="fusionValue(param)"
+              (input)="slide('fusion', param, $event)"
+              (change)="commit('fusion', param, $event)"
+            />
+            @if (fusionDefault(param) !== null) {
+              <small class="changed">démarrage : {{ fusionDefault(param) }}</small>
+            }
+          </div>
+        }
+      </fieldset>
+    }
+  } @else if (loadError()) {
+    <p class="notice">Réglages indisponibles : {{ loadError() }}.</p>
+    <button type="button" (click)="refresh()">Réessayer</button>
+  } @else {
+    <p class="loading">Chargement des réglages…</p>
+  }
+</section>

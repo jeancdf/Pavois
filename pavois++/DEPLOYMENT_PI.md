@@ -81,6 +81,39 @@ processus rpicam-vid et FFmpeg sont locaux ; aucune vidéo n'est récupérée pa
 ou RTSP. FFmpeg décode le MJPEG en niveaux de gris sans dépendre du stride des
 buffers bruts libcamera.
 
+### Capture brute (à l'essai)
+
+Par défaut, rpicam-vid compresse chaque image en JPEG et FFmpeg la décompresse
+aussitôt. Avec `camera.0.capture_format=yuv420`, rpicam-vid envoie l'image non
+compressée et le détecteur lit directement son plan de luminance : plus de
+JPEG, plus de processus FFmpeg. Le résultat de la détection est le même ; le
+gain attendu est du temps processeur, donc des images par seconde.
+
+Essai sur une Pi :
+
+```bash
+git fetch origin && git checkout feat/raw-capture
+bash scripts/deploy_pi.sh
+sudo nano /etc/pavois/pavois.conf      # ajouter camera.0.capture_format=yuv420
+sudo systemctl restart pavois.service
+sudo journalctl -u pavois.service -n 30 --no-pager | grep capture
+```
+
+Le journal dit quel mode tourne réellement :
+
+- `capture yuv420 1280x720, stride 1280` : la capture brute est active.
+- `yuv420 capture refused, using mjpeg: ...` : la largeur n'est pas un multiple
+  de 128. Le processeur d'image complète alors chaque ligne avec des octets de
+  remplissage (jusqu'à un multiple de 64 sur Pi 4, de 128 sur Pi 5) ; donner la
+  longueur réelle d'une ligne avec `camera.0.capture_stride`. Une valeur fausse
+  donne une image en biais : vérifier l'aperçu.
+- `yuv420 capture delivered no frame (...), falling back to mjpeg` : rpicam-vid
+  n'a rien livré en brut, le détecteur est reparti en MJPEG tout seul.
+
+À vérifier ensuite : l'aperçu dans l'interface (image droite, ni décalée ni en
+biais), le fps affiché pour cette Pi, et la charge avec `top`. Pour revenir en
+arrière, retirer la ligne ou mettre `mjpeg`, puis redémarrer le service.
+
 ## GitHub Actions
 
 Sur le dépôt GitHub, ouvrir **Settings → Actions → Runners → New self-hosted

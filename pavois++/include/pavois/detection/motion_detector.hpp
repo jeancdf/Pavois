@@ -59,6 +59,10 @@ public:
 
     void set_debug(bool on) { want_debug_ = on; }
 
+    // Swaps the settings between two frames, keeping the learned background.
+    // Call from the thread that calls process().
+    void set_config(const CameraConfig& cfg);
+
     DetectionResult process(const GrayFrame& frame);
 
 private:

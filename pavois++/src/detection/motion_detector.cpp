@@ -31,6 +31,17 @@ MotionDetector::MotionDetector(const CameraConfig& cfg,
     cfg_.confirm_n = std::max(cfg_.confirm_m, cfg_.confirm_n);
 }
 
+void MotionDetector::set_config(const CameraConfig& cfg) {
+    // The background was learned from frames blurred at the old radius, so a
+    // new radius mismatches it along every edge. Relearn it rather than emit
+    // that mismatch as blobs.
+    const bool blur_changed = cfg.blur_radius != cfg_.blur_radius;
+    cfg_ = cfg;
+    cfg_.confirm_m = std::max(1, cfg_.confirm_m);
+    cfg_.confirm_n = std::max(cfg_.confirm_m, cfg_.confirm_n);
+    if (blur_changed && w_ > 0) warmup_left_ = kWarmupFrames;
+}
+
 std::vector<MotionDetector::Blob> MotionDetector::connected_components(
     const std::vector<std::uint8_t>& mask, const std::vector<float>& diff) {
     std::vector<Blob> blobs;

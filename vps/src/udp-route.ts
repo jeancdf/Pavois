@@ -1,4 +1,5 @@
 import { parseAttitudeLine, type AttitudePacket } from './udp-attitude';
+import { parseDetectorConfigLine, type DetectorReport } from './udp-config';
 import { parseRawDetectionLine, type RawDetection } from './udp-raw';
 import { parseCameraStatsLine, type CameraStats } from './udp-stats';
 
@@ -22,6 +23,7 @@ export type RoutedUdp =
   | { kind: 'att'; attitude: AttitudePacket }
   | { kind: 'raw'; detection: RawDetection }
   | { kind: 'stats'; stats: CameraStats }
+  | { kind: 'cfg'; report: DetectorReport }
   | { kind: 'obj'; track: UdpObjTrack }
   | { kind: 'unknown'; raw: string; data: unknown }
   | { kind: 'drop' };
@@ -89,6 +91,11 @@ export function routeUdpLine(line: string): RoutedUdp {
   const stats = parseCameraStatsLine(trimmed);
   if (stats) {
     return { kind: 'stats', stats };
+  }
+
+  const report = parseDetectorConfigLine(trimmed);
+  if (report) {
+    return { kind: 'cfg', report };
   }
 
   const detection = parseRawDetectionLine(trimmed);

@@ -1,0 +1,267 @@
+:host {
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+}
+
+.tuning {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+h2,
+h3,
+legend,
+.field,
+button,
+select,
+input[type='text'],
+input[type='number'] {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+h2 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+
+h3 small {
+  margin-left: 6px;
+  font-size: 10px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #64748b;
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #1e293b;
+}
+
+.preset,
+.save {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+select,
+input[type='text'],
+input[type='number'],
+button {
+  font-size: 12px;
+  color: #e2e8f0;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+select,
+input[type='text'] {
+  min-width: 0;
+  flex: 1;
+}
+
+button {
+  cursor: pointer;
+  color: #93c5fd;
+  white-space: nowrap;
+}
+
+button.ghost {
+  color: #94a3b8;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.preset-desc,
+.loading {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.notice {
+  margin: 0;
+  padding: 8px 10px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 4px;
+}
+
+.targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.targets button {
+  padding: 4px 10px;
+  color: #94a3b8;
+}
+
+.targets button.on {
+  color: #0b1220;
+  background: #93c5fd;
+  border-color: #93c5fd;
+}
+
+.cameras {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.cameras li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.cameras strong {
+  min-width: 52px;
+  color: #3b82f6;
+}
+
+.size {
+  color: #64748b;
+}
+
+.sync {
+  margin-left: auto;
+  color: #64748b;
+}
+
+.sync.ok {
+  color: #10b981;
+}
+
+.sync.wait {
+  color: #f59e0b;
+}
+
+fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+fieldset:disabled {
+  opacity: 0.5;
+}
+
+legend {
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.control label {
+  color: #cbd5e1;
+  cursor: help;
+}
+
+.value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.value input {
+  width: 72px;
+  padding: 3px 5px;
+  text-align: right;
+  color: #f59e0b;
+}
+
+.unit {
+  min-width: 18px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: #3b82f6;
+}
+
+.mixed,
+.changed {
+  grid-column: 1 / -1;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+}
+
+.mixed {
+  color: #f59e0b;
+}
+
+.changed {
+  color: #64748b;
+}

@@ -18,6 +18,7 @@ import { TracksService } from './tracks.service';
 import { AlertsService } from './alerts.service';
 import type { RailLocalPose } from './rail-bench';
 import { ClassificationService } from './classification.service';
+import { TuningService } from './tuning.service';
 
 interface CameraEndpoint {
   address: string;
@@ -51,7 +52,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   private hmacSecret = '';
   // fuse_update: au plus un envoi par fenêtre, le dernier état part en fin
   // de fenêtre (une détection = un blob, soit des centaines par seconde).
-  private readonly fuseBroadcastMs = fuseBroadcastIntervalMs();
+  // La durée de la fenêtre est un réglage à chaud (TuningService).
   private lastFuseBroadcastMs = 0;
   private fuseBroadcastTimer: NodeJS.Timeout | null = null;
 
@@ -62,6 +63,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     private readonly tracksService: TracksService,
     private readonly alertsService: AlertsService,
     private readonly classification: ClassificationService,
+    private readonly tuning: TuningService,
   ) {}
 
   /**
@@ -210,6 +212,16 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         this.noteFirstFrame(routed.stats.cameraId, 'stats');
         this.eventsGateway.broadcast('camera_stats', routed.stats);
         return;
+      case 'cfg':
+        this.noteEndpoint(routed.report.cameraId, rinfo);
+        this.noteFirstFrame(routed.report.cameraId, 'cfg');
+        if (this.tuning.noteReport(routed.report)) {
+          this.eventsGateway.broadcast('tuning_state', this.tuning.state());
+        }
+        // Le détecteur n'applique pas (ou plus) ce qui est voulu : la
+        // commande s'est perdue ou il a redémarré. On la renvoie.
+        this.pushTuning([routed.report.cameraId]);
+        return;
       case 'obj':
         udpDebug(`[UDP] Message reçu de ${from} : ${messageStr}`);
         udpDebug('[UDP] Piste 3D GPS :', routed.track);
@@ -289,6 +301,32 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * Envoie leur commande de réglage aux détecteurs qui n'appliquent pas ce
+   * qui est voulu. Sans liste : tous ceux qui ont une commande en attente.
+   */
+  pushTuning(cameraIds?: string[]): void {
+    if (!this.server) return;
+    for (const cameraId of cameraIds ?? this.tuning.pendingCameraIds()) {
+      const command = this.tuning.pendingCommand(cameraId);
+      const endpoint = this.cameraEndpoints.get(cameraId);
+      if (!command || !endpoint) continue;
+      this.server.send(
+        buildSignedUdpPacket(command, this.hmacSecret),
+        endpoint.port,
+        endpoint.address,
+        (error) => {
+          if (error) {
+            console.error(
+              `[TUNING] commande refusée pour ${cameraId} :`,
+              error,
+            );
+          }
+        },
+      );
+    }
+  }
+
   private warnUnknownCamera(cameraId: string): void {
     if (this.unknownCameras.has(cameraId)) {
       return;
@@ -341,7 +379,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
 
   private scheduleFuseBroadcast(): void {
     const now = Date.now();
-    const wait = this.lastFuseBroadcastMs + this.fuseBroadcastMs - now;
+    const wait = this.lastFuseBroadcastMs + this.tuning.broadcastMs() - now;
     if (wait <= 0) {
       this.broadcastFuse(now);
       return;
@@ -355,6 +393,12 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   }
 
   private broadcastFuse(now: number): void {
+    // Un envoi immédiat rend l'envoi différé en attente inutile : sans cette
+    // annulation, les deux partent à moins d'une milliseconde d'écart.
+    if (this.fuseBroadcastTimer) {
+      clearTimeout(this.fuseBroadcastTimer);
+      this.fuseBroadcastTimer = null;
+    }
     this.lastFuseBroadcastMs = now;
     const snap = this.fusion.snapshot();
     const fuseUpdate: FuseUpdate = {
@@ -418,11 +462,6 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       console.log('[UDP] Serveur UDP fermé.');
     }
   }
-}
-
-function fuseBroadcastIntervalMs(): number {
-  const value = Number.parseInt(process.env.FUSE_BROADCAST_MS ?? '', 10);
-  return Number.isFinite(value) && value >= 0 ? value : 50;
 }
 
 export function toFusionObservation(

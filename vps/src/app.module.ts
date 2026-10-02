@@ -21,6 +21,8 @@ import { AlertsService } from './alerts.service';
 import { BenchController } from './bench.controller';
 import { ClassificationController } from './classification.controller';
 import { ClassificationService } from './classification.service';
+import { TuningController } from './tuning.controller';
+import { TuningService } from './tuning.service';
 
 @Module({
   imports: [
@@ -42,6 +44,7 @@ import { ClassificationService } from './classification.service';
     AlertsController,
     BenchController,
     ClassificationController,
+    TuningController,
   ],
   providers: [
     AppService,
@@ -54,6 +57,7 @@ import { ClassificationService } from './classification.service';
     TracksService,
     AlertsService,
     ClassificationService,
+    TuningService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

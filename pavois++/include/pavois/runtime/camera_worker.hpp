@@ -60,13 +60,20 @@ private:
                           const ImageDiagnostics& diag,
                           double exposure_us = 0.0,
                           double gain_db = 0.0);
-
+    void apply_config_update(const UdpSender::ConfigUpdate& update,
+                             MotionDetector& detector);
+    void maybe_emit_config(const GrayFrame& frame, std::uint64_t now_us,
+                           std::uint64_t& last_cfg_us);
     void send_classification_capture(
         const GrayFrame& frame,
         const DetectionResult& detection,
         const UdpSender::CaptureRequest& request);
 
     CameraConfig cfg_;
+    // As loaded from the config file: what a live-settings reset returns to.
+    CameraConfig file_cfg_;
+    // Version of the live settings in force; 0 means the config file's.
+    std::uint64_t live_version_ = 0;
     const AppConfig& app_;
     FusionEngine& fusion_;
     std::ostream& log_out_;

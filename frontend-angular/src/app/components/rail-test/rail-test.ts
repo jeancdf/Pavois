@@ -1,10 +1,12 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RailVolume } from '../rail-volume/rail-volume';
+import { TuningPanel } from '../tuning-panel/tuning-panel';
 import { NotificationService } from '../../services/notification.service';
 import { RailBenchService } from '../../services/rail-bench.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { DEFAULT_RANGE_M, RAIL_CAMERA_IDS, distanceM, type Vec3m } from '../../config/rail-bench';
+import type { FuseTrack } from '../../models/fuse-update.model';
 import type {
   ClassificationReviewImage,
   ClassificationVote,
@@ -12,7 +14,7 @@ import type {
 
 @Component({
   selector: 'app-rail-test',
-  imports: [RailVolume, DecimalPipe],
+  imports: [RailVolume, TuningPanel, DecimalPipe],
   templateUrl: './rail-test.html',
   styleUrl: './rail-test.css',
 })
@@ -23,22 +25,29 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly now = signal(Date.now());
   readonly rangeM = signal(DEFAULT_RANGE_M);
   readonly busy = signal(false);
+  // Panneau de réglages à chaud, à côté de la scène pour voir l'effet en direct.
+  readonly showTuning = signal(false);
   readonly cameraIds = RAIL_CAMERA_IDS;
   readonly ranges = [2, 2.5, 3];
 
   readonly bench = this.realtime.railBench;
-  readonly estimated = computed<Vec3m | null>(() => {
+  // A completed classification that is not a drone hides the target.
+  private readonly rejected = computed(() => {
     const classification = this.realtime.targetClassification();
-    if (classification?.status === 'complete' && classification.label !== 'drone') {
-      return null;
-    }
+    return classification?.status === 'complete' && classification.label !== 'drone';
+  });
+  readonly estimated = computed<Vec3m | null>(() => {
+    if (this.rejected()) return null;
     const update = this.realtime.fuseUpdate();
     const fuse = update?.lastFuse;
     if (fuse?.ok && fuse.point) return fuse.point;
     const track = update?.tracks[0];
     return track ? { x: track.x, y: track.y, z: track.z } : null;
   });
-  readonly seeing = computed(() => this.realtime.fuseUpdate()?.lastFuse?.cameras ?? []);
+  // Every track the fusion engine follows; the volume draws them one by one.
+  readonly tracks = computed<FuseTrack[]>(() =>
+    this.rejected() ? [] : (this.realtime.fuseUpdate()?.tracks ?? []),
+  );
   readonly review = this.realtime.classificationReview;
   readonly classificationText = computed(() => {
     const classification = this.realtime.targetClassification();

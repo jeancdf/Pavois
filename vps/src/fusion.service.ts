@@ -47,6 +47,26 @@ interface CameraLastSeen {
   hasPose: boolean;
 }
 
+/** Settings an operator can change while the engine runs. */
+export interface FusionTuning {
+  maxResidualPx: number;
+  minParallaxDeg: number;
+  minRangeM: number;
+  maxRangeM: number;
+  assocGatePx: number;
+  pairGatePx: number;
+  maxBlobsPerCamera: number;
+  maxTargets: number;
+  intervalMs: number;
+  latencyMs: number;
+  confirmUpdates: number;
+  maxCoastMs: number;
+  gateChi2: number;
+  matchDistanceM: number;
+  maxSpeedMps: number;
+  processNoise: number;
+}
+
 /** One blob of one camera at the fusion tick, ready to triangulate. */
 interface Candidate {
   cameraId: string;
@@ -228,12 +248,16 @@ export class FusionService implements OnModuleDestroy {
   private readonly staleAfterMs = envInt('FUSION_STALE_MS', 2000);
   private readonly maxPerCamera = envInt('FUSION_MAX_PER_CAMERA', 256);
   private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 20);
-  private readonly intervalMs = envInt('FUSION_INTERVAL_MS', 40);
-  private readonly latencyMs = envInt('FUSION_LATENCY_MS', 80);
-  private readonly assocGatePx = envNumber('FUSION_ASSOC_GATE_PX', 40);
-  private readonly pairGatePx = envNumber('FUSION_PAIR_GATE_PX', 60);
-  private readonly maxBlobsPerCamera = envInt('FUSION_MAX_BLOBS_PER_CAMERA', 8);
-  private readonly maxTargets = envInt('FUSION_MAX_TARGETS', 8);
+  // The settings below start from the environment and can then be changed
+  // at run time through applyTuning().
+  // One fusion per camera frame: the Pis capture at 30 fps. Keep it at the
+  // capture period; a longer one updates tracks less often than they are seen.
+  private intervalMs = envInt('FUSION_INTERVAL_MS', 33);
+  private latencyMs = envInt('FUSION_LATENCY_MS', 80);
+  private assocGatePx = envNumber('FUSION_ASSOC_GATE_PX', 40);
+  private pairGatePx = envNumber('FUSION_PAIR_GATE_PX', 60);
+  private maxBlobsPerCamera = envInt('FUSION_MAX_BLOBS_PER_CAMERA', 8);
+  private maxTargets = envInt('FUSION_MAX_TARGETS', 8);
   private readonly triCfg = triangulationConfigFromEnv();
   private readonly deques = new Map<string, FusionObservation[]>();
   // Survivant à la purge du deque : âge / active restent lisibles.
@@ -308,6 +332,58 @@ export class FusionService implements OnModuleDestroy {
     const out = this.pendingTrackUpdates;
     this.pendingTrackUpdates = [];
     return out;
+  }
+
+  tuning(): FusionTuning {
+    const tracker = this.tracker.config();
+    return {
+      maxResidualPx: this.triCfg.maxResidualPx,
+      minParallaxDeg: this.triCfg.minParallaxDeg,
+      minRangeM: this.triCfg.minRangeM,
+      maxRangeM: this.triCfg.maxRangeM,
+      assocGatePx: this.assocGatePx,
+      pairGatePx: this.pairGatePx,
+      maxBlobsPerCamera: this.maxBlobsPerCamera,
+      maxTargets: this.maxTargets,
+      intervalMs: this.intervalMs,
+      latencyMs: this.latencyMs,
+      confirmUpdates: tracker.confirmUpdates,
+      maxCoastMs: tracker.maxCoastMs,
+      gateChi2: tracker.gateChi2,
+      matchDistanceM: tracker.matchDistanceM,
+      maxSpeedMps: tracker.maxSpeedMps,
+      processNoise: tracker.processNoise,
+    };
+  }
+
+  /**
+   * Changes settings between two fusion ticks. Live tracks are kept; the
+   * caller validates the values, anything that is not a number is ignored.
+   */
+  applyTuning(values: Partial<FusionTuning>): void {
+    const next = this.tuning();
+    for (const key of Object.keys(next) as (keyof FusionTuning)[]) {
+      const value = values[key];
+      if (isFiniteNumber(value)) next[key] = value;
+    }
+    this.triCfg.maxResidualPx = next.maxResidualPx;
+    this.triCfg.minParallaxDeg = next.minParallaxDeg;
+    this.triCfg.minRangeM = next.minRangeM;
+    this.triCfg.maxRangeM = next.maxRangeM;
+    this.assocGatePx = next.assocGatePx;
+    this.pairGatePx = next.pairGatePx;
+    this.maxBlobsPerCamera = next.maxBlobsPerCamera;
+    this.maxTargets = next.maxTargets;
+    this.intervalMs = next.intervalMs;
+    this.latencyMs = next.latencyMs;
+    this.tracker.configure({
+      confirmUpdates: next.confirmUpdates,
+      maxCoastMs: next.maxCoastMs,
+      gateChi2: next.gateChi2,
+      matchDistanceM: next.matchDistanceM,
+      maxSpeedMps: next.maxSpeedMps,
+      processNoise: next.processNoise,
+    });
   }
 
   onModuleDestroy(): void {

@@ -15,6 +15,13 @@
       </label>
       <button class="rail-btn" (click)="start()" [disabled]="busy()">Lancer le test</button>
       <button class="rail-btn ghost" (click)="stop()" [disabled]="busy()">Arrêter</button>
+      <button
+        class="rail-btn ghost"
+        (click)="showTuning.set(!showTuning())"
+        [attr.aria-pressed]="showTuning()"
+      >
+        Réglages
+      </button>
     </div>
   </header>
 
@@ -24,6 +31,7 @@
     </span>
     <span [class.ok]="bench()"> Banc {{ bench() ? 'actif' : 'éteint' }} </span>
     <span [class.ok]="estimated()"> Cible {{ estimated() ? 'suivie' : 'absente' }} </span>
+    <span [class.ok]="tracks().length"> Pistes {{ tracks().length }} </span>
     <span
       [class.ok]="realtime.targetClassification()?.label === 'drone'"
       [class.rejected]="
@@ -39,12 +47,8 @@
     </span>
   </div>
 
-  <div class="rail-body">
-    <app-rail-volume
-      [bench]="bench()"
-      [estimated]="estimated()"
-      [seeing]="seeing()"
-    ></app-rail-volume>
+  <div class="rail-body" [class.with-tuning]="showTuning()">
+    <app-rail-volume [bench]="bench()" [tracks]="tracks()"></app-rail-volume>
 
     <aside class="pi-panel">
       <h2>Raspberry Pi</h2>
@@ -60,6 +64,10 @@
       }
       <p class="hint">Le FPS est le rythme réel de capture, pas la miniature à 2 img/s.</p>
     </aside>
+
+    @if (showTuning()) {
+      <app-tuning-panel class="tuning-col"></app-tuning-panel>
+    }
   </div>
 
   <details class="classification-review">

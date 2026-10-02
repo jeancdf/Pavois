@@ -20,6 +20,8 @@ import { AlertsService } from './alerts.service';
 import { BenchController } from './bench.controller';
 import { ClassificationController } from './classification.controller';
 import { ClassificationService } from './classification.service';
+import { TuningController } from './tuning.controller';
+import { TuningService } from './tuning.service';
 import { CameraHealthService } from './camera-health.service';
 import { DiscordNotificationChannel } from './discord-notification.channel';
 import { AlertsCleanUpService } from './alerts-clean-up.service';
@@ -49,6 +51,7 @@ import { JsonlTrackStore } from './stores/jsonl-track.store';
     AlertsController,
     BenchController,
     ClassificationController,
+    TuningController,
   ],
   providers: [
     AppService,
@@ -74,6 +77,7 @@ import { JsonlTrackStore } from './stores/jsonl-track.store';
     TracksService,
     AlertsService,
     ClassificationService,
+    TuningService,
     CameraHealthService,
     DiscordNotificationChannel,
     AlertsCleanUpService,

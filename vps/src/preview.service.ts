@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { EventsGateway } from './events.gateway';
 
-const MIN_INTERVAL_MS = 150;
+// Au plus un aperçu par caméra toutes les N ms. 150 ménage le lien montant en
+// production ; un banc local peut mettre 0 pour suivre la cadence caméra.
+const MIN_INTERVAL_MS = previewMinIntervalMs();
 const MAX_BYTES = 64 * 1024;
 
 @Injectable()
@@ -31,4 +33,9 @@ export class PreviewService {
     });
     return true;
   }
+}
+
+function previewMinIntervalMs(): number {
+  const value = Number.parseInt(process.env.PREVIEW_MIN_INTERVAL_MS ?? '', 10);
+  return Number.isFinite(value) && value >= 0 ? value : 150;
 }

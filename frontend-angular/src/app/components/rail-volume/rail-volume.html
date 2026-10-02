@@ -1,4 +1,19 @@
 <div #host class="volume-host"></div>
+@if (tracks().length) {
+  <ul class="track-legend">
+    @for (track of tracks(); track track.objectId) {
+      <li [class.weak]="track.cameras.length < 3">
+        <span class="swatch" [style.background]="cssColor(track.objectId)"></span>
+        <strong>#{{ track.objectId }}</strong>
+        <span class="pos">
+          {{ track.x | number: '1.2-2' }} / {{ track.y | number: '1.2-2' }} /
+          {{ track.z | number: '1.2-2' }} m
+        </span>
+        <span class="cams">{{ track.cameras.length }} cam</span>
+      </li>
+    }
+  </ul>
+}
 @if (failed()) {
   <p class="volume-fallback">Volume 3D indisponible sur cette machine.</p>
 }

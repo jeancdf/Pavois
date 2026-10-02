@@ -18,6 +18,13 @@ camera.0.width=1280
 camera.0.height=720
 # The 1280x720 detector is designed and benchmarked for at least 30 FPS.
 camera.0.fps=30
+# How frames leave rpicam-vid. mjpeg (default): JPEG, decoded by FFmpeg.
+# yuv420 (on trial): uncompressed, no JPEG and no FFmpeg process. It needs a
+# width that is a multiple of 128 (1280, 640, 1920), or capture_stride set to
+# the padded row length; if it cannot start, the detector says why and runs
+# mjpeg instead.
+# camera.0.capture_format=yuv420
+# camera.0.capture_stride=0
 camera.0.fov_deg=65.0
 # Short, fully locked capture for fast targets. Increase light before gain.
 camera.0.exposure_mode=sport

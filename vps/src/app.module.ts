@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -21,6 +21,10 @@ import { AlertsService } from './alerts.service';
 import { BenchController } from './bench.controller';
 import { ClassificationController } from './classification.controller';
 import { ClassificationService } from './classification.service';
+import { CameraHealthService } from './camera-health.service';
+import { DiscordNotificationChannel } from './discord-notification.channel';
+import { AlertsCleanUpService } from './alerts-clean-up.service';
+import { SimulationService } from './simulation.service';
 
 @Module({
   imports: [
@@ -54,6 +58,10 @@ import { ClassificationService } from './classification.service';
     TracksService,
     AlertsService,
     ClassificationService,
+    CameraHealthService,
+    DiscordNotificationChannel,
+    AlertsCleanUpService,
+    SimulationService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

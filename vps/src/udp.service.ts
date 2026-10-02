@@ -51,6 +51,11 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   private readonly unknownCameras = new Set<string>();
   private readonly cameraEndpoints = new Map<string, CameraEndpoint>();
   private hmacSecret = '';
+  // fuse_update: au plus un envoi par fenêtre, le dernier état part en fin
+  // de fenêtre (une détection = un blob, soit des centaines par seconde).
+  private readonly fuseBroadcastMs = fuseBroadcastIntervalMs();
+  private lastFuseBroadcastMs = 0;
+  private fuseBroadcastTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly eventsGateway: EventsGateway,
@@ -331,13 +336,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     );
     this.eventsGateway.broadcast('raw_detection', detection);
     const snap = this.fusion.snapshot();
-    const fuseUpdate: FuseUpdate = {
-      type: 'fuse_update',
-      lastFuse: snap.lastFuse,
-      rawIntersections: snap.rawIntersections,
-      tracks: snap.tracks,
-    };
-    this.eventsGateway.broadcast('fuse_update', fuseUpdate);
+    this.scheduleFuseBroadcast();
     const trigger = this.classification.considerFusion(
       snap.lastFuse,
       this.onlineCameraIds(),
@@ -347,6 +346,33 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       this.eventsGateway.broadcast('track_update', update);
       this.recordAndAlertTrack(update);
     }
+  }
+
+  private scheduleFuseBroadcast(): void {
+    const now = Date.now();
+    const wait = this.lastFuseBroadcastMs + this.fuseBroadcastMs - now;
+    if (wait <= 0) {
+      this.broadcastFuse(now);
+      return;
+    }
+    if (this.fuseBroadcastTimer) return;
+    this.fuseBroadcastTimer = setTimeout(() => {
+      this.fuseBroadcastTimer = null;
+      this.broadcastFuse(Date.now());
+    }, wait);
+    this.fuseBroadcastTimer.unref?.();
+  }
+
+  private broadcastFuse(now: number): void {
+    this.lastFuseBroadcastMs = now;
+    const snap = this.fusion.snapshot();
+    const fuseUpdate: FuseUpdate = {
+      type: 'fuse_update',
+      lastFuse: snap.lastFuse,
+      rawIntersections: snap.rawIntersections,
+      tracks: snap.tracks,
+    };
+    this.eventsGateway.broadcast('fuse_update', fuseUpdate);
   }
 
   /** Journalise la piste (accuracy) et déclenche les règles d'alerte. */
@@ -392,11 +418,20 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
+    if (this.fuseBroadcastTimer) {
+      clearTimeout(this.fuseBroadcastTimer);
+      this.fuseBroadcastTimer = null;
+    }
     if (this.server) {
       this.server.close();
       console.log('[UDP] Serveur UDP fermé.');
     }
   }
+}
+
+function fuseBroadcastIntervalMs(): number {
+  const value = Number.parseInt(process.env.FUSE_BROADCAST_MS ?? '', 10);
+  return Number.isFinite(value) && value >= 0 ? value : 50;
 }
 
 export function toFusionObservation(
@@ -415,7 +450,11 @@ export function toFusionObservation(
     size: detection.size,
     confidence: detection.confidence,
     receivedAtMs,
-    headingDeg: frozen ? frozen.headingDeg : detection.headingDeg,
+    // Sans cap dans la trame, le cap IMU de la config caméra ; sinon la
+    // fusion écarte l'observation plutôt que de supposer le nord.
+    headingDeg: frozen
+      ? frozen.headingDeg
+      : (detection.headingDeg ?? camera?.headingDeg),
     elevationDeg: frozen ? frozen.elevationDeg : detection.elevationDeg,
     rollDeg: frozen ? frozen.rollDeg : detection.rollDeg,
     fovDeg: detection.fovDeg ?? camera?.fovDeg,

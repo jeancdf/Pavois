@@ -348,4 +348,95 @@ describe('FusionService', () => {
     );
     expect(service.pullTrackUpdates()).toEqual([]);
   });
+
+  it('waits for every active camera before fusing a tick', () => {
+    const nowMs = Date.now();
+    ingestTriplet(service, TARGET, 1_000_000, nowMs);
+    const first = service.snapshot(nowMs).lastFuse;
+    expect(first?.ok).toBe(true);
+
+    // jean runs ahead: the next ticks must wait for tanel and walid.
+    const moved = { x: TARGET.x + 3, y: TARGET.y, z: TARGET.z };
+    for (const ts of [1_033_000, 1_066_000]) {
+      service.ingest(
+        posedAt('jean', EYES.jean, moved, {
+          timestampUs: ts,
+          receivedAtMs: nowMs,
+        }),
+      );
+    }
+    expect(service.snapshot(nowMs).lastFuse).toBe(first);
+
+    for (const id of ['tanel', 'walid']) {
+      service.ingest(
+        posedAt(id, EYES[id], moved, {
+          timestampUs: 1_066_000,
+          receivedAtMs: nowMs,
+        }),
+      );
+    }
+    const next = service.snapshot(nowMs).lastFuse;
+    expect(next).not.toBe(first);
+    expect(next?.ok).toBe(true);
+    expect(next?.cameras).toHaveLength(3);
+  });
+
+  it('fuses after the latency budget when a camera stays behind', () => {
+    const nowMs = Date.now();
+    ingestTriplet(service, TARGET, 1_000_000, nowMs);
+    const first = service.snapshot(nowMs).lastFuse;
+    // walid goes quiet; jean and tanel keep streaming past the budget.
+    for (let ts = 1_033_000; ts <= 1_200_000; ts += 33_000) {
+      for (const id of ['jean', 'tanel']) {
+        service.ingest(
+          posedAt(id, EYES[id], TARGET, {
+            timestampUs: ts,
+            receivedAtMs: nowMs,
+          }),
+        );
+      }
+    }
+    const later = service.snapshot(nowMs).lastFuse;
+    expect(later).not.toBe(first);
+    expect(later?.ok).toBe(true);
+    expect(later?.cameras.sort()).toEqual(['jean', 'tanel']);
+  });
+
+  it('ignores an observation without a heading instead of assuming north', () => {
+    const nowMs = Date.now();
+    const extra = { receivedAtMs: nowMs };
+    service.ingest(posedObservation('jean', EYES.jean, extra));
+    service.ingest(
+      posedObservation('tanel', EYES.tanel, {
+        ...extra,
+        headingDeg: undefined,
+      }),
+    );
+    expect(service.snapshot(nowMs).lastFuse?.ok).toBe(false);
+    expect(service.snapshot(nowMs).rawIntersections).toEqual([]);
+  });
+
+  it('tracks two targets seen by all cameras under separate ids', () => {
+    const nowMs = Date.now();
+    const other = { x: -6, y: 40, z: 18 };
+    for (let i = 0; i < 8; i++) {
+      const ts = 1_000_000 + i * 40_000;
+      const a = { x: 2 + i * 0.2, y: 30, z: 12 };
+      const b = { x: other.x - i * 0.2, y: other.y, z: other.z };
+      for (const [id, eye] of Object.entries(EYES)) {
+        for (const target of i % 2 ? [a, b] : [b, a]) {
+          service.ingest(
+            posedAt(id, eye, target, { timestampUs: ts, receivedAtMs: nowMs }),
+          );
+        }
+      }
+    }
+    const tracks = service.snapshot(nowMs).tracks;
+    expect(tracks).toHaveLength(2);
+    expect(new Set(tracks.map((t) => t.objectId)).size).toBe(2);
+    const near = (p: { x: number; y: number; z: number }) =>
+      tracks.some((t) => Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z) < 1);
+    expect(near({ x: 2 + 7 * 0.2, y: 30, z: 12 })).toBe(true);
+    expect(near({ x: other.x - 7 * 0.2, y: other.y, z: other.z })).toBe(true);
+  });
 });

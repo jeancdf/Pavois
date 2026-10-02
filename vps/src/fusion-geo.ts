@@ -239,7 +239,8 @@ export function projectWorldToPixel(
   return [intr.cx + intr.fx * xd, intr.cy + intr.fy * yd];
 }
 
-function gaussJordan(A: number[], b: number[]): Vec3 | null {
+/** Solve the 3x3 system A x = b (A row-major). Null when singular. */
+export function solve3(A: number[], b: number[]): Vec3 | null {
   const M = [
     [A[0], A[1], A[2], b[0]],
     [A[3], A[4], A[5], b[1]],
@@ -311,7 +312,42 @@ export function leastSquaresIntersection(
     b[1] += P[3] * p.x + P[4] * p.y + P[5] * p.z;
     b[2] += P[6] * p.x + P[7] * p.y + P[8] * p.z;
   }
-  return gaussJordan(A, b);
+  return solve3(A, b);
+}
+
+/** Inverse of a 3x3 row-major matrix via the adjugate. Null when singular. */
+export function invert3(m: number[]): number[] | null {
+  const [a, b, c, d, e, f, g, h, i] = m;
+  const A = e * i - f * h;
+  const B = -(d * i - f * g);
+  const C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-18) return null;
+  const s = 1 / det;
+  return [
+    A * s,
+    -(b * i - c * h) * s,
+    (b * f - c * e) * s,
+    B * s,
+    (a * i - c * g) * s,
+    -(a * f - c * d) * s,
+    C * s,
+    -(a * h - b * g) * s,
+    (a * e - b * d) * s,
+  ];
+}
+
+/** Pixel distance between an observed pixel and the projection of `world`. */
+export function reprojectionErrorPx(
+  intr: CameraIntrinsics,
+  pose: CameraPose,
+  world: Vec3,
+  px: number,
+  py: number,
+): number | null {
+  const proj = projectWorldToPixel(intr, pose, world);
+  if (!proj) return null;
+  return Math.hypot(proj[0] - px, proj[1] - py);
 }
 
 export function rayResidual(ray: Ray, point: Vec3): number {

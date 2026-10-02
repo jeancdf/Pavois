@@ -125,6 +125,30 @@ export class TuningPanel implements OnInit, OnDestroy {
     return cameras.map((camera, index) => `${camera.cameraId} ${values[index]}`).join(' · ');
   }
 
+  /**
+   * Ce que les Pi visés appliquent vraiment, pour un réglage de capture dont
+   * l'affichage dit autre chose : 0 laisse chaque Pi sur son fichier, et une
+   * caméra qui refuse une taille revient à l'ancienne.
+   */
+  actualNote(param: TuningParam): string | null {
+    if (!param.choices && param.zeroLabel === undefined) return null;
+    const shown = this.detectorValue(param);
+    const cameras = this.targetCameras().filter(
+      (camera) => camera.reported?.[param.key] !== undefined,
+    );
+    if (cameras.length === 0) return null;
+    const actual = cameras.map((camera) => camera.reported![param.key]);
+    if (actual.every((value) => value === shown)) return null;
+    const prefix = shown === 0 && param.zeroLabel ? param.zeroLabel : 'Pi';
+    if (actual.every((value) => value === actual[0])) {
+      return `${prefix} : ${formatValue(param, actual[0])}`;
+    }
+    const each = cameras.map(
+      (camera, index) => `${camera.cameraId} ${formatValue(param, actual[index])}`,
+    );
+    return `${prefix} : ${each.join(' · ')}`;
+  }
+
   fusionValue(param: TuningParam): number {
     const draft = this.drafts()[`fusion:${param.key}`];
     if (draft !== undefined) return draft;
@@ -290,4 +314,11 @@ export class TuningPanel implements OnInit, OnDestroy {
 /** Ce qu'un détecteur va appliquer : la demande du VPS, sinon ce qu'il annonce. */
 function effectiveValue(state: TuningState, camera: TuningCameraState, key: string): number {
   return camera.wanted?.[key] ?? camera.reported?.[key] ?? state.detectorDefaults[key];
+}
+
+/** « 1280 × 720 » pour une valeur de la liste, sinon le nombre et son unité. */
+function formatValue(param: TuningParam, value: number): string {
+  const choice = param.choices?.find((item) => item.value === value);
+  if (choice) return choice.label;
+  return param.unit ? `${value} ${param.unit}` : String(value);
 }

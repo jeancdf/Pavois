@@ -21,6 +21,7 @@ const classificationMock = () => ({
 
 const tuningMock = () => ({
   broadcastMs: jest.fn().mockReturnValue(50),
+  frameSize: jest.fn().mockReturnValue(null),
   noteReport: jest.fn().mockReturnValue(false),
   pendingCommand: jest.fn().mockReturnValue(null),
   pendingCameraIds: jest.fn().mockReturnValue([]),
@@ -411,5 +412,24 @@ describe('toFusionObservation rail pose', () => {
     const obs = toFusionObservation(detection, camera, 10, null);
     expect(obs.camX).toBeUndefined();
     expect(obs.headingDeg).toBe(164);
+  });
+
+  it('passes the reported image size along with explicit intrinsics', () => {
+    const scaled = { ...detection, fx: 856, fy: 856, cx: 319.75, cy: 179.75 };
+    const obs = toFusionObservation(scaled, camera, 10, null, {
+      width: 640,
+      height: 360,
+    });
+    expect(obs.imageWidth).toBe(640);
+    expect(obs.imageHeight).toBe(360);
+  });
+
+  it('leaves the size to the fusion when the intrinsics are derived', () => {
+    const obs = toFusionObservation({ ...detection, fx: 0 }, camera, 10, null, {
+      width: 640,
+      height: 360,
+    });
+    expect(obs.imageWidth).toBeUndefined();
+    expect(obs.imageHeight).toBeUndefined();
   });
 });

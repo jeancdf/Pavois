@@ -2,6 +2,11 @@
 
 export type TuningValues = Record<string, number>;
 
+export interface TuningChoice {
+  value: number;
+  label: string;
+}
+
 export interface TuningParam {
   key: string;
   group: string;
@@ -14,6 +19,10 @@ export interface TuningParam {
   sliderMax?: number;
   step: number;
   integer: boolean;
+  // Liste fermée : affichée comme une liste déroulante.
+  choices?: TuningChoice[];
+  // Ce que vaut 0 quand ce n'est pas une valeur ordinaire (« fichier du Pi »).
+  zeroLabel?: string;
 }
 
 export interface TuningPreset {

@@ -304,6 +304,14 @@ export class TuningService {
       : `set,${cameraId},${version},${detectorSettingsLine(wish.values)}`;
   }
 
+  /** Taille d'image annoncée par le détecteur, null tant qu'il ne l'a pas dite. */
+  frameSize(cameraId: string): { width: number; height: number } | null {
+    const report = this.reports.get(cameraId);
+    return report?.width && report.height
+      ? { width: report.width, height: report.height }
+      : null;
+  }
+
   /** Caméras qui ont une commande en attente. */
   pendingCameraIds(): string[] {
     return this.cameraIds().filter(

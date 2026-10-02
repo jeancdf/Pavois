@@ -1,6 +1,13 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[SAFETY NET] Promesse rejetée non gérée :', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[SAFETY NET] Exception non captée :', error);
+});
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';

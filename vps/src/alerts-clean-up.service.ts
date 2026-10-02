@@ -1,12 +1,14 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
+import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { ALERT_STORE, AlertStore } from './stores/alert-store.interface';
 
 @Injectable()
 export class AlertsCleanUpService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertsCleanUpService.name);
   private purgeInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(ALERT_STORE) private readonly alertStore: AlertStore,
+  ) {}
 
   onModuleInit() {
     // Exécution initiale au démarrage puis toutes les 24 heures
@@ -19,19 +21,12 @@ export class AlertsCleanUpService implements OnModuleInit, OnModuleDestroy {
 
   async purgeOldAlerts(): Promise<void> {
     const retentionDays = Number(process.env.ALERT_RETENTION_DAYS) || 30;
-    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 3600 * 1000);
 
     try {
-      const deletedAlerts = await this.prisma.alert.deleteMany({
-        where: { createdAt: { lt: cutoffDate } },
-      });
-      const deletedLogs = await this.prisma.cameraStateLog.deleteMany({
-        where: { createdAt: { lt: cutoffDate } },
-      });
-
-      if (deletedAlerts.count > 0 || deletedLogs.count > 0) {
+      const purgedCount = await this.alertStore.purgeOlderThan(retentionDays);
+      if (purgedCount > 0) {
         this.logger.log(
-          `Purge automatique (rétention ${retentionDays}j) : ${deletedAlerts.count} alertes et ${deletedLogs.count} logs d'état supprimés.`,
+          `Purge automatique JSONL (rétention ${retentionDays}j) : ${purgedCount} alertes purgées.`,
         );
       }
     } catch (err) {

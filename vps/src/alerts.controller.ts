@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { AuthTokenGuard, verifyOperatorToken } from './access-control';
 import { AlertsService } from './alerts.service';
-import { Alert, AlertStatus } from '@prisma/client';
+import { Alert, AlertStatus } from './alert-types';
 import { IncomingMessage } from 'http';
 
 @Controller('alerts')

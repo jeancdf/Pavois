@@ -359,7 +359,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       classification: track.classification,
       timestamp: track.timestamp,
     });
-    this.alertsService.onTrackUpdate({
+    this.alertsService.processTrackAlert({
       trackId: track.trackId,
       classification: track.classification,
     });

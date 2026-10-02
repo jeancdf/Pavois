@@ -1,7 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { TrackVerdict } from '@prisma/client';
-import type { Track } from '@prisma/client';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Track, TrackVerdict } from './track-types';
+import { TRACK_STORE, TrackStore } from './stores/track-store.interface';
 
 export interface RecordableTrack {
   trackId: string;
@@ -23,29 +22,23 @@ export interface ListTracksOptions {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-/**
- * Journal des pistes confirmées (pipeline de fusion ou passthrough `obj*`),
- * pour analyser la précision après coup et repérer les mauvaises détections.
- */
 @Injectable()
 export class TracksService {
   private readonly logger = new Logger(TracksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(TRACK_STORE) private readonly trackStore: TrackStore,
+  ) {}
 
-  // Ne doit jamais faire échouer le pipeline UDP : la persistance est un
-  // journal, pas le chemin critique de diffusion temps réel.
   async record(track: RecordableTrack): Promise<void> {
     try {
-      await this.prisma.track.create({
-        data: {
-          trackId: track.trackId,
-          lat: track.lat,
-          lng: track.lng,
-          alt: track.alt,
-          classification: track.classification ?? null,
-          timestampUs: track.timestamp,
-        },
+      await this.trackStore.create({
+        trackId: track.trackId,
+        lat: track.lat,
+        lng: track.lng,
+        alt: track.alt,
+        classification: track.classification ?? null,
+        timestampUs: track.timestamp,
       });
     } catch (error) {
       this.logger.warn(
@@ -54,33 +47,36 @@ export class TracksService {
     }
   }
 
-  list(options: ListTracksOptions = {}): Promise<Track[]> {
+  async list(options: ListTracksOptions = {}): Promise<Track[]> {
     const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-    const verdictFilter =
-      options.verdict === 'UNREVIEWED'
-        ? { verdict: null }
-        : options.verdict
-          ? { verdict: options.verdict }
-          : {};
-    return this.prisma.track.findMany({
-      where: {
-        ...(options.classification ? { classification: options.classification } : {}),
-        ...verdictFilter,
-      },
-      orderBy: { receivedAt: 'desc' },
-      take: limit,
-      ...(options.before ? { cursor: { id: options.before }, skip: 1 } : {}),
-    });
+    let list = await this.trackStore.findMany({ limit });
+
+    if (options.classification) {
+      list = list.filter((t) => t.classification === options.classification);
+    }
+    if (options.verdict === 'UNREVIEWED') {
+      list = list.filter((t) => !t.verdict);
+    } else if (options.verdict) {
+      list = list.filter((t) => t.verdict === options.verdict);
+    }
+
+    return list.slice(0, limit);
   }
 
   async setVerdict(id: string, verdict: TrackVerdict, note?: string): Promise<Track> {
-    const existing = await this.prisma.track.findUnique({ where: { id } });
+    const existing = await this.trackStore.findUnique(id);
     if (!existing) {
       throw new NotFoundException(`Piste introuvable : ${id}`);
     }
-    return this.prisma.track.update({
-      where: { id },
-      data: { verdict, reviewNote: note ?? null, reviewedAt: new Date() },
+    const updated = await this.trackStore.updateVerdict(id, {
+      verdict,
+      verdictNote: note ?? null,
     });
+
+    if (!updated) {
+      throw new NotFoundException(`Échec d'actualisation de la piste : ${id}`);
+    }
+
+    return updated;
   }
 }

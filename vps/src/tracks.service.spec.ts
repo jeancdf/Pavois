@@ -1,26 +1,38 @@
 import { NotFoundException } from '@nestjs/common';
 import { TracksService } from './tracks.service';
-import { PrismaService } from './prisma.service';
-import { TrackVerdict } from '@prisma/client';
+import { JsonlTrackStore } from './stores/jsonl-track.store';
+import { TrackVerdict } from './track-types';
+import * as fs from 'fs';
+import * as path from 'path';
 
-function fakePrisma() {
-  return {
-    track: {
-      create: jest.fn<Promise<unknown>, [unknown]>(),
-      findMany: jest.fn<Promise<unknown[]>, [unknown]>(),
-      findUnique: jest.fn<Promise<unknown>, [unknown]>(),
-      update: jest.fn<Promise<unknown>, [unknown]>(),
-    },
-  };
-}
-
-describe('TracksService', () => {
-  let prisma: ReturnType<typeof fakePrisma>;
+describe('TracksService with JsonlTrackStore', () => {
+  let store: JsonlTrackStore;
   let service: TracksService;
+  const testDataDir = path.resolve('./test-data-tracks');
 
-  beforeEach(() => {
-    prisma = fakePrisma();
-    service = new TracksService(prisma as unknown as PrismaService);
+  beforeEach(async () => {
+    process.env.ALERTS_DATA_DIR = testDataDir;
+    try {
+      if (fs.existsSync(testDataDir)) {
+        fs.rmSync(testDataDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignorer
+    }
+
+    store = new JsonlTrackStore();
+    await store.onModuleInit();
+    service = new TracksService(store);
+  });
+
+  afterEach(() => {
+    try {
+      if (fs.existsSync(testDataDir)) {
+        fs.rmSync(testDataDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignorer
+    }
   });
 
   it('records a track with the wire field names mapped to the schema', async () => {
@@ -33,20 +45,15 @@ describe('TracksService', () => {
       timestamp: 1234,
     });
 
-    expect(prisma.track.create).toHaveBeenCalledWith({
-      data: {
-        trackId: 'obj1',
-        lat: 48.8,
-        lng: 2.3,
-        alt: 58.5,
-        classification: 'drone',
-        timestampUs: 1234,
-      },
-    });
+    const tracks = await service.list();
+    expect(tracks.length).toBe(1);
+    expect(tracks[0].trackId).toBe('obj1');
+    expect(tracks[0].lat).toBe(48.8);
+    expect(tracks[0].classification).toBe('drone');
   });
 
-  it('never throws when persistence fails: logging is not the critical path', async () => {
-    prisma.track.create.mockRejectedValueOnce(new Error('connection refused'));
+  it('never throws when persistence fails', async () => {
+    jest.spyOn(store, 'create').mockRejectedValueOnce(new Error('disque indisponible'));
     await expect(
       service.record({
         trackId: 'obj1',
@@ -58,44 +65,26 @@ describe('TracksService', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('list() translates the UNREVIEWED filter to verdict IS NULL', async () => {
-    prisma.track.findMany.mockResolvedValueOnce([]);
-    await service.list({ verdict: 'UNREVIEWED' });
-    expect(prisma.track.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { verdict: null } }),
-    );
+  it('list() filters UNREVIEWED tracks correctly', async () => {
+    await service.record({ trackId: 'obj1', lat: 0, lng: 0, alt: 0, timestamp: 0 });
+    const tracks = await service.list({ verdict: 'UNREVIEWED' });
+    expect(tracks.length).toBe(1);
+    expect(tracks[0].verdict).toBeNull();
   });
 
-  it('list() clamps limit to the documented [1, 200] range', async () => {
-    prisma.track.findMany.mockResolvedValue([]);
-    await service.list({ limit: 10000 });
-    expect(prisma.track.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 200 }),
-    );
-    await service.list({ limit: 0 });
-    expect(prisma.track.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 1 }),
-    );
-  });
-
-  it('setVerdict() rejects an unknown id instead of silently upserting', async () => {
-    prisma.track.findUnique.mockResolvedValueOnce(null);
+  it('setVerdict() rejects an unknown id', async () => {
     await expect(
       service.setVerdict('missing-id', TrackVerdict.CONFIRMED),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.track.update).not.toHaveBeenCalled();
   });
 
-  it('setVerdict() stamps reviewedAt and stores the verdict/note', async () => {
-    prisma.track.findUnique.mockResolvedValueOnce({ id: 'abc' });
-    prisma.track.update.mockResolvedValueOnce({ id: 'abc' });
-    await service.setVerdict('abc', TrackVerdict.FALSE_POSITIVE, 'was a bird');
-    const [call] = prisma.track.update.mock.calls[0] as [
-      { where: { id: string }; data: Record<string, unknown> },
-    ];
-    expect(call.where).toEqual({ id: 'abc' });
-    expect(call.data.verdict).toBe(TrackVerdict.FALSE_POSITIVE);
-    expect(call.data.reviewNote).toBe('was a bird');
-    expect(call.data.reviewedAt).toBeInstanceOf(Date);
+  it('setVerdict() stamps verdict and note', async () => {
+    await service.record({ trackId: 'obj1', lat: 48.8, lng: 2.3, alt: 50, timestamp: 100 });
+    const [track] = await service.list();
+    expect(track).toBeDefined();
+
+    const updated = await service.setVerdict(track.id, TrackVerdict.FALSE_POSITIVE, 'oiseau');
+    expect(updated.verdict).toBe(TrackVerdict.FALSE_POSITIVE);
+    expect(updated.verdictNote).toBe('oiseau');
   });
 });

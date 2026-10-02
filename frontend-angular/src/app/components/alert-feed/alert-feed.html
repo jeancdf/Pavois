@@ -8,9 +8,39 @@
   } @else {
     <ul class="feed-list">
       @for (item of items(); track item.id) {
-        <li class="feed-item" [class]="'alert-' + item.type">
-          <span class="alert-msg">{{ item.message }}</span>
-          <span class="alert-time">{{ item.createdAt | date: 'HH:mm:ss' }}</span>
+        <li
+          class="feed-item"
+          [class.severity-critical]="item.type === 'CRITICAL'"
+          [class.severity-warning]="item.type === 'WARNING'"
+          [class.severity-info]="item.type === 'INFO'"
+          [class.status-ack]="item.status === 'ACKNOWLEDGED'"
+          [class.status-resolved]="item.status === 'RESOLVED'"
+        >
+          <div class="item-content">
+            <span class="alert-msg">{{ item.message }}</span>
+            <span class="alert-meta">
+              {{ item.createdAt | date: 'HH:mm:ss' }}
+              @if (item.acknowledgedBy) {
+                • Acquitté par {{ item.acknowledgedBy }}
+              }
+            </span>
+          </div>
+
+          <div class="item-actions">
+            @if (item.status === 'NEW') {
+              <button
+                class="btn-ack"
+                (click)="acknowledge(item)"
+                title="Acquitter l'alerte"
+              >
+                Acquitter
+              </button>
+            } @else if (item.status === 'ACKNOWLEDGED') {
+              <span class="badge-ack">Acquittée</span>
+            } @else if (item.status === 'RESOLVED') {
+              <span class="badge-resolved">Résolue</span>
+            }
+          </div>
         </li>
       }
     </ul>

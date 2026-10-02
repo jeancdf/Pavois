@@ -20,6 +20,8 @@ import type { RailLocalPose } from './rail-bench';
 import { ClassificationService } from './classification.service';
 import { TuningService } from './tuning.service';
 
+import { CameraHealthService } from './camera-health.service';
+
 interface CameraEndpoint {
   address: string;
   port: number;
@@ -64,7 +66,9 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     private readonly alertsService: AlertsService,
     private readonly classification: ClassificationService,
     private readonly tuning: TuningService,
+    private readonly cameraHealth: CameraHealthService,
   ) {}
+
 
   /**
    * Vérifie la signature HMAC-SHA256 et la fraîcheur de l'horodatage d'un paquet UDP.
@@ -198,6 +202,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       case 'att':
         this.noteEndpoint(routed.attitude.cameraId, rinfo);
         this.noteFirstFrame(routed.attitude.cameraId, 'att');
+        this.cameraHealth.noteActivity(routed.attitude.cameraId);
         this.ingestAttitude(routed.attitude);
         return;
       case 'raw':
@@ -205,11 +210,14 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
         udpDebug('[UDP] Détection 2D brute :', routed.detection);
         this.noteEndpoint(routed.detection.cameraId, rinfo);
         this.noteFirstFrame(routed.detection.cameraId, 'raw');
+        this.cameraHealth.noteActivity(routed.detection.cameraId);
         this.ingestRawDetection(routed.detection);
         return;
       case 'stats':
         this.noteEndpoint(routed.stats.cameraId, rinfo);
         this.noteFirstFrame(routed.stats.cameraId, 'stats');
+        this.cameraHealth.noteActivity(routed.stats.cameraId, routed.stats.frameIndex);
+        this.cameraHealth.ingestStats(routed.stats);
         this.eventsGateway.broadcast('camera_stats', routed.stats);
         return;
       case 'cfg':
@@ -420,7 +428,7 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       classification: track.classification,
       timestamp: track.timestamp,
     });
-    this.alertsService.onTrackUpdate({
+    this.alertsService.processTrackAlert({
       trackId: track.trackId,
       classification: track.classification,
     });

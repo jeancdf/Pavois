@@ -1,6 +1,7 @@
+/* Bottom corner: at the top they covered the page buttons (Réglages, Lancer le test). */
 .toast-container {
   position: fixed;
-  top: 64px;
+  bottom: 16px;
   right: 16px;
   z-index: 900;
   display: flex;

@@ -39,6 +39,11 @@ WIDTH=640
 HEIGHT=360
 FOV_DEG=41.0        # OV5647 in its 1080p crop mode, scaled to 16:9
 SKIP_FRONTEND=0
+# Everything is local, so the preview follows the camera. The detector skips a
+# frame when it comes sooner than 1/fps after the last one sent, and 30 fps
+# frames jitter around 33.3 ms, so a cap of exactly 30 drops every other one.
+PREVIEW_FPS=60
+declare -A POSE_OVERRIDE=()
 KEEP_FRAMES=0
 
 # Rail geometry: 1 m rig, adjacent baseline 3/7 m. Physical order seen from
@@ -63,6 +68,10 @@ while [ $# -gt 0 ]; do
     --height)      HEIGHT="${2:?}"; shift 2 ;;
     --fov)         FOV_DEG="${2:?}"; shift 2 ;;
     --skip-frontend) SKIP_FRONTEND=1; shift ;;
+    --preview-fps) PREVIEW_FPS="${2:?}"; shift 2 ;;
+    # --pose jean=heading,elevation,roll : use a fitted optical-axis pose for
+    # that camera instead of its IMU median plus the built-in offsets.
+    --pose)        POSE_OVERRIDE["${2%%=*}"]="${2#*=}"; shift 2 ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
     -h|--help)     usage ;;
     *)             die "unknown argument: $1 (try --help)" ;;
@@ -238,6 +247,10 @@ PY
   else
     HEADING[$cam]=0.0; ELEVATION[$cam]=20.0; ROLL[$cam]=0.0
   fi
+  if [ -n "${POSE_OVERRIDE[$cam]:-}" ]; then
+    IFS=, read -r h e r <<<"${POSE_OVERRIDE[$cam]}"
+    HEADING[$cam]=$h; ELEVATION[$cam]=$e; ROLL[$cam]=$r
+  fi
 done
 
 # -------------------------------------------------------------- vps backend --
@@ -291,6 +304,7 @@ log "starting vps (UDP 41234, WebSocket/HTTP 3002)"
   UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \
   ALLOWED_ORIGINS="http://localhost:4200" \
   CLASSIFICATION_ENABLED=false \
+  PREVIEW_MIN_INTERVAL_MS=0 \
   FUSION_MIN_RANGE_M=0.5 \
   FUSION_MAX_RANGE_M=3 \
   node dist/main >"$RUN_DIR/vps.log" 2>&1
@@ -408,7 +422,7 @@ preview.enabled=true
 preview.host=127.0.0.1
 preview.http_port=3002
 preview.http_path=/api/preview
-preview.fps=4
+preview.fps=$PREVIEW_FPS
 preview.width=320
 
 classification.enabled=false

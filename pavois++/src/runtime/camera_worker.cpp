@@ -1,6 +1,7 @@
 #include "pavois/runtime/camera_worker.hpp"
 
 #include "pavois/capture/frame_source.hpp"
+#include "pavois/config/live_tuning.hpp"
 #include "pavois/detection/motion_detector.hpp"
 #include "pavois/domain/observation.hpp"
 #include "pavois/sensors/imu.hpp"
@@ -61,6 +62,7 @@ CameraWorker::CameraWorker(const CameraConfig& cfg, const AppConfig& app,
                            std::shared_ptr<ImuReader> imu,
                            bool emit_raw_observations)
     : cfg_(cfg),
+      file_cfg_(cfg),
       app_(app),
       fusion_(fusion),
       log_out_(log_out),
@@ -180,6 +182,38 @@ void CameraWorker::maybe_emit_stats(std::uint64_t now_us,
     window_frames = 0;
 }
 
+void CameraWorker::apply_config_update(const UdpSender::ConfigUpdate& update,
+                                       MotionDetector& detector) {
+    // Always start from the config file: a command carries the full set of
+    // live settings, so the result never depends on what was pushed before.
+    CameraConfig next = file_cfg_;
+    const std::size_t refused =
+        update.version == 0 ? 0 : apply_live_settings(next, update.fields);
+    cfg_ = next;
+    live_version_ = update.version;
+    detector.set_config(cfg_);
+    log_line("camera " + cfg_.id + " live settings v" +
+             std::to_string(update.version) +
+             (update.version == 0 ? " (config file)" : "") +
+             (refused ? ", " + std::to_string(refused) + " refused" : ""));
+}
+
+// The VPS compares the version reported here with the one it wants, and sends
+// its settings again until they match. Reporting the values as well lets the
+// operator see what the detector really runs, clamps included.
+void CameraWorker::maybe_emit_config(const GrayFrame& frame,
+                                     std::uint64_t now_us,
+                                     std::uint64_t& last_cfg_us) {
+    if (!udp_sender_ || !udp_sender_->valid()) return;
+    if (last_cfg_us != 0 && now_us < last_cfg_us + 1'000'000ULL) return;
+    last_cfg_us = now_us;
+    std::ostringstream line;
+    line << "cfg," << cfg_.id << ',' << now_us << ',' << live_version_
+         << ",width=" << frame.width << ",height=" << frame.height << ','
+         << format_live_settings(cfg_);
+    udp_sender_->send_line(line.str());
+}
+
 void CameraWorker::send_classification_capture(
     const GrayFrame& frame, const DetectionResult& detection,
     const UdpSender::CaptureRequest& request) {
@@ -279,11 +313,18 @@ void CameraWorker::operator()() {
     std::uint64_t last_preview_us = 0;
     std::uint64_t stats_window_start_us = 0;
     std::uint64_t stats_window_frames = 0;
+    std::uint64_t last_cfg_us = 0;
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         const auto capture_request =
             udp_sender_ ? udp_sender_->take_capture_request(cfg_.id)
                         : std::nullopt;
+        if (udp_sender_) {
+            if (const auto update = udp_sender_->take_config_update(cfg_.id)) {
+                apply_config_update(*update, detector);
+                last_cfg_us = 0;  // acknowledge on this frame
+            }
+        }
         if (!source->read_frame(frame)) {
             if (source->at_end()) {
                 log_line("camera " + cfg_.id + " replay complete after " +
@@ -312,6 +353,7 @@ void CameraWorker::operator()() {
         if (debug.active()) debug.dump(frame, det);
         maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
                          stats_window_frames);
+        maybe_emit_config(frame, wall_clock_us(), last_cfg_us);
 
         if (det.confirmed) {
             for (const auto& blob : det.blobs) {

@@ -13,6 +13,7 @@ endif()
 # Core pipeline library (shared by the app and the self-tests).
 add_library(pavois_core STATIC
     src/config/config_loader.cpp
+    src/config/live_tuning.cpp
     src/capture/frame_source.cpp
     src/capture/csi_camera.cpp
     src/capture/replay_source.cpp

@@ -16,7 +16,8 @@
 # process it starts is killed when it exits.
 #
 # Usage:
-#   scripts/pavois_replay_bench.sh --recording /path/to/rec-YYYYmmdd-HHMMSSZ-auto
+#   scripts/pavois_replay_bench.sh --recording /path/to/rec-YYYYmmdd-HHMMSSZ
+#   scripts/pavois_replay_bench.sh --recording DIR --frontend-port 4300-auto
 #
 # The recording directory is what pi/camstream + the session capture produce:
 #   <cam>.mp4 or <cam>.mjpeg   the video
@@ -42,6 +43,7 @@ HEIGHT=360
 FOV_DEG=41.0        # OV5647 in its 1080p crop mode, scaled to 16:9
 SKIP_FRONTEND=0
 KEEP_FRAMES=0
+FRONTEND_PORT=4200   # ng serve; the vps CORS origin follows it
 
 # Rail geometry: 1 m rig, adjacent baseline 3/7 m. Physical order seen from
 # behind the cameras is walid - jean - tanel (frontend-angular rail-bench.ts).
@@ -64,6 +66,7 @@ while [ $# -gt 0 ]; do
     --width)       WIDTH="${2:?}"; shift 2 ;;
     --height)      HEIGHT="${2:?}"; shift 2 ;;
     --fov)         FOV_DEG="${2:?}"; shift 2 ;;
+    --frontend-port) FRONTEND_PORT="${2:?}"; shift 2 ;;
     --skip-frontend) SKIP_FRONTEND=1; shift ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
     -h|--help)     usage ;;
@@ -291,7 +294,7 @@ log "starting vps (UDP 41234, WebSocket/HTTP 3002)"
   UDP_PORT=41234 UDP_HOST=127.0.0.1 PORT=3002 \
   WS_AUTH_TOKEN="$WS_TOKEN" \
   UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \
-  ALLOWED_ORIGINS="http://localhost:4200" \
+  ALLOWED_ORIGINS="http://localhost:$FRONTEND_PORT" \
   CLASSIFICATION_ENABLED=false \
   FUSION_MIN_RANGE_M=0.5 \
   FUSION_MAX_RANGE_M=3 \
@@ -366,10 +369,10 @@ if [ "$SKIP_FRONTEND" = 0 ]; then
   "/ws":  { "target": "http://localhost:3002", "secure": false, "ws": true, "pathRewrite": { "^/ws": "" } }
 }
 JSON
-  log "starting frontend (ng serve on 4200)"
+  log "starting frontend (ng serve on $FRONTEND_PORT)"
   (
     cd "$REPO_ROOT/frontend-angular"
-    PATH="$FE_NODE_BIN:$PATH" npx ng serve --configuration=development --port 4200 \
+    PATH="$FE_NODE_BIN:$PATH" npx ng serve --configuration=development --port "$FRONTEND_PORT" \
       --proxy-config "$RUN_DIR/proxy.conf.json" >"$RUN_DIR/frontend.log" 2>&1
   ) &
   PIDS+=($!)
@@ -447,7 +450,7 @@ cat <<BANNER
   ============================================================
    Pavois replay bench is running
   ============================================================
-   frontend .......... http://localhost:4200
+   frontend .......... http://localhost:$FRONTEND_PORT
    vps ............... http://localhost:3002   UDP 41234
    detectors ......... ${CAMERAS[*]}  (looping the recording)
    logs .............. $RUN_DIR

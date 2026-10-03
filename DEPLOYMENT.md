@@ -69,23 +69,27 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 
 `VPS_APP_DIR` should be the absolute path of the repo on the VPS, for example `/home/deploy/Pavois`.
 
-The Achraf OVH workflow (`deploy-ovh-achraf.yml`) uses its own secrets, not the
-production `VPS_*` ones:
+Push to `main` deploys the live stack on the Achraf OVH VPS
+(`ubuntu@51.91.98.159`) via `deploy-ovh-achraf.yml` + `scripts/deploy_vps.sh`.
 
-- `OVH_VPS_SSH_KEY` (private key for the Achraf VPS)
-- `OVH_VPS_HOST` (default `51.91.98.159`)
-- `OVH_VPS_USER` (default `ubuntu`)
-- `OVH_VPS_PORT` (default `22`)
-- `OVH_VPS_APP_DIR` (default `/home/ubuntu/Pavois`)
+SSH user is `ubuntu`. The private key is `OVH_VPS_SSH_KEY` if set, otherwise
+`VPS_SSH_KEY`. Put the matching public key in
+`/home/ubuntu/.ssh/authorized_keys`. Optional: `OVH_VPS_HOST`, `OVH_VPS_PORT`,
+`OVH_VPS_APP_DIR` (default `/home/ubuntu/Pavois`).
 
-The matching public key must be in that user's `~/.ssh/authorized_keys` on
-the Achraf VPS. Password SSH is disabled in the workflow.
+The app is then on:
+
+- Frontend: `http://51.91.98.159:8080`
+- WebSocket: `ws://51.91.98.159:3002`
+- UDP: `51.91.98.159:41234`
+
+Do not put the production account `jean` in `OVH_VPS_USER`.
 
 ## What auto-deploy does
 
-On every push to `main` or `master`, GitHub Actions will:
+On every push to `main`, GitHub Actions will:
 
-1. SSH into the VPS
+1. SSH into the OVH VPS as `ubuntu`
 2. `git pull` the latest commit
 3. rebuild the containers
 4. restart the stack with `docker compose up -d --build`

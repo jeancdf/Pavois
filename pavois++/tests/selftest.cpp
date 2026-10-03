@@ -1269,6 +1269,84 @@ void test_live_tuning() {
               "a refused field does not block the others");
     }
 
+    // Capture size and exposure: 0 keeps the config file's value.
+    {
+        CameraConfig file;
+        file.width = 1280;
+        file.height = 720;
+        file.shutter_us = 16000;
+        file.analogue_gain = 6.0;
+        CameraConfig cfg = file;
+        check(apply_live_settings(cfg, {{"capture_width", "640"},
+                                        {"shutter_us", "0"},
+                                        {"analogue_gain", "0"}}) == 0 &&
+                  cfg.width == 640 && cfg.height == 360 && cfg.shutter_us == 16000 &&
+                  cfg.analogue_gain == 6.0,
+              "a new size keeps the aspect ratio and 0 keeps the file's exposure");
+        check(capture_settings_differ(file, cfg), "a new size needs the capture restarted");
+        check(live_sensor_mode(file, cfg) == "1920:1080:10:P",
+              "another size pins the 1080p sensor mode");
+        check(live_sensor_mode(file, file).empty(),
+              "the file's size leaves the sensor mode to rpicam-vid");
+
+        CameraConfig same = file;
+        apply_live_settings(same, {{"capture_width", "0"},
+                                   {"shutter_us", "0"},
+                                   {"analogue_gain", "0"},
+                                   {"diff_threshold", "20"}});
+        check(!capture_settings_differ(file, same),
+              "detection settings alone keep the capture running");
+
+        CameraConfig bright = file;
+        check(apply_live_setting(bright, "shutter_us", "5") && bright.shutter_us == 100,
+              "a shutter below the range is clamped");
+        check(apply_live_setting(bright, "analogue_gain", "40") && bright.analogue_gain == 32.0,
+              "a gain above the range is clamped");
+        check(apply_live_setting(bright, "capture_width", "5000") && bright.width == 1920 &&
+                  bright.height == 1080,
+              "a size above the range is clamped");
+        keep_capture_settings(bright, file);
+        check(!capture_settings_differ(bright, file), "the previous capture settings come back");
+    }
+
+    // Intrinsics follow the size: the same view, scaled.
+    {
+        const double kPi = std::atan(1.0) * 4.0;
+        CameraConfig file;
+        file.width = 1280;
+        file.height = 720;
+        file.fov_deg = 41.0;
+        CameraConfig half = file;
+        half.width = 640;
+        half.height = 360;
+        const CameraIntrinsics unchanged = live_intrinsics(file, file);
+        check(unchanged.fx == 0.0 && unchanged.image_width == 1280,
+              "at the file's size the configured intrinsics go out as they are");
+        const CameraIntrinsics derived = live_intrinsics(file, half);
+        const double fx_file = 640.0 / std::tan(41.0 * 0.5 * kPi / 180.0);
+        check(std::fabs(derived.fx - fx_file / 2) < 1e-9 &&
+                  std::fabs(derived.fy - fx_file / 2) < 1e-9,
+              "a focal length derived from the field of view halves with the image");
+        check(std::fabs(derived.cx - 319.75) < 1e-9 && std::fabs(derived.cy - 179.75) < 1e-9 &&
+                  derived.image_width == 640 && derived.image_height == 360,
+              "the optical centre follows the image");
+
+        CameraConfig calibrated = file;
+        calibrated.fx = 1712.0;
+        calibrated.fy = 1710.0;
+        calibrated.cx = 650.0;
+        calibrated.cy = 355.0;
+        calibrated.k1 = -0.1;
+        CameraConfig calibrated_half = calibrated;
+        calibrated_half.width = 640;
+        calibrated_half.height = 360;
+        const CameraIntrinsics scaled = live_intrinsics(calibrated, calibrated_half);
+        check(std::fabs(scaled.fx - 856.0) < 1e-9 && std::fabs(scaled.fy - 855.0) < 1e-9 &&
+                  std::fabs(scaled.cx - 324.75) < 1e-9 && std::fabs(scaled.cy - 177.25) < 1e-9 &&
+                  scaled.k1 == -0.1,
+              "a calibration is scaled and its distortion kept");
+    }
+
     // A faint 3x3 target: under the default thresholds, above the tuned ones.
     {
         CameraConfig cfg;

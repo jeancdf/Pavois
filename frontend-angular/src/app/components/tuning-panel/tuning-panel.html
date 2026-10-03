@@ -100,30 +100,47 @@
         @for (param of group.params; track param.key) {
           <div class="control">
             <label [for]="'detector-' + param.key" [title]="param.hint">{{ param.label }}</label>
-            <span class="value">
+            @if (param.choices) {
+              <select
+                class="choice"
+                [id]="'detector-' + param.key"
+                (change)="commit('detector', param, $event)"
+              >
+                @for (choice of param.choices; track choice.value) {
+                  <option [value]="choice.value" [selected]="choice.value === detectorValue(param)">
+                    {{ choice.label }}
+                  </option>
+                }
+              </select>
+            } @else {
+              <span class="value">
+                <input
+                  type="number"
+                  [attr.aria-label]="param.label + ', valeur'"
+                  [min]="param.min"
+                  [max]="param.max"
+                  [step]="param.step"
+                  [value]="detectorValue(param)"
+                  (change)="commit('detector', param, $event)"
+                />
+                @if (param.unit) {
+                  <span class="unit">{{ param.unit }}</span>
+                }
+              </span>
               <input
-                type="number"
-                [attr.aria-label]="param.label + ', valeur'"
-                [min]="param.min"
-                [max]="param.max"
+                type="range"
+                [id]="'detector-' + param.key"
+                [min]="param.sliderMin ?? param.min"
+                [max]="param.sliderMax ?? param.max"
                 [step]="param.step"
                 [value]="detectorValue(param)"
+                (input)="slide('detector', param, $event)"
                 (change)="commit('detector', param, $event)"
               />
-              @if (param.unit) {
-                <span class="unit">{{ param.unit }}</span>
-              }
-            </span>
-            <input
-              type="range"
-              [id]="'detector-' + param.key"
-              [min]="param.sliderMin ?? param.min"
-              [max]="param.sliderMax ?? param.max"
-              [step]="param.step"
-              [value]="detectorValue(param)"
-              (input)="slide('detector', param, $event)"
-              (change)="commit('detector', param, $event)"
-            />
+            }
+            @if (actualNote(param); as note) {
+              <small class="changed">{{ note }}</small>
+            }
             @if (mixedValues(param); as values) {
               <small class="mixed">{{ values }}</small>
             }

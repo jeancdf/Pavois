@@ -14,6 +14,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -22,21 +23,15 @@
 namespace pavois {
 namespace {
 
-CameraIntrinsics intrinsics_from(const CameraConfig& c) {
-    CameraIntrinsics in;
-    in.fx = c.fx;
-    in.fy = c.fy;
-    in.cx = c.cx;
-    in.cy = c.cy;
-    in.k1 = c.k1;
-    in.k2 = c.k2;
-    in.p1 = c.p1;
-    in.p2 = c.p2;
-    in.k3 = c.k3;
-    in.fov_deg = c.fov_deg;
-    in.image_width = c.width;
-    in.image_height = c.height;
-    return in;
+// rpicam-vid needs a moment to let go of the camera after it is stopped.
+constexpr auto kCameraReleaseWait = std::chrono::milliseconds(500);
+
+std::string describe_capture(const CameraConfig& c) {
+    std::ostringstream out;
+    out << c.width << 'x' << c.height << ", shutter " << c.shutter_us
+        << " us, gain " << c.analogue_gain;
+    if (!c.sensor_mode.empty()) out << ", mode " << c.sensor_mode;
+    return out.str();
 }
 
 CameraPose pose_from(const CameraConfig& c) {
@@ -195,6 +190,7 @@ void CameraWorker::apply_config_update(const UdpSender::ConfigUpdate& update,
     CameraConfig next = file_cfg_;
     const std::size_t refused =
         update.version == 0 ? 0 : apply_live_settings(next, update.fields);
+    next.sensor_mode = live_sensor_mode(file_cfg_, next);
     cfg_ = next;
     live_version_ = update.version;
     detector.set_config(cfg_);
@@ -202,6 +198,29 @@ void CameraWorker::apply_config_update(const UdpSender::ConfigUpdate& update,
              std::to_string(update.version) +
              (update.version == 0 ? " (config file)" : "") +
              (refused ? ", " + std::to_string(refused) + " refused" : ""));
+}
+
+// Capture size and exposure are rpicam-vid arguments: the camera is released,
+// then opened again with the new values.
+bool CameraWorker::restart_capture(std::unique_ptr<FrameSource>& source,
+                                   const CameraConfig& before) {
+    if (reopen_capture(source)) {
+        log_line("camera " + cfg_.id + " capture " + describe_capture(cfg_));
+        return true;
+    }
+    log_line("camera " + cfg_.id + " capture " + describe_capture(cfg_) +
+             " refused (" + source->last_error() + "), back to " +
+             describe_capture(before));
+    keep_capture_settings(cfg_, before);
+    return reopen_capture(source);
+}
+
+bool CameraWorker::reopen_capture(std::unique_ptr<FrameSource>& source) {
+    // One process at a time can hold the camera: stop the old one first.
+    source.reset();
+    std::this_thread::sleep_for(kCameraReleaseWait);
+    source = make_frame_source(cfg_);
+    return source->open();
 }
 
 // The VPS compares the version reported here with the one it wants, and sends
@@ -278,7 +297,7 @@ void CameraWorker::stream_attitude_only(
 void CameraWorker::operator()() {
     if (!cfg_.enabled) return;
 
-    const CameraIntrinsics intr = intrinsics_from(cfg_);
+    CameraIntrinsics intr = live_intrinsics(file_cfg_, cfg_);
     CameraPose pose = pose_from(cfg_);
     // Use the process-wide IMU from main. Do not call open_imu() here:
     // each BNO055 init would CONFIG→NDOF and reset fusion on other threads.
@@ -322,6 +341,16 @@ void CameraWorker::operator()() {
     std::uint64_t stats_window_start_us = 0;
     std::uint64_t stats_window_frames = 0;
     std::uint64_t last_cfg_us = 0;
+    // After a capture restart, until its first frame: the settings to go back
+    // to if the new ones never deliver, then how many retries remain.
+    std::optional<CameraConfig> revert_to;
+    int reopen_left = 0;
+    // A restarted capture shows a different image: relearn from scratch.
+    auto restart_detection = [&]() {
+        detector.reset();
+        prev_diag_frame = GrayFrame{};
+        intr = live_intrinsics(file_cfg_, cfg_);
+    };
 
     while (cfg_.frames < 0 || static_cast<int>(frame_id) < cfg_.frames) {
         const auto capture_request =
@@ -329,7 +358,26 @@ void CameraWorker::operator()() {
                         : std::nullopt;
         if (udp_sender_) {
             if (const auto update = udp_sender_->take_config_update(cfg_.id)) {
+                const CameraConfig before = cfg_;
                 apply_config_update(*update, detector);
+                if (capture_settings_differ(before, cfg_)) {
+                    if (cfg_.device.rfind("csi:", 0) != 0) {
+                        // A replay or a V4L2 device keeps what it has; the cfg
+                        // line goes on reporting its real size.
+                        keep_capture_settings(cfg_, before);
+                        log_line("camera " + cfg_.id +
+                                 " capture settings ignored: not a CSI camera");
+                    } else if (!restart_capture(source, before)) {
+                        log_line("camera " + cfg_.id + " reopen failed: " +
+                                 source->last_error());
+                        stream_attitude_only(imu_.get(), pose);
+                        return;
+                    } else {
+                        restart_detection();
+                        if (capture_settings_differ(before, cfg_)) revert_to = before;
+                        reopen_left = 2;
+                    }
+                }
                 last_cfg_us = 0;  // acknowledge on this frame
             }
         }
@@ -339,11 +387,32 @@ void CameraWorker::operator()() {
                          std::to_string(frame_id) + " frames");
                 return;
             }
+            // A restarted capture that delivers nothing: back to the previous
+            // settings, or one more try while rpicam-vid frees the camera.
+            if (revert_to || reopen_left > 0) {
+                const std::string error = source->last_error();
+                if (revert_to) {
+                    log_line("camera " + cfg_.id + " capture " +
+                             describe_capture(cfg_) + " delivered no frame (" +
+                             error + "), back to " + describe_capture(*revert_to));
+                    keep_capture_settings(cfg_, *revert_to);
+                    revert_to.reset();
+                } else {
+                    --reopen_left;
+                    log_line("camera " + cfg_.id + " capture reopened (" + error + ")");
+                }
+                if (reopen_capture(source)) {
+                    restart_detection();
+                    continue;
+                }
+            }
             log_line("camera " + cfg_.id + " read failed: " +
                      source->last_error());
             stream_attitude_only(imu_.get(), pose);
             return;
         }
+        revert_to.reset();
+        reopen_left = 0;
         frame.frame_id = frame_id;
         if (frame.captured_us == 0) frame.captured_us = wall_clock_us();
 

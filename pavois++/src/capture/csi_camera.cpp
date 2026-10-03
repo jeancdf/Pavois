@@ -257,6 +257,9 @@ bool CsiCamera::spawn(const int fds[2]) {
     } else {
         rpicam.insert(rpicam.end(), {"--codec", "mjpeg", "--quality", "80"});
     }
+    if (!config_.sensor_mode.empty()) {
+        rpicam.insert(rpicam.end(), {"--mode", config_.sensor_mode});
+    }
     rpicam.insert(rpicam.end(), {
         "--width", text(config_.width),
         "--height", text(config_.height),

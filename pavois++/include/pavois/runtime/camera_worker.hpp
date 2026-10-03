@@ -21,6 +21,7 @@
 
 namespace pavois {
 
+class FrameSource;
 class ParallelExecutor;
 
 class CameraWorker {
@@ -62,6 +63,12 @@ private:
                           double gain_db = 0.0);
     void apply_config_update(const UdpSender::ConfigUpdate& update,
                              MotionDetector& detector);
+    // Reopens the camera with cfg_'s capture settings, or with `before`'s
+    // when the new ones are refused. False when neither opens.
+    bool restart_capture(std::unique_ptr<FrameSource>& source,
+                         const CameraConfig& before);
+    // Releases the camera, then opens it again with cfg_'s capture settings.
+    bool reopen_capture(std::unique_ptr<FrameSource>& source);
     void maybe_emit_config(const GrayFrame& frame, std::uint64_t now_us,
                            std::uint64_t& last_cfg_us);
     void send_classification_capture(

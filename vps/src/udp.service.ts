@@ -369,7 +369,13 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
       .find((item) => item.id === detection.cameraId);
     const local = this.camerasService.localPose(detection.cameraId);
     this.fusion.ingest(
-      toFusionObservation(detection, camera, Date.now(), local),
+      toFusionObservation(
+        detection,
+        camera,
+        Date.now(),
+        local,
+        this.tuning.frameSize(detection.cameraId),
+      ),
     );
     this.eventsGateway.broadcast('raw_detection', detection);
     const snap = this.fusion.snapshot();
@@ -477,9 +483,18 @@ export function toFusionObservation(
   camera: CameraConfig | undefined,
   receivedAtMs: number,
   local?: RailLocalPose | null,
+  frame?: { width: number; height: number } | null,
 ): FusionObservation {
   const frozen = local ?? null;
+  // La taille réelle de l'image ne sert qu'avec des intrinsèques explicites :
+  // sans elles la fusion les déduit du champ de vision pour 1280 × 720, et les
+  // poses ajustées du banc de rejeu reposent sur cette hypothèse.
+  const size =
+    frame && detection.fx !== undefined && detection.fx > 0
+      ? { imageWidth: frame.width, imageHeight: frame.height }
+      : {};
   return {
+    ...size,
     cameraId: detection.cameraId,
     frameIndex: detection.frameIndex,
     timestampUs: detection.timestamp,

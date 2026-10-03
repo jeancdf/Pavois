@@ -6,11 +6,14 @@
 }
 
 .rail-page {
+  /* The layout follows the width left by the camera sidebar, not the window. */
+  container: rail / inline-size;
   display: flex;
   flex-direction: column;
   gap: 14px;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   color: #e2e8f0;
 }
 
@@ -106,6 +109,7 @@
   gap: 16px;
   flex: 1;
   min-height: 460px;
+  min-width: 0;
   align-items: stretch;
 }
 
@@ -163,8 +167,9 @@
 
 /* Colonne à hauteur de la scène : le panneau défile à l'intérieur. */
 .tuning-col {
-  width: 340px;
+  width: 360px;
   flex-shrink: 0;
+  min-height: 0;
 }
 
 .classification-review {
@@ -297,7 +302,7 @@
 
 /* Pas la place pour trois colonnes : la scène et les réglages restent côte à
    côte, pour voir l'effet d'un curseur, et les cartes des Pi passent dessous. */
-@media (max-width: 1400px) {
+@container rail (max-width: 1240px) {
   .rail-body.with-tuning {
     flex: 0 0 auto;
     flex-wrap: wrap;
@@ -308,12 +313,8 @@
     height: 560px;
   }
 
-  .rail-body.with-tuning app-rail-volume {
-    min-width: 0;
-  }
-
   .rail-body.with-tuning .tuning-col {
-    width: 320px;
+    width: 340px;
   }
 
   .rail-body.with-tuning .pi-panel {
@@ -334,7 +335,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@container rail (max-width: 820px) {
   .rail-body,
   .rail-body.with-tuning {
     flex-direction: column;

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -97,6 +98,7 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "reconnect_backoff_ms") c.reconnect_backoff_ms = std::stoi(v);
         else if (f == "capture_format") c.capture_format = v;
         else if (f == "capture_stride") c.capture_stride = std::stoi(v);
+        else if (f == "sensor_mode") c.sensor_mode = v;
         else if (f == "exposure_mode") c.exposure_mode = v;
         else if (f == "shutter_us") c.shutter_us = std::stoi(v);
         else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
@@ -228,6 +230,10 @@ void finalize_camera(CameraConfig& c) {
         c.capture_format = "mjpeg";
     }
     c.capture_stride = std::max(0, c.capture_stride);
+    // The MJPEG pipeline runs through a shell: only W:H[:bits[:P|U]] gets there.
+    if (!std::regex_match(c.sensor_mode, std::regex("[0-9]+:[0-9]+(:[0-9]+(:[PU])?)?"))) {
+        c.sensor_mode.clear();
+    }
     c.shutter_us = std::clamp(c.shutter_us, 100, 1'000'000);
     c.analogue_gain = std::clamp(c.analogue_gain, 1.0, 32.0);
     c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);

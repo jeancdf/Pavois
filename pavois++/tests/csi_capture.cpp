@@ -208,6 +208,22 @@ void test_capture(const fs::path& root) {
         require(contains(asked, "--codec mjpeg --quality 80") && contains(asked, "ffmpeg"),
                 "the default capture stays MJPEG through FFmpeg");
         require(!contains(asked, "yuv420"), "yuv420 is never used unless asked for");
+        require(!contains(asked, "--mode"), "rpicam-vid picks the sensor mode unless one is pinned");
+    }
+
+    // A pinned sensor mode reaches rpicam-vid.
+    {
+        reset(root);
+        Bytes stream = gray_1;
+        append(stream, gray_2);
+        write_bytes(root / "mjpeg.bin", stream);
+        auto cfg = camera(4, 2);
+        cfg.sensor_mode = "1920:1080:10:P";
+        auto source = pavois::make_frame_source(cfg);
+        require(source->open(), "a capture with a pinned mode must open");
+        expect_frames(*source, 4, 2, {gray_1, gray_2}, "pinned mode");
+        require(contains(calls(root), "--mode 1920:1080:10:P"),
+                "the pinned sensor mode is passed to rpicam-vid");
     }
 
     // yuv420, unpadded: luminance read directly, chroma skipped, no decoder.

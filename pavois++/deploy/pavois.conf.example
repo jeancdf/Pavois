@@ -25,6 +25,10 @@ camera.0.fps=30
 # mjpeg instead.
 # camera.0.capture_format=yuv420
 # camera.0.capture_stride=0
+# rpicam-vid sensor mode (W:H:bits:P). Empty lets rpicam-vid pick it from the
+# output size. An image size chosen in the interface pins 1920:1080:10:P by
+# itself, so the view stays the same at every size.
+# camera.0.sensor_mode=
 camera.0.fov_deg=65.0
 # Short, fully locked capture for fast targets. Increase light before gain.
 camera.0.exposure_mode=sport

@@ -63,6 +63,10 @@ public:
     // Call from the thread that calls process().
     void set_config(const CameraConfig& cfg);
 
+    // Forgets the background: the next frame starts a new warm-up, as the
+    // first one did. For a restarted capture, whose image no longer matches.
+    void reset() { w_ = 0; h_ = 0; }
+
     DetectionResult process(const GrayFrame& frame);
 
 private:

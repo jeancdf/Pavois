@@ -251,6 +251,12 @@ input[type='range'] {
   accent-color: #3b82f6;
 }
 
+/* Liste fermée (taille d'image) : à la place du champ et du curseur. */
+select.choice {
+  flex: none;
+  color: #f59e0b;
+}
+
 .mixed,
 .changed {
   grid-column: 1 / -1;

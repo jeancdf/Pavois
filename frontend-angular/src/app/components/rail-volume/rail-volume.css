@@ -2,6 +2,9 @@
   display: block;
   position: relative;
   flex: 1;
+  /* Without it the canvas keeps its last width and pushes the panels next to
+     the scene out of the page instead of letting the scene shrink. */
+  min-width: 0;
   min-height: 420px;
 }
 

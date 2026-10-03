@@ -46,7 +46,8 @@ std::string calls(const fs::path& root) {
 
 void reset(const fs::path& root) {
     for (const char* name :
-         {"calls", "mjpeg.bin", "yuv420.bin", "yuv420.fail", "metadata"}) {
+         {"calls", "mjpeg.bin", "yuv420.bin", "yuv420.fail", "ffmpeg.noprobe",
+          "metadata"}) {
         fs::remove(root / name);
     }
 }
@@ -345,6 +346,37 @@ void test_capture(const fs::path& root) {
                 "yuv420 must be tried first, then MJPEG");
     }
 
+    // FFmpeg starts on a short probe, so it does not hold back the first
+    // second and a half of video.
+    {
+        reset(root);
+        Bytes stream = gray_1;
+        append(stream, gray_2);
+        write_bytes(root / "mjpeg.bin", stream);
+        auto source = pavois::make_frame_source(camera(4, 2));
+        require(source->open(), "CSI source must open");
+        expect_frames(*source, 4, 2, {gray_1, gray_2}, "short probe");
+        require(contains(calls(root), "-probesize 32768 -analyzeduration 0 -f mjpeg -i pipe:0"),
+                "FFmpeg must start on a short probe of its input");
+    }
+
+    // An FFmpeg that delivers nothing on a short probe gets its default one.
+    {
+        reset(root);
+        std::ofstream(root / "ffmpeg.noprobe") << "refuses\n";
+        Bytes stream = gray_1;
+        append(stream, gray_2);
+        write_bytes(root / "mjpeg.bin", stream);
+        auto source = pavois::make_frame_source(camera(4, 2));
+        require(source->open(), "CSI source must open");
+        expect_frames(*source, 4, 2, {gray_1, gray_2}, "default probe fallback");
+        const std::string asked = calls(root);
+        const auto last = asked.rfind("ffmpeg ");
+        require(asked.find("-probesize") < last, "the short probe must be tried first");
+        require(!contains(asked.substr(last), "-probesize"),
+                "the retry must leave FFmpeg its default probe");
+    }
+
     // The deployed size: a frame is larger than the pipe, so it crosses it in
     // several pieces while the reader is at work.
     full_size_run(root, 1280, 720, 1280, 12);
@@ -400,9 +432,16 @@ int main() {
                "printf 'FrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
                "fi\n"
                "cat \"$dir/$codec.bin\"\n";
+        // The decoder passes bytes through and logs its options. With
+        // ffmpeg.noprobe present it refuses a short probe, as an FFmpeg that
+        // cannot start on one would.
         std::ofstream(root / "ffmpeg")
             << "#!/bin/sh\n"
-               "echo ffmpeg >>\"$(dirname \"$0\")/calls\"\n"
+               "dir=$(dirname \"$0\")\n"
+               "echo \"ffmpeg $*\" >>\"$dir/calls\"\n"
+               "if [ -f \"$dir/ffmpeg.noprobe\" ]; then\n"
+               "  case \"$*\" in *-probesize*) exit 66;; esac\n"
+               "fi\n"
                "exec /bin/cat\n";
         ::chmod((root / "rpicam-vid").c_str(), 0700);
         ::chmod((root / "ffmpeg").c_str(), 0700);

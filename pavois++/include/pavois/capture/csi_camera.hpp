@@ -51,6 +51,9 @@ private:
     Format format_ = Format::Mjpeg;
     // Luminance row length in bytes; only meaningful in yuv420.
     std::size_t stride_ = 0;
+    // MJPEG only: FFmpeg starts on a short probe of its input. Cleared when
+    // that delivers no frame, to fall back on FFmpeg's default probe.
+    bool fast_probe_ = true;
     std::uint64_t frames_read_ = 0;
     FILE* pipe_ = nullptr;
     pid_t process_group_ = -1;

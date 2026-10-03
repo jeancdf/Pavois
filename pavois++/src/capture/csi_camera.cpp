@@ -283,7 +283,13 @@ bool CsiCamera::spawn(const int fds[2]) {
         // into tightly packed grayscale frames.
         std::string command;
         for (const auto& argument : rpicam) command += argument + ' ';
-        command += "| ffmpeg -nostdin -loglevel error -threads 1 -f mjpeg -i pipe:0"
+        command += "| ffmpeg -nostdin -loglevel error -threads 1";
+        // Left to itself FFmpeg reads about 1.6 s of video to probe its input
+        // before it decodes the first frame. A detector slower than the camera
+        // never catches that up: every frame then reaches it 1.6 s old. The
+        // stream is known here, so a short probe is enough.
+        if (fast_probe_) command += " -probesize 32768 -analyzeduration 0";
+        command += " -f mjpeg -i pipe:0"
                    " -an -sn -vf scale=" + text(config_.width) + ':' +
                    text(config_.height) + ",format=gray"
                    " -threads 1 -f rawvideo -pix_fmt gray pipe:1";
@@ -375,17 +381,32 @@ bool CsiCamera::read_frame(GrayFrame& out) {
         ++frames_read_;
         return true;
     }
-    // A yuv420 pipeline that never delivered a frame is most likely not
-    // supported by this rpicam-vid or ISP. Detecting matters more than how
-    // the frames are carried, so go back to MJPEG, once.
-    if (format_ != Format::Yuv420 || frames_read_ > 0) return false;
-    notice("yuv420 capture delivered no frame (" + last_error_ +
-           "), falling back to mjpeg");
-    stop();
-    format_ = Format::Mjpeg;
-    if (!start() || !read_one(out)) return false;
-    ++frames_read_;
-    return true;
+    if (frames_read_ > 0) return false;
+    // A pipeline that never delivered a frame is most likely not supported
+    // here. Detecting matters more than how the frames are carried, so step
+    // down once per level: yuv420, then MJPEG, then MJPEG with FFmpeg's own
+    // probe.
+    if (format_ == Format::Yuv420) {
+        notice("yuv420 capture delivered no frame (" + last_error_ +
+               "), falling back to mjpeg");
+        stop();
+        format_ = Format::Mjpeg;
+        if (start() && read_one(out)) {
+            ++frames_read_;
+            return true;
+        }
+    }
+    if (fast_probe_) {
+        notice("mjpeg capture delivered no frame (" + last_error_ +
+               "), retrying with FFmpeg's default probe");
+        stop();
+        fast_probe_ = false;
+        if (start() && read_one(out)) {
+            ++frames_read_;
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace pavois

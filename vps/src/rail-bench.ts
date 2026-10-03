@@ -80,9 +80,10 @@ export function railCameraPoses(
   const baseline = adjacentBaselineM(width);
   const ids: RailCameraId[] = ['tanel', 'jean', 'walid'];
   // Physical rail order, seen from behind the cameras, is
-  // walid — jean — tanel. Keeping the API/UI id order stable means the
-  // corresponding X coordinates are right — centre — left here.
-  const xs = [baseline, 0, -baseline];
+  // tanel — jean — walid, +X being to their right. To check it on the rig:
+  // a target must sit further right in tanel's image than in walid's. With
+  // the order reversed the three rays diverge and no real target is fused.
+  const xs = [-baseline, 0, baseline];
   return ids.map((id, index) => ({
     id,
     x: xs[index],

@@ -18,8 +18,8 @@ describe('rail-bench geometry', () => {
       'walid',
     ]);
     expect(state.cameras[1]).toMatchObject({ x: 0, y: 0, z: 0 });
-    expect(state.cameras[0].x).toBeCloseTo(3 / 7);
-    expect(state.cameras[2].x).toBeCloseTo(-3 / 7);
+    expect(state.cameras[0].x).toBeCloseTo(-3 / 7);
+    expect(state.cameras[2].x).toBeCloseTo(3 / 7);
     expect(state.cameras[0].headingDeg).toBe(0);
     expect(state.cameras[0].elevationDeg).toBe(20);
   });
@@ -32,14 +32,16 @@ describe('rail-bench geometry', () => {
     expect(state.targetSizeM).toBe(0.2);
   });
 
-  it('triangulates real rail pixels with walid on the left and tanel on the right', () => {
+  it('triangulates real rail pixels with tanel on the left and walid on the right', () => {
     const state = buildRailBenchState();
+    // One instant of the flight of 2026-10-03: a 10 cm drone about 2 m from
+    // the rail, seen by the three Pis in 1024 x 576.
     const pixels: Record<string, [number, number]> = {
-      jean: [683.77, 284.91],
-      tanel: [339.81, 470.26],
-      walid: [993.44, 331.28],
+      jean: [572.49, 494.63],
+      tanel: [809.38, 452.65],
+      walid: [192.79, 467.44],
     };
-    const intrinsics = makeIntrinsics(1280, 720, 65);
+    const intrinsics = makeIntrinsics(1024, 576, 41);
     const result = triangulate(
       state.cameras.map((camera) => ({
         cameraId: camera.id,
@@ -53,7 +55,7 @@ describe('rail-bench geometry', () => {
 
     expect(result.ok).toBe(true);
     expect(result.cameras).toEqual(['tanel', 'jean', 'walid']);
-    expect(result.point?.y).toBeGreaterThan(1);
+    expect(result.point?.y).toBeCloseTo(1.9, 1);
     expect(result.point?.z).toBeCloseTo(0.41, 1);
   });
 });

@@ -87,8 +87,8 @@ export function railCameraPoses(options: RailBenchOptions = {}): RailLocalPose[]
   const baseline = adjacentBaselineM(width);
   const ids: RailCameraId[] = ['tanel', 'jean', 'walid'];
   // Physical rail order, seen from behind the cameras, is
-  // walid — jean — tanel. Keep this mapping aligned with the backend.
-  const xs = [baseline, 0, -baseline];
+  // tanel — jean — walid. Keep this mapping aligned with the backend.
+  const xs = [-baseline, 0, baseline];
   return ids.map((id, index) => ({
     id,
     x: xs[index],

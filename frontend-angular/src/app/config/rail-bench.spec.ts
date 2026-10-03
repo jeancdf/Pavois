@@ -32,6 +32,9 @@ describe('rail bench volume points', () => {
       y: 0,
       z: 0,
     });
+    // Seen from behind the cameras: tanel on the left, walid on the right.
+    expect(points.find((p) => p.id === 'tanel')?.x).toBeCloseTo(-3 / 7);
+    expect(points.find((p) => p.id === 'walid')?.x).toBeCloseTo(3 / 7);
     expect(distanceM(bench.expected, estimated)).toBeCloseTo(Math.hypot(0.1, 0.1, 0.05));
   });
 

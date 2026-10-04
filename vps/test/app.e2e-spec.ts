@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
-import { applyBodyParsers } from './../src/http-body';
+import { applyBodyParsers } from '../src/common/http-body';
 import { UdpService } from './../src/udp.service';
 
 const TEST_AUTH_TOKEN = 'e2e-test-token';

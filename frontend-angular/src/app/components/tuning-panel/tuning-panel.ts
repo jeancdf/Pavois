@@ -266,6 +266,11 @@ export class TuningPanel implements OnInit, OnDestroy {
     const input = event.target as HTMLInputElement;
     const typed = Number(input.value);
     if (input.value.trim() === '' || !Number.isFinite(typed)) return;
+    this.apply(scope, param, typed, delayMs);
+  }
+
+  /** Borne et arrondit la valeur, l'affiche tout de suite, l'envoie après `delayMs`. */
+  private apply(scope: Scope, param: TuningParam, typed: number, delayMs: number): void {
     const clamped = Math.min(param.max, Math.max(param.min, typed));
     const value = param.integer
       ? Math.round(clamped)

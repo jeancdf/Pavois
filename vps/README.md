@@ -48,7 +48,7 @@ Un dossier par fonctionnalité. Chaque dossier garde ensemble son contrôleur (r
 | `common/` | Code partagé par toutes les fonctionnalités | `http-body.ts` (format et taille maximale des corps de requête : JSON, JPEG brut) |
 | `udp/` | Serveur UDP : lit chaque ligne envoyée par un Pi, l'aiguille vers le bon service, renvoie les réglages aux Pi | `udp.service.ts`, `udp-route.ts`, un analyseur par type de ligne (`udp-raw`, `udp-stats`, `udp-attitude`, `udp-config`) |
 | `cameras/` | Position et cap de chaque caméra, état de santé calculé depuis ses statistiques, aperçus JPEG | `cameras.service.ts`, `camera-health.service.ts`, `preview.service.ts` |
-| `fusion/` | Cœur du calcul : alignement dans le temps des blobs, triangulation, filtre de Kalman, classement par le mouvement | `fusion.service.ts`, puis un dossier par rôle : `alignment/`, `geometry/`, `triangulation/`, `tracking/`, `simulation/` |
+| `fusion/` | Cœur du calcul : alignement dans le temps des blobs, triangulation, filtre de Kalman, classement par le mouvement | `fusion.service.ts`, puis un dossier par rôle : `config/`, `observation/`, `alignment/`, `geometry/`, `triangulation/`, `association/`, `tracking/`, `reporting/`, `simulation/` |
 | `tracks/` | Historique des positions de chaque piste, enregistré en JSONL, et verdict de l'opérateur sur une piste | `tracks.service.ts`, `jsonl-track.store.ts` |
 | `alerts/` | Règles d'alerte (objet détecté, drone confirmé, caméra aveugle…), acquittement, purge des anciennes alertes | `alerts.service.ts`, `jsonl-alert.store.ts`, `alerts-clean-up.service.ts` |
 | `notifications/` | Envoi des alertes sur Discord, avec file d'attente, limite de débit et nouvelles tentatives | `discord-notification.channel.ts`, `discord-formatter.ts` |

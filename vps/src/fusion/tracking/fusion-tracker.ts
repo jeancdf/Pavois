@@ -1,5 +1,7 @@
-// Multi-target CV Kalman tracker. Port of pavois++ tracker.cpp, with
-// Mahalanobis gating, per-measurement covariance and track re-identification.
+// Suivi de plusieurs cibles par filtres de Kalman à vitesse constante.
+// Portage de tracker.cpp de pavois++, avec en plus : un seuil d'association
+// en distance de Mahalanobis, une covariance par mesure et la reprise
+// d'identité d'une piste perdue.
 import { KalmanCV } from './fusion-kalman';
 import type { Vec3 } from '../geometry/fusion-geo';
 import type { FusionTrack } from '../fusion.types';
@@ -11,23 +13,26 @@ import {
   smoothSpeedAccel,
 } from './fusion-classify';
 
+/** Réglages du suivi de pistes. */
 export interface TrackerConfig {
-  // Euclidean gate for tentative tracks (unknown velocity) and slack added
-  // to the physically reachable distance for every track.
+  // Seuil en mètres pour les pistes provisoires (vitesse inconnue), et marge
+  // ajoutée à la distance physiquement atteignable pour toutes les pistes.
   matchDistanceM: number;
   processNoise: number;
   measNoise: number;
   confirmUpdates: number;
   maxCoastMs: number;
   maxSpeedMps: number;
-  // Squared Mahalanobis gate for confirmed tracks (chi² 3 dof, 99%).
+  // Seuil en distance de Mahalanobis au carré pour les pistes confirmées
+  // (loi du chi² à 3 degrés de liberté, 99 %).
   gateChi2: number;
-  // Floor on the measurement sigma added to a triangulation covariance.
+  // Incertitude minimale ajoutée à la covariance d'une triangulation.
   measFloorM: number;
 }
 
-// C++ TrackerConfig struct defaults (unit tests). FusionService env
-// defaults match AppConfig (process 200, meas 2.5).
+// Valeurs par défaut de la structure TrackerConfig du C++ (tests
+// unitaires). Les valeurs par défaut de FusionService suivent AppConfig
+// (process 200, meas 2.5).
 export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   matchDistanceM: 6,
   processNoise: 4,
@@ -41,14 +46,15 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
 
 const EMIT_GRACE_MS = 220;
 
+/** Une piste prédite à un instant donné, avec son incertitude. */
 export interface PredictedTrack {
   id: number;
   position: Vec3;
-  // 3x3 row-major position covariance at the prediction time.
+  // Covariance 3x3 de la position à l'instant prédit, ligne par ligne.
   covariance: number[];
   confirmed: boolean;
   hits: number;
-  // Already received a measurement at this timestamp.
+  // A déjà reçu une mesure à cet instant.
   updated: boolean;
 }
 
@@ -72,11 +78,13 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+/** Gère toutes les pistes : création, mise à jour, confirmation, oubli. */
 export class Tracker {
   private readonly cfg: TrackerConfig;
   private readonly tracks: Track[] = [];
   private nextId = 1;
-  // GPS MSL of the ENU origin; z is relative so alt = origin + z.
+  // Altitude GPS de l'origine du repère local ; z est relatif, donc
+  // altitude = origine + z.
   private originAltM = 0;
 
   constructor(cfg: Partial<TrackerConfig> = {}) {
@@ -91,12 +99,15 @@ export class Tracker {
     return { ...this.cfg };
   }
 
-  /** Changes settings while tracks are alive; they keep their state. */
+  /** Change les réglages sans toucher aux pistes en cours. */
   configure(cfg: Partial<TrackerConfig>): void {
     Object.assign(this.cfg, cfg);
   }
 
-  /** Every track predicted to tsUs, confirmed first, then most hits. */
+  /**
+   * Prédit où sera chaque piste à l'instant tsUs. Les pistes confirmées
+   * viennent en premier, puis celles qui ont reçu le plus de mesures.
+   */
   predictAll(tsUs: number): PredictedTrack[] {
     const out: PredictedTrack[] = [];
     for (const t of this.tracks) {
@@ -119,8 +130,9 @@ export class Tracker {
   }
 
   /**
-   * Measurement already associated to track `id` (e.g. in pixel space).
-   * Still gated in 3D; false when rejected so the caller can reuse it.
+   * Met à jour la piste `id` avec une mesure déjà associée à elle (par
+   * exemple en pixels). Le seuil 3D s'applique quand même : renvoie false si
+   * la mesure est refusée, pour que l'appelant puisse la réutiliser.
    */
   updateTrack(
     id: number,
@@ -140,7 +152,10 @@ export class Tracker {
     return true;
   }
 
-  /** Nearest-neighbour association in Mahalanobis distance, else spawn. */
+  /**
+   * Donne une mesure à la piste la plus proche (en distance de
+   * Mahalanobis). Si aucune piste ne convient, crée une nouvelle piste.
+   */
   update(
     z: Vec3,
     tsUs: number,
@@ -153,7 +168,7 @@ export class Tracker {
     let best: Track | null = null;
     let bestD = Infinity;
     for (const t of this.tracks) {
-      // One measurement per track and per timestamp.
+      // Une seule mesure par piste et par instant.
       if (t.lastUpdateUs >= tsUs) continue;
       const d = this.gate(t, zv, tsUs, R);
       if (d !== null && d < bestD) {
@@ -169,6 +184,10 @@ export class Tracker {
     return this.commit(best, zv, measConf, cameras, R);
   }
 
+  /**
+   * Renvoie les pistes confirmées et récemment mises à jour, à l'instant
+   * nowUs, puis oublie celles qui sont muettes depuis trop longtemps.
+   */
   tick(nowUs: number): FusionTrack[] {
     const alive: FusionTrack[] = [];
     for (const t of this.tracks) {
@@ -187,12 +206,14 @@ export class Tracker {
   }
 
   /**
-   * Association cost of zv for track t, or null outside the gate: squared
-   * Mahalanobis distance on the innovation covariance, capped by what the
-   * target could physically have travelled. A tentative track starts with a
-   * wide velocity prior (maxSpeed / 3, at least 10 m/s), so its second hit is gated loosely
-   * and the third must already agree with a constant velocity: random blob
-   * pairs rarely chain three times. It also keeps the Euclidean gate.
+   * Coût d'association de la mesure zv avec la piste t, ou null si la
+   * mesure est hors seuil. Le coût est la distance de Mahalanobis au carré,
+   * limitée par la distance que la cible a pu parcourir. Une piste
+   * provisoire démarre avec une vitesse très incertaine (maxSpeed / 3, au
+   * moins 10 m/s) : sa deuxième mesure passe facilement, mais la troisième
+   * doit déjà coller à une vitesse constante. Des paires de taches au
+   * hasard s'enchaînent rarement trois fois. Elle garde aussi le seuil en
+   * mètres.
    */
   private gate(
     t: Track,
@@ -212,6 +233,10 @@ export class Tracker {
     return t.confirmed || euclid <= this.cfg.matchDistanceM ? d2 : null;
   }
 
+  /**
+   * Vérifie la covariance d'une mesure et lui ajoute une incertitude
+   * minimale. Renvoie undefined si elle est inutilisable.
+   */
   private measCov(cov?: number[] | null): number[] | undefined {
     if (!cov || cov.length !== 9 || !cov.every(Number.isFinite)) {
       return undefined;
@@ -224,6 +249,7 @@ export class Tracker {
     return out;
   }
 
+  /** Crée une nouvelle piste provisoire à partir d'une mesure. */
   private spawn(
     zv: number[],
     tsUs: number,
@@ -244,9 +270,10 @@ export class Tracker {
       lastKineUs: tsUs,
       lastAccel: 0,
     };
-    // Start from the triangulation covariance when there is one.
-    // Velocity prior wide enough for any plausible target, never below the
-    // historical 10 m/s so the speed estimate still reacts fast.
+    // On part de la covariance de la triangulation quand elle existe.
+    // L'incertitude sur la vitesse est assez large pour toute cible
+    // plausible, et jamais sous les 10 m/s d'origine, pour que l'estimation
+    // de vitesse réagisse vite.
     const speedSigma = Math.max(10, this.cfg.maxSpeedMps / 3);
     t.kf.init(
       3,
@@ -259,6 +286,10 @@ export class Tracker {
     this.tracks.push(t);
   }
 
+  /**
+   * Applique une mesure à une piste : corrige le Kalman, met à jour la
+   * confiance, et confirme la piste quand elle a reçu assez de mesures.
+   */
   private commit(
     best: Track,
     zv: number[],
@@ -287,9 +318,10 @@ export class Tracker {
   }
 
   /**
-   * A freshly confirmed track that appears where a confirmed track was lost
-   * takes over its id, so a gap does not change identity. Replaces the old
-   * in-place Kalman reset, which let one stray point teleport a live track.
+   * Une piste tout juste confirmée, apparue là où une piste confirmée a été
+   * perdue, reprend son identifiant : un trou ne change pas l'identité.
+   * Remplace l'ancienne réinitialisation du Kalman sur place, qui laissait
+   * un seul point isolé téléporter une piste vivante.
    */
   private reidentify(fresh: Track): void {
     const recoveryGate = Math.max(this.cfg.matchDistanceM * 3, 12);
@@ -298,7 +330,7 @@ export class Tracker {
     let lostD = recoveryGate;
     for (const t of this.tracks) {
       if (t === fresh || !t.confirmed) continue;
-      // Only a track that went silent before the fresh one was born.
+      // Seulement une piste devenue muette avant la naissance de la nouvelle.
       if (t.lastUpdateUs >= fresh.createdUs) continue;
       const probe = this.cloneTrack(t);
       this.predictTo(probe, fresh.lastUpdateUs);
@@ -314,6 +346,7 @@ export class Tracker {
     this.tracks.splice(this.tracks.indexOf(lost), 1);
   }
 
+  /** Supprime les pistes sans mesure depuis plus de maxCoastMs. */
   private dropCoasted(nowUs: number): void {
     const kept: Track[] = [];
     for (const t of this.tracks) {
@@ -325,6 +358,7 @@ export class Tracker {
     this.tracks.push(...kept);
   }
 
+  /** Fait avancer le Kalman d'une piste jusqu'à l'instant nowUs. */
   private predictTo(t: Track, nowUs: number): void {
     if (nowUs <= t.lastUpdateUs) return;
     const dt = (nowUs - t.lastUpdateUs) / 1e6;
@@ -332,6 +366,7 @@ export class Tracker {
     t.lastUpdateUs = nowUs;
   }
 
+  /** Met une piste au format envoyé à l'interface. */
   private makeUpdate(t: Track): FusionTrack {
     const p = t.kf.position();
     return {
@@ -346,6 +381,7 @@ export class Tracker {
     };
   }
 
+  /** Copie une piste, pour prédire sans modifier l'originale. */
   private cloneTrack(t: Track): Track {
     return {
       id: t.id,
@@ -364,7 +400,8 @@ export class Tracker {
     };
   }
 
-  // Scorecard v2 on Kalman speed / accel / heading, GPS alt = origin + z.
+  // Classe la piste selon son mouvement (vitesse, accélération, direction
+  // du Kalman) et son altitude GPS = origine + z.
   private applyKineClass(t: Track): void {
     const dtS = (t.lastUpdateUs - t.lastKineUs) / 1e6;
     t.lastKineUs = t.lastUpdateUs;

@@ -6,13 +6,13 @@ export interface Vec3 {
 
 export interface Ray {
   origin: Vec3;
-  direction: Vec3; // direction unit
+  direction: Vec3; // direction de longueur 1
 }
 
 export interface CameraPose {
   x: number;
   y: number;
-  z: number; // ENU metres
+  z: number; // mètres, repère Est-Nord-Haut
   headingDeg: number;
   elevationDeg: number;
   rollDeg: number;
@@ -70,11 +70,16 @@ export function vNorm(v: Vec3): number {
   return Math.sqrt(vDot(v, v));
 }
 
+/** Ramène un vecteur à la longueur 1 (vecteur nul s'il est trop petit). */
 export function normalize(v: Vec3): Vec3 {
   const n = vNorm(v);
   return n <= 1e-12 ? { x: 0, y: 0, z: 0 } : vScale(v, 1.0 / n);
 }
 
+/**
+ * Construit les trois axes de la caméra (avant, droite, haut) à partir de
+ * son cap, de son élévation et de son roulis.
+ */
 export function cameraBasis(pose: CameraPose): {
   forward: Vec3;
   right: Vec3;
@@ -84,14 +89,15 @@ export function cameraBasis(pose: CameraPose): {
   const e = pose.elevationDeg * kDeg;
   const roll = pose.rollDeg * kDeg;
 
-  // ENU: x = East, y = North, z = Up. Compass heading is CW from North.
+  // Repère ENU : x = Est, y = Nord, z = Haut. Le cap se compte depuis le
+  // Nord, dans le sens des aiguilles d'une montre.
   const forward: Vec3 = {
     x: Math.sin(h) * Math.cos(e),
     y: Math.cos(h) * Math.cos(e),
     z: Math.sin(e),
   };
-  // right is horizontal, 90 deg CW from the ground track
-  // (East when facing North).
+  // « right » est horizontal, à 90° vers la droite de la direction visée
+  // (l'Est quand on regarde vers le Nord).
   let right: Vec3 = { x: Math.cos(h), y: -Math.sin(h), z: 0.0 };
   let up = normalize(vCross(right, forward));
 
@@ -110,6 +116,10 @@ export function cameraBasis(pose: CameraPose): {
   };
 }
 
+/**
+ * Complète les réglages d'optique manquants : la focale est déduite du
+ * champ de vision, et le centre optique est mis au milieu de l'image.
+ */
 export function effectiveIntrinsics(
   partial: Partial<CameraIntrinsics> & {
     imageWidth?: number;
@@ -166,6 +176,10 @@ export function effectiveIntrinsics(
   };
 }
 
+/**
+ * Annule la déformation de l'objectif pour un pixel. Renvoie sa position
+ * corrigée, recentrée et divisée par la focale.
+ */
 export function undistortPixel(
   intr: CameraIntrinsics,
   px: number,
@@ -184,7 +198,7 @@ export function undistortPixel(
   ) {
     return { xn, yn };
   }
-  // Iterative inverse of OpenCV's Brown-Conrady model.
+  // Inverse du modèle de distorsion Brown-Conrady d'OpenCV, par itérations.
   for (let i = 0; i < 8; i++) {
     const r2 = xn * xn + yn * yn;
     const radial =
@@ -198,6 +212,10 @@ export function undistortPixel(
   return { xn, yn };
 }
 
+/**
+ * Transforme un pixel en rayon dans l'espace : il part de la caméra et va
+ * dans la direction où ce pixel regarde.
+ */
 export function pixelToRay(
   intr: CameraIntrinsics,
   pose: CameraPose,
@@ -206,7 +224,7 @@ export function pixelToRay(
 ): Ray {
   const { xn, yn } = undistortPixel(intr, px, py);
   const b = cameraBasis(pose);
-  // image +x -> right, image +y is down -> -up.
+  // +x de l'image va vers la droite ; +y descend, donc on prend -up.
   const dir = vAdd(b.forward, vAdd(vScale(b.right, xn), vScale(b.up, -yn)));
   return {
     origin: { x: pose.x, y: pose.y, z: pose.z },
@@ -214,6 +232,10 @@ export function pixelToRay(
   };
 }
 
+/**
+ * Fait l'inverse de pixelToRay : dit sur quel pixel un point 3D apparaît
+ * dans l'image. Renvoie null si le point est derrière la caméra.
+ */
 export function projectWorldToPixel(
   intr: CameraIntrinsics,
   pose: CameraPose,
@@ -239,7 +261,11 @@ export function projectWorldToPixel(
   return [intr.cx + intr.fx * xd, intr.cy + intr.fy * yd];
 }
 
-/** Solve the 3x3 system A x = b (A row-major). Null when singular. */
+/**
+ * Résout le système de 3 équations A x = b par le pivot de Gauss.
+ * A est rangée ligne par ligne. Renvoie null s'il n'y a pas de solution
+ * unique.
+ */
 export function solve3(A: number[], b: number[]): Vec3 | null {
   const M = [
     [A[0], A[1], A[2], b[0]],
@@ -280,6 +306,11 @@ export function solve3(A: number[], b: number[]): Vec3 | null {
   return { x: M[0][3], y: M[1][3], z: M[2][3] };
 }
 
+/**
+ * Trouve le point le plus proche de tous les rayons à la fois. Chaque rayon
+ * peut avoir un poids. Renvoie null avec moins de deux rayons ou avec des
+ * rayons parallèles.
+ */
 export function leastSquaresIntersection(
   rays: Ray[],
   weights?: number[],
@@ -315,7 +346,10 @@ export function leastSquaresIntersection(
   return solve3(A, b);
 }
 
-/** Inverse of a 3x3 row-major matrix via the adjugate. Null when singular. */
+/**
+ * Inverse une matrice 3x3 rangée ligne par ligne (méthode des cofacteurs).
+ * Renvoie null si elle n'est pas inversible.
+ */
 export function invert3(m: number[]): number[] | null {
   const [a, b, c, d, e, f, g, h, i] = m;
   const A = e * i - f * h;
@@ -337,7 +371,10 @@ export function invert3(m: number[]): number[] | null {
   ];
 }
 
-/** Pixel distance between an observed pixel and the projection of `world`. */
+/**
+ * Distance en pixels entre le pixel observé et l'endroit où le point
+ * `world` devrait apparaître dans l'image.
+ */
 export function reprojectionErrorPx(
   intr: CameraIntrinsics,
   pose: CameraPose,
@@ -350,12 +387,17 @@ export function reprojectionErrorPx(
   return Math.hypot(proj[0] - px, proj[1] - py);
 }
 
+/** Distance en mètres entre un point et un rayon. */
 export function rayResidual(ray: Ray, point: Vec3): number {
   const d = normalize(ray.direction);
   const w = vSub(point, ray.origin);
   return vNorm(vCross(w, d));
 }
 
+/**
+ * Plus petit angle, en degrés, entre deux rayons du groupe. Un angle trop
+ * petit veut dire que les rayons sont presque parallèles.
+ */
 export function minPairwiseAngleDeg(rays: Ray[]): number {
   let best = 180.0;
   for (let i = 0; i < rays.length; i++) {
@@ -369,7 +411,10 @@ export function minPairwiseAngleDeg(rays: Ray[]): number {
   return best;
 }
 
-/** Inverse of gpsToEnu. lng is longitude in degrees (WS track_update). */
+/**
+ * Convertit une position locale (mètres) en coordonnées GPS. C'est
+ * l'inverse de gpsToEnu. lng est la longitude en degrés (track_update).
+ */
 export function enuToGps(
   enu: Vec3,
   origin: GeoOrigin,
@@ -386,7 +431,11 @@ export function enuToGps(
   };
 }
 
-/** ENU local: x East, y North, z Up. Same formula as pavois++ gps_to_local_approx. */
+/**
+ * Convertit des coordonnées GPS en position locale en mètres : x vers
+ * l'Est, y vers le Nord, z vers le haut. Même formule que
+ * gps_to_local_approx dans pavois++.
+ */
 export function gpsToEnu(
   latDeg: number,
   lonDeg: number,
@@ -407,7 +456,10 @@ export function gpsToEnu(
   };
 }
 
-/** Compass look-at, same as scene_sim.hpp look_at. */
+/**
+ * Construit la pose d'une caméra placée en `eye` qui regarde `target`.
+ * Même calcul que look_at dans scene_sim.hpp.
+ */
 export function lookAt(eye: Vec3, target: Vec3): CameraPose {
   const dx = target.x - eye.x;
   const dy = target.y - eye.y;
@@ -422,6 +474,10 @@ export function lookAt(eye: Vec3, target: Vec3): CameraPose {
   };
 }
 
+/**
+ * Fabrique les réglages d'optique d'une caméra à partir de la taille de
+ * l'image et du champ de vision.
+ */
 export function makeIntrinsics(
   w: number,
   h: number,

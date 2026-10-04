@@ -1,4 +1,8 @@
-import type { CameraIntrinsics, CameraPose, Vec3 } from '../geometry/fusion-geo';
+import type {
+  CameraIntrinsics,
+  CameraPose,
+  Vec3,
+} from '../geometry/fusion-geo';
 import {
   lookAt,
   makeIntrinsics,
@@ -163,7 +167,8 @@ describe('triangulate', () => {
     const r = triangulate(makeObs(target, poses, intrinsics, 0, rng), cfg);
     expect(r.ok).toBe(true);
     const cov = r.covariance!;
-    // Narrow baseline across x: depth (y) is far less certain than x.
+    // Caméras rapprochées le long de x : la profondeur (y) est bien moins
+    // sûre que x.
     expect(cov[4]).toBeGreaterThan(cov[0] * 10);
     expect(r.residualPx).toBeLessThan(0.5);
   });

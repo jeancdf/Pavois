@@ -8,6 +8,7 @@ import type { FusionSnapshot } from './fusion.types';
 export class FusionController {
   constructor(private readonly fusion: FusionService) {}
 
+  /** GET /fusion : renvoie l'état actuel du moteur de fusion. */
   @Get()
   status(): FusionSnapshot {
     return this.fusion.snapshot();

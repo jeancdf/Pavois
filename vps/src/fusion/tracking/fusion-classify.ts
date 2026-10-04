@@ -47,6 +47,9 @@ const HEADING_CHANGE_HIGH = 90;
 const HOVER_SPEED_MAX = 3;
 const HOVER_PRIOR_ACCEL_MIN = 10;
 
+/**
+ * Reconnaît un nom de classe valide dans un texte (majuscules ignorées).
+ */
 export function parseExplicitClass(
   raw: string | undefined,
 ): TrackClass | undefined {
@@ -57,14 +60,20 @@ export function parseExplicitClass(
   return VALID_CLASSES.find((c) => c === lower);
 }
 
+/**
+ * Vrai si l'écart de temps est utilisable pour classer : ni presque nul,
+ * ni trop long.
+ */
 export function isClassifiableDt(dtS: number): boolean {
   return dtS >= DT_MIN_S && dtS <= DT_MAX_S;
 }
 
+/** Direction du déplacement en degrés (0 à 360), mesurée depuis l'Est. */
 export function headingDegEnu(ve: number, vn: number): number {
   return ((Math.atan2(vn, ve) * 180) / Math.PI + 360) % 360;
 }
 
+/** Écart entre deux directions, en degrés, entre 0 et 180. */
 export function headingDeltaDeg(fromDeg: number, toDeg: number): number {
   let diff = Math.abs(toDeg - fromDeg);
   if (diff > 180) {
@@ -81,6 +90,10 @@ export interface SpeedFilter {
 const SPEED_ALPHA = 0.25;
 const SPEED_BETA = 0.2;
 
+/**
+ * Lisse la vitesse et l'accélération d'une piste pour éviter les à-coups.
+ * Chaque nouvelle valeur compte pour une part, l'ancienne pour le reste.
+ */
 export function smoothSpeedAccel(
   filter: SpeedFilter,
   rawSpeed: number,
@@ -95,6 +108,11 @@ export function smoothSpeedAccel(
   return { speed, accel };
 }
 
+/**
+ * Devine le type de cible (drone, avion, oiseau, autre) à partir de son
+ * mouvement : vitesse, accélération, altitude et changements de
+ * direction. Chaque critère donne des points ; le plus haut total gagne.
+ */
 export function classifyKinematics(k: ClassifyInput): ClassifyResult {
   const scores: Scores = {
     airplane: 0,
@@ -110,6 +128,7 @@ export function classifyKinematics(k: ClassifyInput): ClassifyResult {
   return pickWinner(scores);
 }
 
+/** Points selon la vitesse. */
 function addSpeedScores(scores: Scores, speed: number): void {
   if (speed > SPEED_AIRPLANE_MIN) {
     scores.airplane += 4;
@@ -133,6 +152,7 @@ function addSpeedScores(scores: Scores, speed: number): void {
   scores.bird -= 2;
 }
 
+/** Points selon l'accélération. */
 function addAccelScores(scores: Scores, speed: number, accel: number): void {
   if (accel > ACCEL_HIGH) {
     scores.drone += 3;
@@ -145,6 +165,7 @@ function addAccelScores(scores: Scores, speed: number, accel: number): void {
   }
 }
 
+/** Points selon l'altitude. */
 function addAltScores(scores: Scores, speed: number, alt: number): void {
   if (alt > ALT_HIGH) {
     scores.airplane += 3;
@@ -164,6 +185,7 @@ function addAltScores(scores: Scores, speed: number, alt: number): void {
   }
 }
 
+/** Points selon la vitesse de changement de direction. */
 function addHeadingScores(scores: Scores, rateDegPerS: number): void {
   if (rateDegPerS <= HEADING_CHANGE_HIGH) {
     return;
@@ -173,6 +195,10 @@ function addHeadingScores(scores: Scores, rateDegPerS: number): void {
   scores.airplane -= 4;
 }
 
+/**
+ * Points pour une cible presque immobile : un drone si elle vient de
+ * fortement accélérer, sinon « autre ».
+ */
 function addHoverScores(
   scores: Scores,
   speed: number,
@@ -189,6 +215,7 @@ function addHoverScores(
   scores.bird -= 2;
 }
 
+/** Choisit la classe qui a le plus de points. */
 function pickWinner(scores: Scores): ClassifyResult {
   const maxScore = Math.max(
     scores.other,
@@ -207,6 +234,10 @@ function pickWinner(scores: Scores): ClassifyResult {
   return { classification, confidence: confidenceOf(scores) };
 }
 
+/**
+ * Confiance du classement : l'avance du premier sur le deuxième, rapportée
+ * au total des points positifs.
+ */
 function confidenceOf(scores: Scores): number {
   const values = [scores.airplane, scores.bird, scores.drone, scores.other];
   values.sort((a, b) => b - a);

@@ -1,16 +1,18 @@
-// Offline replay of a recorded fusion session (FUSION_RECORD_PATH, one
-// FusionObservation per line) through FusionService, with the current env
-// tuning. Usage, after `npm run build`:
+// Rejeu hors ligne d'une session de fusion enregistrée (FUSION_RECORD_PATH,
+// une FusionObservation par ligne) dans FusionService, avec les réglages
+// d'environnement actuels. Utilisation, après `npm run build` :
 //
-//   FUSION_MAX_RESIDUAL_PX=25 node dist/fusion-replay.js session.jsonl \
+//   FUSION_MAX_RESIDUAL_PX=25 \
+//     node dist/fusion/simulation/fusion-replay.js session.jsonl \
 //     [--truth x,y,z] [--json]
 //
-// --truth is a static target in the fusion frame (e.g. the rail mark), used
-// for the error figures.
+// --truth est une cible fixe dans le repère de la fusion (par exemple le
+// repère du rail), utilisée pour calculer les erreurs.
 import { readFileSync } from 'fs';
 import { FusionService } from '../fusion.service';
 import type { FusionObservation } from '../fusion.types';
 
+/** Résumé d'un rejeu : nombre de fusions, de pistes, et erreurs. */
 export interface ReplaySummary {
   observations: number;
   cameras: string[];
@@ -19,13 +21,17 @@ export interface ReplaySummary {
   meanResidualPx: number | null;
   trackIds: number[];
   trackPoints: number;
-  // Only with a truth point.
+  // Seulement avec un point de vérité.
   fuseRmseM: number | null;
   trackRmseM: number | null;
 }
 
 type Vec = { x: number; y: number; z: number };
 
+/**
+ * Lit un enregistrement (une observation JSON par ligne) et le trie par
+ * heure de réception.
+ */
 export function parseRecording(text: string): FusionObservation[] {
   const out: FusionObservation[] = [];
   for (const line of text.split(/\r?\n/)) {
@@ -34,13 +40,17 @@ export function parseRecording(text: string): FusionObservation[] {
       const obs = JSON.parse(line) as FusionObservation;
       if (obs && typeof obs.cameraId === 'string') out.push(obs);
     } catch {
-      // A truncated last line (recorder killed) is expected.
+      // Une dernière ligne coupée (enregistreur arrêté net) est normale.
     }
   }
   out.sort((a, b) => a.receivedAtMs - b.receivedAtMs);
   return out;
 }
 
+/**
+ * Rejoue les observations dans le moteur et résume le résultat. Avec un
+ * point de vérité, calcule aussi l'erreur des fusions et des pistes.
+ */
 export function replay(
   observations: FusionObservation[],
   truth: Vec | null = null,
@@ -96,6 +106,7 @@ export function replay(
   };
 }
 
+/** Lit l'argument --truth au format x,y,z. */
 function parseTruth(raw: string | undefined): Vec | null {
   if (!raw) return null;
   const [x, y, z] = raw.split(',').map(Number);
@@ -105,6 +116,7 @@ function parseTruth(raw: string | undefined): Vec | null {
   return { x, y, z };
 }
 
+/** Programme en ligne de commande : lit le fichier, rejoue, affiche. */
 function main(argv: string[]): void {
   const file = argv.find((a) => !a.startsWith('--'));
   if (!file) {

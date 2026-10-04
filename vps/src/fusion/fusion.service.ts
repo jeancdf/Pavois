@@ -1,33 +1,44 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { createWriteStream, type WriteStream } from 'fs';
-import { alignCandidates, timeAlignFrameGroups } from './alignment/fusion-align';
 import {
-  enuToGps,
-  gpsToEnu,
-  makeIntrinsics,
-  projectWorldToPixel,
-  reprojectionErrorPx,
-  vNorm,
-  vSub,
-  type CameraIntrinsics,
-  type CameraPose,
-  type GeoOrigin,
-  type Vec3,
-} from './geometry/fusion-geo';
+  alignCandidates,
+  timeAlignFrameGroups,
+} from './alignment/fusion-align';
 import {
-  DEFAULT_TRIANGULATION_CONFIG,
-  triangulate,
+  associateTracks,
+  spawnFromLeftovers,
+  type AssociationContext,
+  type Candidate,
+} from './association/fusion-association';
+import {
+  envInt,
+  envNumber,
+  trackerConfigFromEnv,
+  triangulationConfigFromEnv,
+  type FusionTuning,
+} from './config/fusion-config';
+import type { GeoOrigin } from './geometry/fusion-geo';
+import {
+  isFiniteNumber,
+  latestTimestampUs,
+  pruneHistory,
+  toTriObs,
+} from './observation/fusion-observation';
+import {
+  betterFuse,
+  cameraState,
+  needTwoFuse,
+  NO_SUBSET,
+  toLastFuse,
+  toWsUpdates,
+  type CameraLastSeen,
+} from './reporting/fusion-report';
+import { Tracker } from './tracking/fusion-tracker';
+import {
   pairIntersections,
   type TriangulateObservation,
-  type TriangulationConfig,
   type TriangulationResult,
 } from './triangulation/fusion-triangulate';
-import {
-  DEFAULT_TRACKER_CONFIG,
-  Tracker,
-  type PredictedTrack,
-  type TrackerConfig,
-} from './tracking/fusion-tracker';
 import {
   FusionCameraState,
   FusionLastFuse,
@@ -38,209 +49,32 @@ import {
   FusionTrackUpdate,
 } from './fusion.types';
 
-interface CameraLastSeen {
-  timestampUs: number;
-  receivedAtMs: number;
-  x: number;
-  y: number;
-  confidence: number;
-  hasPose: boolean;
-}
+export type { FusionTuning } from './config/fusion-config';
 
-/** Settings an operator can change while the engine runs. */
-export interface FusionTuning {
-  maxResidualPx: number;
-  minParallaxDeg: number;
-  minRangeM: number;
-  maxRangeM: number;
-  assocGatePx: number;
-  pairGatePx: number;
-  maxBlobsPerCamera: number;
-  maxTargets: number;
-  intervalMs: number;
-  latencyMs: number;
-  confirmUpdates: number;
-  maxCoastMs: number;
-  gateChi2: number;
-  matchDistanceM: number;
-  maxSpeedMps: number;
-  processNoise: number;
-}
-
-/** One blob of one camera at the fusion tick, ready to triangulate. */
-interface Candidate {
-  cameraId: string;
-  confidence: number;
-  tri: TriangulateObservation;
-  used: boolean;
-}
-
-// Bounds the work one ingest can trigger when data arrives in a burst.
+// Limite le travail déclenché par un seul ingest quand les données
+// arrivent en rafale.
 const MAX_TICKS_PER_INGEST = 64;
-const NO_SUBSET = 'no subset passed parallax/residual gates';
-
-function toWsUpdates(
-  tracks: FusionTrack[],
-  origin: GeoOrigin,
-): FusionTrackUpdate[] {
-  const out: FusionTrackUpdate[] = [];
-  for (const t of tracks) {
-    const gps = enuToGps({ x: t.x, y: t.y, z: t.z }, origin);
-    out.push({
-      type: 'track_update',
-      trackId: 'obj' + t.objectId,
-      lat: gps.lat,
-      lng: gps.lng,
-      alt: gps.alt,
-      timestamp: t.timestampUs,
-      classification: t.classification || 'other',
-    });
-  }
-  return out;
-}
-
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw == null || raw === '') {
-    return fallback;
-  }
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || value <= 0) {
-    return fallback;
-  }
-  return value;
-}
-
-function envNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw == null || raw === '') {
-    return fallback;
-  }
-  const value = Number.parseFloat(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    return fallback;
-  }
-  return value;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function latestTimestampUs(deque: FusionObservation[]): number {
-  let latest = deque[0].timestampUs;
-  for (const obs of deque) {
-    if (obs.timestampUs > latest) {
-      latest = obs.timestampUs;
-    }
-  }
-  return latest;
-}
-
-function trackerConfigFromEnv(): TrackerConfig {
-  return {
-    matchDistanceM: envNumber('FUSION_TRACK_MATCH_M', 6),
-    processNoise: envNumber('FUSION_TRACK_PROCESS_NOISE', 200),
-    measNoise: envNumber('FUSION_TRACK_MEAS_NOISE', 2.5),
-    confirmUpdates: envInt('FUSION_TRACK_CONFIRM', 3),
-    maxCoastMs: envInt('FUSION_TRACK_MAX_COAST_MS', 1200),
-    maxSpeedMps: envNumber('FUSION_TRACK_MAX_SPEED_MPS', 120),
-    gateChi2: envNumber(
-      'FUSION_TRACK_GATE_CHI2',
-      DEFAULT_TRACKER_CONFIG.gateChi2,
-    ),
-    measFloorM: envNumber(
-      'FUSION_TRACK_MEAS_FLOOR_M',
-      DEFAULT_TRACKER_CONFIG.measFloorM,
-    ),
-  };
-}
-
-function triangulationConfigFromEnv(): TriangulationConfig {
-  const d = DEFAULT_TRIANGULATION_CONFIG;
-  return {
-    minParallaxDeg: envNumber('FUSION_MIN_PARALLAX_DEG', d.minParallaxDeg),
-    maxResidualPx: envNumber('FUSION_MAX_RESIDUAL_PX', d.maxResidualPx),
-    maxResidualM: envNumber('FUSION_MAX_RESIDUAL_M', d.maxResidualM),
-    maxRangeM: envNumber('FUSION_MAX_RANGE_M', d.maxRangeM),
-    minRangeM: envNumber('FUSION_MIN_RANGE_M', d.minRangeM),
-    pixelSigma: envNumber('FUSION_PIXEL_SIGMA', d.pixelSigma),
-    poseSigmaDeg: envNumber('FUSION_POSE_SIGMA_DEG', d.poseSigmaDeg),
-  };
-}
-
-function needTwoFuse(): FusionLastFuse {
-  return {
-    ok: false,
-    rejectReason: 'need >= 2 observations',
-    residualM: null,
-    residualPx: null,
-    parallaxDeg: null,
-    confidence: null,
-    cameras: [],
-    point: null,
-  };
-}
-
-function toLastFuse(result: TriangulationResult): FusionLastFuse {
-  if (!result.ok) {
-    return {
-      ok: false,
-      rejectReason: result.rejectReason || null,
-      residualM: null,
-      residualPx: null,
-      parallaxDeg: null,
-      confidence: null,
-      cameras: result.cameras.slice(),
-      point: null,
-    };
-  }
-  const p = result.point;
-  return {
-    ok: true,
-    rejectReason: null,
-    residualM: result.residualM,
-    residualPx: result.residualPx,
-    parallaxDeg: result.parallaxDeg,
-    confidence: result.confidence,
-    cameras: result.cameras.slice(),
-    point: p ? { x: p.x, y: p.y, z: p.z } : null,
-  };
-}
-
-/** Most cameras first, then the most confident solution. */
-function betterFuse(a: TriangulationResult, b: TriangulationResult): boolean {
-  if (a.cameras.length !== b.cameras.length) {
-    return a.cameras.length > b.cameras.length;
-  }
-  return a.confidence > b.confidence;
-}
-
-/** Predicted track spread projected in pixels, for the association gate. */
-function projectedSigmaPx(track: PredictedTrack, c: Candidate): number {
-  const cov = track.covariance;
-  const sigmaM = Math.sqrt(Math.max(0, (cov[0] + cov[4] + cov[8]) / 3));
-  const pose = c.tri.pose;
-  const range = vNorm(
-    vSub(track.position, { x: pose.x, y: pose.y, z: pose.z }),
-  );
-  const f = 0.5 * (c.tri.intrinsics.fx + c.tri.intrinsics.fy);
-  return range > 1e-6 ? (f * sigmaM) / range : Infinity;
-}
 
 /**
- * Multi-camera fusion on the VPS.
+ * Fusion multi-caméras sur le VPS.
  *
- * Fusion runs on a fixed time grid (FUSION_INTERVAL_MS) held back until
- * every recently active camera has a frame at or after the tick, or until
- * FUSION_LATENCY_MS of newer data has arrived. The other Pi frames for the
- * same instant are then already here, so each camera is interpolated
- * instead of extrapolated.
+ * La fusion tourne sur une grille de temps fixe (FUSION_INTERVAL_MS). Un
+ * tick attend que chaque caméra récemment active ait une image à cet
+ * instant ou après, ou que FUSION_LATENCY_MS de données plus récentes
+ * soient arrivées. Les images des autres Pi pour le même instant sont alors
+ * déjà là : on interpole chaque caméra au lieu d'extrapoler.
  *
- * At each tick, blobs are first assigned to existing tracks by projecting
- * each predicted track into every camera; the remaining blobs form new
- * candidates (pairs extended by the third camera). Every target is
- * triangulated on its own, with a covariance handed to the Kalman filter.
+ * À chaque tick, les taches sont d'abord attribuées aux pistes existantes,
+ * en projetant chaque piste prédite dans chaque caméra. Les taches
+ * restantes forment de nouvelles candidates (des paires, complétées par la
+ * troisième caméra). Chaque cible est triangulée séparément, et sa
+ * covariance est donnée au filtre de Kalman.
+ *
+ * Ce fichier garde l'état du moteur et l'ordre des étapes. Le détail de
+ * chaque étape est dans un dossier à part : config/ (réglages),
+ * observation/ (préparation des détections), alignment/ (temps),
+ * association/ (quelle tache va avec quelle cible), triangulation/ (calcul
+ * du point), tracking/ (suivi) et reporting/ (mise en forme des résultats).
  */
 @Injectable()
 export class FusionService implements OnModuleDestroy {
@@ -248,10 +82,11 @@ export class FusionService implements OnModuleDestroy {
   private readonly staleAfterMs = envInt('FUSION_STALE_MS', 2000);
   private readonly maxPerCamera = envInt('FUSION_MAX_PER_CAMERA', 256);
   private readonly fusionWindowMs = envInt('FUSION_WINDOW_MS', 20);
-  // The settings below start from the environment and can then be changed
-  // at run time through applyTuning().
-  // One fusion per camera frame: the Pis capture at 30 fps. Keep it at the
-  // capture period; a longer one updates tracks less often than they are seen.
+  // Les réglages ci-dessous partent des variables d'environnement, puis
+  // peuvent être changés en cours de route par applyTuning().
+  // Une fusion par image caméra : les Pi capturent à 30 images/s. À garder
+  // égal à la période de capture ; plus long, les pistes sont mises à jour
+  // moins souvent qu'elles ne sont vues.
   private intervalMs = envInt('FUSION_INTERVAL_MS', 33);
   private latencyMs = envInt('FUSION_LATENCY_MS', 80);
   private assocGatePx = envNumber('FUSION_ASSOC_GATE_PX', 40);
@@ -264,16 +99,23 @@ export class FusionService implements OnModuleDestroy {
   private readonly lastSeen = new Map<string, CameraLastSeen>();
   private lastFuse: FusionLastFuse | null = null;
   private rawIntersections: FusionRayIntersection[] = [];
-  // Next grid time to fuse at; null until the first observation.
+  // Prochain instant de la grille à fusionner ; null avant la première
+  // observation.
   private nextTickUs: number | null = null;
   private readonly tracker = new Tracker(trackerConfigFromEnv());
   private tracks: FusionTrack[] = [];
   private pendingTrackUpdates: FusionTrackUpdate[] = [];
   // Origine ENU figée à la première obs GPS.
   private origin: GeoOrigin | null = null;
-  // JSONL of every observation, for offline replay (scripts/fusion-replay).
+  // Enregistrement JSONL de chaque observation, pour le rejeu hors ligne
+  // (simulation/fusion-replay).
   private readonly recorder: WriteStream | null = this.openRecorder();
 
+  /**
+   * Point d'entrée : reçoit une détection d'un Pi, la range dans la file de
+   * sa caméra, supprime les détections trop vieilles, puis lance les ticks
+   * de fusion qui sont prêts.
+   */
   ingest(obs: FusionObservation, nowMs = Date.now()): void {
     if (!obs.cameraId) {
       return;
@@ -291,10 +133,21 @@ export class FusionService implements OnModuleDestroy {
     this.processTicks(obs.timestampUs);
   }
 
+  /**
+   * Photo de l'état du moteur : caméras actives, dernier résultat de
+   * fusion, croisements bruts et pistes en cours.
+   */
   snapshot(nowMs = Date.now()): FusionSnapshot {
     const cameras: FusionCameraState[] = [];
     for (const [cameraId, seen] of this.lastSeen) {
-      const state = this.cameraState(cameraId, seen, nowMs);
+      const detectionCount = this.deques.get(cameraId)?.length ?? 0;
+      const state = cameraState(
+        cameraId,
+        seen,
+        detectionCount,
+        nowMs,
+        this.staleAfterMs,
+      );
       if (!state) {
         continue;
       }
@@ -319,6 +172,7 @@ export class FusionService implements OnModuleDestroy {
     };
   }
 
+  /** Copie de la file d'observations d'une caméra. */
   history(cameraId: string): readonly FusionObservation[] {
     const deque = this.deques.get(cameraId);
     if (!deque) {
@@ -327,13 +181,14 @@ export class FusionService implements OnModuleDestroy {
     return deque.slice();
   }
 
-  // GPS track_update payloads from the last fuse tick. Drains the queue.
+  // Renvoie les messages track_update (GPS) du dernier tick et vide la file.
   pullTrackUpdates(): FusionTrackUpdate[] {
     const out = this.pendingTrackUpdates;
     this.pendingTrackUpdates = [];
     return out;
   }
 
+  /** Renvoie les réglages actuels. */
   tuning(): FusionTuning {
     const tracker = this.tracker.config();
     return {
@@ -357,8 +212,8 @@ export class FusionService implements OnModuleDestroy {
   }
 
   /**
-   * Changes settings between two fusion ticks. Live tracks are kept; the
-   * caller validates the values, anything that is not a number is ignored.
+   * Change les réglages entre deux ticks. Les pistes en cours sont gardées.
+   * L'appelant valide les valeurs ; ce qui n'est pas un nombre est ignoré.
    */
   applyTuning(values: Partial<FusionTuning>): void {
     const next = this.tuning();
@@ -390,6 +245,10 @@ export class FusionService implements OnModuleDestroy {
     this.recorder?.end();
   }
 
+  /**
+   * Ouvre le fichier d'enregistrement des observations si
+   * FUSION_RECORD_PATH est défini.
+   */
   private openRecorder(): WriteStream | null {
     const path = process.env.FUSION_RECORD_PATH;
     if (!path) return null;
@@ -400,8 +259,9 @@ export class FusionService implements OnModuleDestroy {
     return stream;
   }
 
-  // Rail debug view: every blob pair of the frames nearest to the newest
-  // observation, before any gate. Geometry samples, never tracks.
+  // Vue de debug du rail : toutes les paires de taches des images les plus
+  // proches de la dernière observation, avant tout contrôle. Ce sont des
+  // échantillons de géométrie, jamais des pistes.
   private updateRawIntersections(tRefUs: number): void {
     const rawAligned = timeAlignFrameGroups(
       this.deques,
@@ -410,7 +270,7 @@ export class FusionService implements OnModuleDestroy {
     );
     const rawTriObs: TriangulateObservation[] = [];
     for (const item of rawAligned) {
-      const mapped = this.toTriObs(item);
+      const mapped = toTriObs(item, this.origin);
       if (mapped) rawTriObs.push(mapped);
     }
     this.rawIntersections =
@@ -423,6 +283,11 @@ export class FusionService implements OnModuleDestroy {
         : [];
   }
 
+  /**
+   * Avance sur la grille de temps et fusionne chaque tick prêt. Un tick est
+   * prêt quand toutes les caméras actives l'ont dépassé, ou quand le délai
+   * de latence est écoulé.
+   */
   private processTicks(firstUs: number): void {
     if (this.deques.size === 0) return;
     const latencyUs = this.latencyMs * 1000;
@@ -432,8 +297,8 @@ export class FusionService implements OnModuleDestroy {
       watermark = Math.max(watermark, latestTimestampUs(deque));
     }
     let tickUs: number = this.nextTickUs ?? firstUs;
-    // After a long silence, resume near the newest data instead of
-    // replaying every empty tick of the gap.
+    // Après un long silence, on reprend près des données récentes au lieu
+    // de rejouer tous les ticks vides du trou.
     if (watermark - tickUs > this.historyWindowMs * 1000) {
       tickUs = watermark - latencyUs;
     }
@@ -448,9 +313,9 @@ export class FusionService implements OnModuleDestroy {
     this.nextTickUs = Math.max(tickUs, watermark - latencyUs);
   }
 
-  // Every camera that reported recently has a frame at or after the tick.
-  // A camera silent for longer than the latency (target out of its view)
-  // is not waited for.
+  // Vrai si chaque caméra récemment active a une image au tick ou après.
+  // Une caméra muette depuis plus longtemps que la latence (cible hors de
+  // son champ) n'est pas attendue.
   private allCovered(tickUs: number, latencyUs: number): boolean {
     for (const deque of this.deques.values()) {
       const latest = latestTimestampUs(deque);
@@ -460,7 +325,11 @@ export class FusionService implements OnModuleDestroy {
     return true;
   }
 
-  /** False when the tick must wait for more data (not consumed). */
+  /**
+   * Fait la fusion d'un tick : récupère les taches, met à jour les pistes
+   * connues, puis crée les nouvelles cibles. Renvoie false si le tick doit
+   * attendre d'autres données (il n'est alors pas consommé).
+   */
   private fuseTick(tickUs: number, late: boolean): boolean {
     const cands = this.candidatesAt(tickUs);
     if (cands.size < 2) {
@@ -470,14 +339,21 @@ export class FusionService implements OnModuleDestroy {
       return true;
     }
 
+    const ctx: AssociationContext = {
+      tracker: this.tracker,
+      triCfg: this.triCfg,
+      assocGatePx: this.assocGatePx,
+      maxTargets: this.maxTargets,
+    };
     const applied: TriangulationResult[] = [];
-    this.associateTracks(
+    associateTracks(
+      ctx,
       this.tracker.predictAll(tickUs),
       cands,
       tickUs,
       applied,
     );
-    this.spawnFromLeftovers(cands, tickUs, applied);
+    spawnFromLeftovers(ctx, cands, tickUs, applied);
 
     let best: TriangulationResult | null = null;
     for (const r of applied) {
@@ -494,6 +370,10 @@ export class FusionService implements OnModuleDestroy {
     return true;
   }
 
+  /**
+   * Récupère, pour chaque caméra, ses taches ramenées à l'instant du tick,
+   * triées de la plus sûre à la moins sûre et limitées en nombre.
+   */
   private candidatesAt(tickUs: number): Map<string, Candidate[]> {
     const aligned = alignCandidates(
       this.deques,
@@ -505,7 +385,7 @@ export class FusionService implements OnModuleDestroy {
     for (const [cameraId, blobs] of aligned) {
       const list: Candidate[] = [];
       for (const obs of blobs) {
-        const tri = this.toTriObs(obs);
+        const tri = toTriObs(obs, this.origin);
         if (tri)
           list.push({ cameraId, confidence: obs.confidence, tri, used: false });
       }
@@ -516,210 +396,7 @@ export class FusionService implements OnModuleDestroy {
     return out;
   }
 
-  /**
-   * Track-driven association: each predicted track is projected into every
-   * camera and takes the nearest free blob, one blob per track and camera.
-   */
-  private associateTracks(
-    predicted: PredictedTrack[],
-    cands: Map<string, Candidate[]>,
-    tickUs: number,
-    applied: TriangulationResult[],
-  ): void {
-    const live = predicted.filter((t) => !t.updated);
-    if (live.length === 0) return;
-    const assigned = live.map(() => [] as Candidate[]);
-    for (const list of cands.values()) {
-      const pairs: { track: number; cand: Candidate; d: number }[] = [];
-      live.forEach((track, ti) => {
-        for (const cand of list) {
-          const proj = projectWorldToPixel(
-            cand.tri.intrinsics,
-            cand.tri.pose,
-            track.position,
-          );
-          if (!proj) continue;
-          const d = Math.hypot(
-            proj[0] - cand.tri.pixelX,
-            proj[1] - cand.tri.pixelY,
-          );
-          const gate = Math.max(
-            this.assocGatePx,
-            3 * projectedSigmaPx(track, cand),
-          );
-          if (d <= gate) pairs.push({ track: ti, cand, d });
-        }
-      });
-      pairs.sort((a, b) => a.d - b.d);
-      const takenTracks = new Set<number>();
-      const takenCands = new Set<Candidate>();
-      for (const p of pairs) {
-        if (takenTracks.has(p.track) || takenCands.has(p.cand)) continue;
-        takenTracks.add(p.track);
-        takenCands.add(p.cand);
-        assigned[p.track].push(p.cand);
-      }
-    }
-
-    live.forEach((track, ti) => {
-      const mine = assigned[ti];
-      if (mine.length >= 2) {
-        const r = triangulate(
-          mine.map((c) => c.tri),
-          this.triCfg,
-        );
-        if (
-          r.ok &&
-          r.point &&
-          this.tracker.updateTrack(
-            track.id,
-            r.point,
-            tickUs,
-            r.confidence,
-            r.cameras,
-            r.covariance,
-          )
-        ) {
-          for (const i of r.inliers) mine[i].used = true;
-          applied.push(r);
-          return;
-        }
-      }
-      // A confirmed target seen by one camera only still explains that
-      // blob: keep it out of new-target pairing to avoid ghosts.
-      if (track.confirmed && mine.length === 1) mine[0].used = true;
-    });
-  }
-
-  /**
-   * New targets from blobs no track explained: every cross-camera pair is
-   * triangulated, extended with the best-agreeing blob of the other
-   * cameras, then picked greedily (most cameras, lowest residual).
-   */
-  private spawnFromLeftovers(
-    cands: Map<string, Candidate[]>,
-    tickUs: number,
-    applied: TriangulationResult[],
-  ): void {
-    const free = new Map<string, Candidate[]>();
-    for (const [cameraId, list] of cands) {
-      const left = list.filter((c) => !c.used);
-      if (left.length > 0) free.set(cameraId, left);
-    }
-    const cams = [...free.keys()];
-    if (cams.length < 2) return;
-
-    const proposals: { members: Candidate[]; result: TriangulationResult }[] =
-      [];
-    for (let a = 0; a < cams.length; a++) {
-      for (let b = a + 1; b < cams.length; b++) {
-        for (const ca of free.get(cams[a])!) {
-          for (const cb of free.get(cams[b])!) {
-            const proposal = this.propose([ca, cb], cams, free);
-            if (proposal) proposals.push(proposal);
-          }
-        }
-      }
-    }
-    proposals.sort((x, y) =>
-      x.members.length !== y.members.length
-        ? y.members.length - x.members.length
-        : x.result.residualPx - y.result.residualPx,
-    );
-
-    let spawned = 0;
-    for (const { members, result } of proposals) {
-      if (spawned >= this.maxTargets) break;
-      if (members.some((m) => m.used)) continue;
-      for (const m of members) m.used = true;
-      this.tracker.update(
-        result.point!,
-        tickUs,
-        result.confidence,
-        result.cameras,
-        result.covariance,
-      );
-      applied.push(result);
-      spawned += 1;
-    }
-  }
-
-  private propose(
-    pair: Candidate[],
-    cams: string[],
-    free: Map<string, Candidate[]>,
-  ): { members: Candidate[]; result: TriangulationResult } | null {
-    const r2 = triangulate(
-      pair.map((c) => c.tri),
-      this.triCfg,
-    );
-    if (!r2.ok || !r2.point) return null;
-    const members = pair.slice();
-    for (const cam of cams) {
-      if (cam === pair[0].cameraId || cam === pair[1].cameraId) continue;
-      let best: Candidate | null = null;
-      let bestErr = this.triCfg.maxResidualPx;
-      for (const c of free.get(cam)!) {
-        const e = reprojectionErrorPx(
-          c.tri.intrinsics,
-          c.tri.pose,
-          r2.point,
-          c.tri.pixelX,
-          c.tri.pixelY,
-        );
-        if (e !== null && e <= bestErr) {
-          bestErr = e;
-          best = c;
-        }
-      }
-      if (best) members.push(best);
-    }
-    if (members.length === 2) {
-      return this.contradicted(r2.point, pair, cams, free)
-        ? null
-        : { members, result: r2 };
-    }
-    const r = triangulate(
-      members.map((c) => c.tri),
-      this.triCfg,
-    );
-    if (!r.ok || !r.point) {
-      return this.contradicted(r2.point, pair, cams, free)
-        ? null
-        : { members: pair, result: r2 };
-    }
-    return { members: r.inliers.map((i) => members[i]), result: r };
-  }
-
-  /**
-   * Negative evidence against a two-camera ghost: another camera that is
-   * reporting blobs at this tick, and whose image contains the point, has
-   * none that agrees with it. Cameras that sent nothing prove nothing.
-   */
-  private contradicted(
-    point: Vec3,
-    pair: Candidate[],
-    cams: string[],
-    free: Map<string, Candidate[]>,
-  ): boolean {
-    for (const cam of cams) {
-      if (cam === pair[0].cameraId || cam === pair[1].cameraId) continue;
-      const any = free.get(cam)![0];
-      const intr = any.tri.intrinsics;
-      const proj = projectWorldToPixel(intr, any.tri.pose, point);
-      if (
-        proj &&
-        proj[0] >= 0 &&
-        proj[1] >= 0 &&
-        proj[0] < intr.imageWidth &&
-        proj[1] < intr.imageHeight
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
+  /** Fait avancer le suivi jusqu'au tick et prépare les messages GPS. */
   private advanceTracker(tickUs: number): void {
     this.tracks = this.tracker.tick(tickUs);
     this.pendingTrackUpdates = this.origin
@@ -727,6 +404,10 @@ export class FusionService implements OnModuleDestroy {
       : [];
   }
 
+  /**
+   * Fixe l'origine du repère local sur la première observation qui a une
+   * position GPS.
+   */
   private captureOrigin(obs: FusionObservation): void {
     if (this.origin) {
       return;
@@ -741,86 +422,7 @@ export class FusionService implements OnModuleDestroy {
     }
   }
 
-  private enuOf(obs: FusionObservation): Vec3 | null {
-    if (
-      isFiniteNumber(obs.camX) &&
-      isFiniteNumber(obs.camY) &&
-      isFiniteNumber(obs.camZ)
-    ) {
-      return { x: obs.camX, y: obs.camY, z: obs.camZ };
-    }
-    if (
-      !this.origin ||
-      !isFiniteNumber(obs.lat) ||
-      !isFiniteNumber(obs.lon) ||
-      !isFiniteNumber(obs.alt)
-    ) {
-      return null;
-    }
-    return gpsToEnu(
-      obs.lat,
-      obs.lon,
-      obs.alt,
-      this.origin.lat,
-      this.origin.lon,
-      this.origin.alt,
-    );
-  }
-
-  private toTriObs(obs: FusionObservation): TriangulateObservation | null {
-    // No heading = no pose: a ray assumed to face north is worse than none.
-    if (!isFiniteNumber(obs.headingDeg)) {
-      return null;
-    }
-    const enu = this.enuOf(obs);
-    if (!enu) {
-      return null;
-    }
-    const pose: CameraPose = {
-      x: enu.x,
-      y: enu.y,
-      z: enu.z,
-      headingDeg: obs.headingDeg,
-      elevationDeg: isFiniteNumber(obs.elevationDeg) ? obs.elevationDeg : 0,
-      rollDeg: isFiniteNumber(obs.rollDeg) ? obs.rollDeg : 0,
-    };
-    const width =
-      isFiniteNumber(obs.imageWidth) && obs.imageWidth > 0
-        ? obs.imageWidth
-        : 1280;
-    const height =
-      isFiniteNumber(obs.imageHeight) && obs.imageHeight > 0
-        ? obs.imageHeight
-        : 720;
-    const fov = isFiniteNumber(obs.fovDeg) && obs.fovDeg > 0 ? obs.fovDeg : 65;
-    const intrinsics: CameraIntrinsics = makeIntrinsics(width, height, fov);
-    if (isFiniteNumber(obs.fx) && obs.fx > 0) {
-      intrinsics.fx = obs.fx;
-    }
-    if (isFiniteNumber(obs.fy) && obs.fy > 0) {
-      intrinsics.fy = obs.fy;
-    }
-    if (isFiniteNumber(obs.cx) && obs.cx > 0) {
-      intrinsics.cx = obs.cx;
-    }
-    if (isFiniteNumber(obs.cy) && obs.cy > 0) {
-      intrinsics.cy = obs.cy;
-    }
-    if (isFiniteNumber(obs.k1)) intrinsics.k1 = obs.k1;
-    if (isFiniteNumber(obs.k2)) intrinsics.k2 = obs.k2;
-    if (isFiniteNumber(obs.p1)) intrinsics.p1 = obs.p1;
-    if (isFiniteNumber(obs.p2)) intrinsics.p2 = obs.p2;
-    if (isFiniteNumber(obs.k3)) intrinsics.k3 = obs.k3;
-    return {
-      cameraId: obs.cameraId,
-      pixelX: obs.x,
-      pixelY: obs.y,
-      quality: obs.confidence,
-      pose,
-      intrinsics,
-    };
-  }
-
+  /** Retient la dernière observation de chaque caméra, pour son état. */
   private remember(obs: FusionObservation): void {
     const prev = this.lastSeen.get(obs.cameraId);
     if (prev && obs.receivedAtMs < prev.receivedAtMs) {
@@ -836,56 +438,26 @@ export class FusionService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Supprime les observations trop vieilles d'une caméra et limite la taille
+   * de sa file. Une file vide est retirée.
+   */
   private prune(cameraId: string, nowMs: number): void {
     const deque = this.deques.get(cameraId);
     if (!deque || deque.length === 0) {
       this.deques.delete(cameraId);
       return;
     }
-
-    // Relatif au plus récent de CETTE caméra (unix-us ou compteur boot).
-    const keepUs = this.historyWindowMs * 1000;
-    const minUs = latestTimestampUs(deque) - keepUs;
-    const minRecv = nowMs - this.historyWindowMs;
-    const kept: FusionObservation[] = [];
-    for (const item of deque) {
-      if (item.timestampUs >= minUs && item.receivedAtMs >= minRecv) {
-        kept.push(item);
-      }
-    }
-    if (kept.length > this.maxPerCamera) {
-      kept.splice(0, kept.length - this.maxPerCamera);
-    }
+    const kept = pruneHistory(
+      deque,
+      nowMs,
+      this.historyWindowMs,
+      this.maxPerCamera,
+    );
     if (kept.length === 0) {
       this.deques.delete(cameraId);
     } else {
       this.deques.set(cameraId, kept);
     }
-  }
-
-  private cameraState(
-    cameraId: string,
-    seen: CameraLastSeen,
-    nowMs: number,
-  ): FusionCameraState | null {
-    const deque = this.deques.get(cameraId);
-    const detectionCount = deque ? deque.length : 0;
-    const ageMs = nowMs - seen.receivedAtMs;
-    const active = ageMs <= this.staleAfterMs;
-    if (detectionCount === 0 && !active) {
-      return null;
-    }
-    return {
-      cameraId,
-      detectionCount,
-      lastTimestampUs: seen.timestampUs,
-      lastReceivedAtMs: seen.receivedAtMs,
-      ageMs,
-      active,
-      hasPose: seen.hasPose,
-      lastX: seen.x,
-      lastY: seen.y,
-      lastConfidence: seen.confidence,
-    };
   }
 }

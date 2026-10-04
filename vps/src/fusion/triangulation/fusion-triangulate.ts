@@ -1,4 +1,9 @@
-import type { CameraIntrinsics, CameraPose, Ray, Vec3 } from '../geometry/fusion-geo';
+import type {
+  CameraIntrinsics,
+  CameraPose,
+  Ray,
+  Vec3,
+} from '../geometry/fusion-geo';
 import {
   invert3,
   leastSquaresIntersection,
@@ -15,32 +20,35 @@ import {
 } from '../geometry/fusion-geo';
 
 export interface TriangulationConfig {
-  minParallaxDeg: number; // default 2
-  // Per-ray reprojection gate in pixels: scale-free, unlike a metre gate.
-  // 120 px keeps the uncalibrated rail bench (~110 px) and matches the old
-  // 3 m gate around 30 m; tighten to ~25 px once poses are calibrated.
-  maxResidualPx: number; // default 120
-  // Optional extra gate on the perpendicular ray distance; 0 disables it.
-  maxResidualM: number; // default 0
-  maxRangeM: number; // default 60
+  minParallaxDeg: number; // 2 par défaut
+  // Seuil d'erreur de reprojection par rayon, en pixels : il vaut la même
+  // chose à toute distance, contrairement à un seuil en mètres. 120 px
+  // accepte le banc non calibré (~110 px) et correspond à l'ancien seuil de
+  // 3 m vers 30 m ; à resserrer vers 25 px une fois les poses calibrées.
+  maxResidualPx: number; // 120 par défaut
+  // Seuil facultatif sur la distance au rayon, en mètres ; 0 le désactive.
+  maxResidualM: number; // 0 par défaut
+  maxRangeM: number; // 60 par défaut
   /**
-   * Closest a solution may sit to ANY camera. Cheirality only proves the point
-   * is in front of the lens; a poorly conditioned set of bearings can collapse
-   * onto a point centimetres away and pass every other gate, which shows up on
-   * the map as a target sitting on the camera. Nothing this system is built to
-   * see can be that close, so treat it as a failed intersection.
+   * Distance minimale entre la solution et N'IMPORTE QUELLE caméra. Vérifier
+   * que le point est devant l'objectif ne suffit pas : des directions mal
+   * conditionnées peuvent se rejoindre à quelques centimètres d'une caméra
+   * et passer tous les autres contrôles. Sur la carte, la cible apparaît
+   * alors posée sur la caméra. Rien de ce que le système doit voir ne peut
+   * être aussi près : on traite ce cas comme un croisement raté.
    */
-  minRangeM: number; // default 0.5
-  // Centroid noise and pose (IMU / calibration) noise feeding the covariance.
-  pixelSigma: number; // default 1.5
-  poseSigmaDeg: number; // default 0.5
+  minRangeM: number; // 0,5 par défaut
+  // Bruit sur le centre de la tache et bruit sur la pose (IMU, calibration),
+  // utilisés pour calculer la covariance.
+  pixelSigma: number; // 1,5 par défaut
+  poseSigmaDeg: number; // 0,5 par défaut
 }
 
 export interface TriangulateObservation {
   cameraId: string;
   pixelX: number;
   pixelY: number;
-  quality: number; // [0,1], used as weight max(0.05, quality)
+  quality: number; // entre 0 et 1, sert de poids : max(0.05, quality)
   pose: CameraPose;
   intrinsics: CameraIntrinsics;
 }
@@ -53,9 +61,10 @@ export interface TriangulationResult {
   parallaxDeg: number;
   confidence: number;
   cameras: string[];
-  // Indices (into the input array) of the rays kept in the solution.
+  // Positions, dans le tableau d'entrée, des rayons gardés dans la solution.
   inliers: number[];
-  // 3x3 row-major position covariance in m², null when rejected.
+  // Covariance 3x3 de la position, en m², rangée ligne par ligne ; null si
+  // le point est refusé.
   covariance: number[] | null;
   rejectReason: string;
 }
@@ -97,6 +106,7 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+/** Fabrique un résultat de refus avec son motif. */
 function rejected(reason: string): TriangulationResult {
   return {
     ok: false,
@@ -112,6 +122,7 @@ function rejected(reason: string): TriangulationResult {
   };
 }
 
+/** Fabrique un résultat intermédiaire vide, marqué comme raté. */
 function failedSolve(): Solve {
   return {
     ok: false,
@@ -125,7 +136,10 @@ function failedSolve(): Solve {
   };
 }
 
-/** Effective per-camera pixel sigma: centroid noise plus pose noise. */
+/**
+ * Bruit attendu en pixels pour une caméra : bruit sur le centre de la tache
+ * plus bruit sur la pose, converti en pixels.
+ */
 function pixelSigmaOf(
   o: TriangulateObservation,
   c: TriangulationConfig,
@@ -137,10 +151,14 @@ function pixelSigmaOf(
 
 interface Linearized {
   r: [number, number];
-  J: number[]; // 2x3 row-major
+  J: number[]; // 2x3, rangée ligne par ligne
 }
 
-/** Residual (observed - projected) and its Jacobian w.r.t. the point. */
+/**
+ * Mesure l'écart en pixels (observé moins calculé) pour un point, et
+ * comment cet écart change quand on déplace le point d'un petit pas en x,
+ * y et z (la jacobienne).
+ */
 function linearize(o: TriangulateObservation, p: Vec3): Linearized | null {
   const base = projectWorldToPixel(o.intrinsics, o.pose, p);
   if (!base) return null;
@@ -162,6 +180,10 @@ function linearize(o: TriangulateObservation, p: Vec3): Linearized | null {
   return { r: [o.pixelX - base[0], o.pixelY - base[1]], J };
 }
 
+/**
+ * Ajoute la contribution d'une caméra au système de 3 équations que
+ * Gauss-Newton résout à chaque itération.
+ */
 function accumulate(
   A: number[],
   b: number[],
@@ -177,6 +199,10 @@ function accumulate(
   }
 }
 
+/**
+ * Somme pondérée des erreurs de reprojection au carré pour un point.
+ * C'est le score que refineReprojection cherche à faire baisser.
+ */
 function weightedCost(
   obs: TriangulateObservation[],
   idx: number[],
@@ -196,9 +222,10 @@ function weightedCost(
 }
 
 /**
- * Gauss-Newton on the (distorted) reprojection error, 3 unknowns. The ray
- * midpoint weighs every camera in metres, so a far camera counted as much as
- * a near one; pixels are what the sensor actually measures.
+ * Affine le point pour réduire l'erreur de reprojection en pixels (méthode
+ * de Gauss-Newton, 3 inconnues). Le premier point compte les écarts en
+ * mètres, donc une caméra lointaine pèse autant qu'une proche ; or le
+ * capteur mesure des pixels. Ne renvoie jamais un point pire que p0.
  */
 function refineReprojection(
   obs: TriangulateObservation[],
@@ -235,9 +262,9 @@ function refineReprojection(
 }
 
 /**
- * Linearised position covariance (m²): inverse Fisher information of the
- * pixel measurements, inflated by the reduced chi² when rays disagree more
- * than the noise model predicts.
+ * Calcule la zone d'incertitude autour du point (covariance, en m²).
+ * Elle est déduite du bruit attendu en pixels, puis agrandie quand les
+ * rayons sont moins d'accord entre eux que ce bruit ne le prévoit.
  */
 function positionCovariance(
   obs: TriangulateObservation[],
@@ -262,8 +289,8 @@ function positionCovariance(
   return cov.map((v) => v * scale);
 }
 
-// Cheirality: the point must be in front of every camera, and neither
-// beyond the range cap nor closer than the range floor.
+// Vérifie que le point est devant chaque caméra, pas plus loin que la
+// portée maximale et pas plus près que la portée minimale.
 function inFrontAndInRange(
   rays: Ray[],
   p: Vec3,
@@ -279,6 +306,11 @@ function inFrontAndInRange(
   return true;
 }
 
+/**
+ * Calcule un point pour un groupe de caméras : premier point, affinage,
+ * contrôles de bon sens, puis mesure des écarts, de la parallaxe et de
+ * l'incertitude. ok vaut false si le point est impossible.
+ */
 function solveSubset(
   obs: TriangulateObservation[],
   idx: number[],
@@ -327,9 +359,9 @@ function solveSubset(
 }
 
 /**
- * Unfiltered pairwise ray intersections for the rail debug view. These are
- * deliberately produced before parallax/residual target gates: they are
- * geometry samples, not tracks or confirmed objects.
+ * Croisements bruts de rayons, deux par deux, pour la vue de debug du rail.
+ * Ils sont calculés volontairement avant les contrôles de parallaxe et de
+ * résidu : ce sont des échantillons de géométrie, pas des cibles.
  */
 export function pairIntersections(
   obs: TriangulateObservation[],
@@ -400,6 +432,11 @@ export function pairIntersections(
   return intersections;
 }
 
+/**
+ * Point d'entrée du module. Cherche le meilleur groupe de caméras, écarte
+ * celle qui se trompe s'il y en a une, et renvoie le point avec une note de
+ * confiance. Un refus renvoie ok: false avec un motif, sans exception.
+ */
 export function triangulate(
   obs: TriangulateObservation[],
   cfg?: Partial<TriangulationConfig>,
@@ -416,16 +453,18 @@ export function triangulate(
   let best = failedSolve();
   let bestScore = -Infinity;
 
+  // Évalue un groupe de caméras et le garde s'il bat le meilleur score.
   const consider = (idx: number[]): void => {
     if (idx.length < 2) return;
     const s = solveSubset(obs, idx, c);
     if (!s.ok) return;
     if (s.parallax < c.minParallaxDeg) return;
-    // Every contributing ray must agree with the solution, not just on
-    // average -- this is what forces a lone bad blob out of the inlier set.
+    // Chaque rayon doit être d'accord avec la solution, pas seulement en
+    // moyenne : c'est ce qui écarte une tache fausse isolée.
     if (s.maxResidualPx > c.maxResidualPx) return;
     if (c.maxResidualM > 0 && s.maxResidual > c.maxResidualM) return;
-    // Prefer more inliers, then lower reprojection error.
+    // On préfère plus de caméras, puis une erreur de reprojection plus
+    // faible.
     const score = idx.length * 1000 - s.residualPx;
     if (score > bestScore) {
       bestScore = score;
@@ -436,8 +475,8 @@ export function triangulate(
 
   consider(all);
 
-  // RANSAC-lite: for 3+ cameras, also try every leave-one-out subset so a
-  // single bad blob cannot drag the solution.
+  // RANSAC simplifié : à partir de 3 caméras, on essaie aussi chaque groupe
+  // privé d'une caméra, pour qu'une seule tache fausse ne tire pas le point.
   if (obs.length >= 3) {
     for (let drop = 0; drop < obs.length; drop++) {
       const sub: number[] = [];
@@ -455,6 +494,8 @@ export function triangulate(
   const cameras: string[] = [];
   for (const i of bestSet) cameras.push(obs[i].cameraId);
 
+  // Note de confiance : nombre de caméras, erreur en pixels, parallaxe et
+  // qualité des détections. Les coefficients sont réglés à la main.
   const nScore = Math.min(1, 0.3 + 0.2 * bestSet.length);
   const resScore = clamp(
     1 - best.residualPx / Math.max(1, c.maxResidualPx),

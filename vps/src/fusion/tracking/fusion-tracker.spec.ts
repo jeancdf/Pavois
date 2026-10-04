@@ -28,7 +28,7 @@ describe('Tracker', () => {
     expect(emits).toBeGreaterThanOrEqual(1);
     const tracks = tr.tick(t);
     expect(tracks).toHaveLength(1);
-    // Kalman speed still < 5 m/s, so the scorecard stays other.
+    // Vitesse du Kalman encore sous 5 m/s : le classement reste « other ».
     expect(tracks[0].classification).toBe('other');
   });
 
@@ -136,7 +136,7 @@ describe('Tracker', () => {
     const id = tr.tick(t)[0].objectId;
     t += 40000;
     p.x += 0.3;
-    // 10 m off: the old recovery gate re-initialised the track here.
+    // 10 m d'écart : l'ancien seuil de rattrapage réinitialisait la piste.
     tr.update({ x: p.x + 10, y: p.y, z: p.z }, t, 0.8, ['c0', 'c1']);
     const after = tr.tick(t);
     expect(after).toHaveLength(1);
@@ -154,7 +154,7 @@ describe('Tracker', () => {
       tr.update(p, t, 0.8, ['c0', 'c1']);
     }
     const id = tr.tick(t)[0].objectId;
-    // Silent 300 ms, then seen 8 m away (outside the statistical gate).
+    // Muette 300 ms, puis vue à 8 m (hors du seuil statistique).
     t += 300000;
     p.x += 8;
     for (let i = 0; i < 4; i++) {
@@ -178,7 +178,7 @@ describe('Tracker', () => {
     }
     const id = tr.tick(t)[0].objectId;
     t += 40000;
-    // 3 m off with a 10 cm measurement sigma: a separate object.
+    // 3 m d'écart avec une mesure précise à 10 cm : c'est un autre objet.
     tr.update({ x: 3, y: 20, z: 5 }, t, 0.8, ['c0', 'c1'], tight);
     const [track] = tr.tick(t);
     expect(track.objectId).toBe(id);

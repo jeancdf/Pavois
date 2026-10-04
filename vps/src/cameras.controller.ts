@@ -10,7 +10,7 @@ import {
 import { AuthTokenGuard } from './auth/access-control';
 import { CamerasService, isCameraPosition } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 
 @Controller('cameras')
 @UseGuards(AuthTokenGuard)

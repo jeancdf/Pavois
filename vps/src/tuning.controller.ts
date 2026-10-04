@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthTokenGuard } from './auth/access-control';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 import { TuningService } from './tuning.service';
 import type { TuningState } from './tuning.service';
 import { UdpService } from './udp.service';

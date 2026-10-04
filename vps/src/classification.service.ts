@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import type { FusionLastFuse } from './fusion.types';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 import type {
   CaptureTrigger,
   ClassificationCaptureMeta,

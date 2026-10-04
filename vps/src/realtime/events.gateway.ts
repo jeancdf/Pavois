@@ -11,9 +11,9 @@ import {
   isIpAllowed,
   verifyOperatorToken,
   OperatorIdentity,
-} from './auth/access-control';
-import { CamerasService } from './cameras.service';
-import { AlertsService } from './alerts.service';
+} from '../auth/access-control';
+import { CamerasService } from '../cameras.service';
+import { AlertsService } from '../alerts.service';
 import { Inject, forwardRef } from '@nestjs/common';
 
 const ipConnections = new Map<string, number>();

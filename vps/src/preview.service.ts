@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 
 // Au plus un aperçu par caméra toutes les N ms. 150 ménage le lien montant en
 // production ; un banc local peut mettre 0 pour suivre la cadence caméra.

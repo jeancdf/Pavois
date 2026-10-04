@@ -4,7 +4,7 @@ import {
   UdpService,
   toFusionObservation,
 } from './udp.service';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 import { CamerasService } from './cameras.service';
 import { FusionService } from './fusion.service';
 import { TracksService } from './tracks.service';

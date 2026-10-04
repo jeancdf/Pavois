@@ -1,4 +1,4 @@
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 import { PreviewService } from './preview.service';
 
 describe('PreviewService', () => {

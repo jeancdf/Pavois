@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
 import * as crypto from 'crypto';
-import { EventsGateway } from './events.gateway';
+import { EventsGateway } from './realtime/events.gateway';
 import { CamerasService } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
 import { FusionService } from './fusion.service';

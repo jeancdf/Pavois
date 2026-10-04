@@ -3,11 +3,9 @@ name: DevSecOps — SAST & DAST Security Analysis
 on:
   push:
     branches:
-      - securite
       - main
   pull_request:
     branches:
-      - securite
       - main
   schedule:
     # Lancement hebdomadaire le lundi à 4h00 du matin

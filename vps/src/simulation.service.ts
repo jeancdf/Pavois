@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
-import { buildSignedUdpPacket } from './udp.service';
+import { buildSignedUdpPacket } from './udp/udp.service';
 
 @Injectable()
 export class SimulationService implements OnModuleInit, OnModuleDestroy {

@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { applyBodyParsers } from '../src/common/http-body';
-import { UdpService } from './../src/udp.service';
+import { UdpService } from '../src/udp/udp.service';
 
 const TEST_AUTH_TOKEN = 'e2e-test-token';
 

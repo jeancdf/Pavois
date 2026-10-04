@@ -4,16 +4,16 @@ import {
   UdpService,
   toFusionObservation,
 } from './udp.service';
-import { EventsGateway } from './realtime/events.gateway';
-import { CamerasService } from './cameras.service';
-import { FusionService } from './fusion.service';
-import { TracksService } from './tracks.service';
-import { AlertsService } from './alerts.service';
+import { EventsGateway } from '../realtime/events.gateway';
+import { CamerasService } from '../cameras.service';
+import { FusionService } from '../fusion.service';
+import { TracksService } from '../tracks.service';
+import { AlertsService } from '../alerts.service';
 import * as crypto from 'crypto';
-import { ClassificationService } from './classification.service';
-import { TuningService } from './tuning.service';
+import { ClassificationService } from '../classification.service';
+import { TuningService } from '../tuning.service';
 import { routeUdpLine } from './udp-route';
-import { CameraHealthService } from './camera-health.service';
+import { CameraHealthService } from '../camera-health.service';
 
 const classificationMock = () => ({
   considerFusion: jest.fn().mockReturnValue(null),

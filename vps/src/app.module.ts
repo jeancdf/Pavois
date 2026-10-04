@@ -3,7 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UdpService } from './udp.service';
+import { UdpService } from './udp/udp.service';
 import { EventsGateway } from './realtime/events.gateway';
 import { CamerasController } from './cameras.controller';
 import { CamerasService } from './cameras.service';

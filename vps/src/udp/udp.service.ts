@@ -1,26 +1,26 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
 import * as crypto from 'crypto';
-import { EventsGateway } from './realtime/events.gateway';
-import { CamerasService } from './cameras.service';
-import type { CameraConfig } from './cameras.service';
-import { FusionService } from './fusion.service';
+import { EventsGateway } from '../realtime/events.gateway';
+import { CamerasService } from '../cameras.service';
+import type { CameraConfig } from '../cameras.service';
+import { FusionService } from '../fusion.service';
 import type {
   FusionObservation,
   FusionTrackUpdate,
   FuseUpdate,
-} from './fusion.types';
+} from '../fusion.types';
 import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
 import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';
 import { udpDebug } from './udp-log';
-import { TracksService } from './tracks.service';
-import { AlertsService } from './alerts.service';
-import type { RailLocalPose } from './rail-bench';
-import { ClassificationService } from './classification.service';
-import { TuningService } from './tuning.service';
+import { TracksService } from '../tracks.service';
+import { AlertsService } from '../alerts.service';
+import type { RailLocalPose } from '../rail-bench';
+import { ClassificationService } from '../classification.service';
+import { TuningService } from '../tuning.service';
 
-import { CameraHealthService } from './camera-health.service';
+import { CameraHealthService } from '../camera-health.service';
 
 interface CameraEndpoint {
   address: string;

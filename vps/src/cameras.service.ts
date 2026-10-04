@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { headingDeltaDeg, wrapHeadingDeg } from './udp-attitude';
+import { headingDeltaDeg, wrapHeadingDeg } from './udp/udp-attitude';
 import {
   buildRailBenchState,
   localPoseOf,

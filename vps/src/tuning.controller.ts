@@ -15,7 +15,7 @@ import { AuthTokenGuard } from './auth/access-control';
 import { EventsGateway } from './realtime/events.gateway';
 import { TuningService } from './tuning.service';
 import type { TuningState } from './tuning.service';
-import { UdpService } from './udp.service';
+import { UdpService } from './udp/udp.service';
 
 // Un curseur que l'on fait glisser envoie plusieurs requêtes par seconde : la
 // limite générale (100 par minute) couperait le réglage en plein geste.

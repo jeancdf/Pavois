@@ -9,7 +9,7 @@ import {
   settingsVersion,
 } from './tuning.params';
 import { TuningService } from './tuning.service';
-import type { DetectorReport } from './udp-config';
+import type { DetectorReport } from './udp/udp-config';
 
 const ENV_KEYS = [
   'TUNING_FILE',

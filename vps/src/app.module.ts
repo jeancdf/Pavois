@@ -26,9 +26,9 @@ import { CameraHealthService } from './cameras/camera-health.service';
 import { DiscordNotificationChannel } from './discord-notification.channel';
 import { AlertsCleanUpService } from './alerts/alerts-clean-up.service';
 import { SimulationService } from './simulation.service';
-import { ALERT_STORE, CAMERA_LOG_STORE } from './stores/alert-store.interface';
+import { ALERT_STORE, CAMERA_LOG_STORE } from './alerts/alert-store.interface';
 import { TRACK_STORE } from './tracks/track-store.interface';
-import { JsonlAlertStore } from './stores/jsonl-alert.store';
+import { JsonlAlertStore } from './alerts/jsonl-alert.store';
 import { JsonlTrackStore } from './tracks/jsonl-track.store';
 
 @Module({

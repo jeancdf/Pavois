@@ -18,7 +18,7 @@ import {
   AlertStore,
   CAMERA_LOG_STORE,
   CameraStateLogStore,
-} from '../stores/alert-store.interface';
+} from './alert-store.interface';
 import { EventsGateway } from '../realtime/events.gateway';
 import { DiscordNotificationChannel } from '../discord-notification.channel';
 import {

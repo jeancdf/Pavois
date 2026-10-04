@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-import { Alert, AlertStatus, CameraStateLog } from '../alert-types';
+import { Alert, AlertStatus, CameraStateLog } from '../alerts/alert-types';
 import {
   AlertStore,
   CameraStateLogStore,

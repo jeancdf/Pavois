@@ -1,4 +1,4 @@
-import { Alert, AlertStatus, CameraStateLog } from '../alert-types';
+import { Alert, AlertStatus, CameraStateLog } from '../alerts/alert-types';
 
 export interface CreateAlertData {
   type: Alert['type'];

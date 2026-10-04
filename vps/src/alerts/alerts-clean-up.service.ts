@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { ALERT_STORE, AlertStore } from './stores/alert-store.interface';
+import { ALERT_STORE, AlertStore } from '../stores/alert-store.interface';
 
 @Injectable()
 export class AlertsCleanUpService implements OnModuleInit, OnModuleDestroy {

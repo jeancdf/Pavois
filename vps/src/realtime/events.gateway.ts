@@ -13,7 +13,7 @@ import {
   OperatorIdentity,
 } from '../auth/access-control';
 import { CamerasService } from '../cameras/cameras.service';
-import { AlertsService } from '../alerts.service';
+import { AlertsService } from '../alerts/alerts.service';
 import { Inject, forwardRef } from '@nestjs/common';
 
 const ipConnections = new Map<string, number>();

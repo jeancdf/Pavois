@@ -1,8 +1,8 @@
 import { AlertsService } from './alerts.service';
-import { EventsGateway } from './realtime/events.gateway';
-import { DiscordNotificationChannel } from './discord-notification.channel';
-import { CameraHealthService } from './cameras/camera-health.service';
-import { JsonlAlertStore } from './stores/jsonl-alert.store';
+import { EventsGateway } from '../realtime/events.gateway';
+import { DiscordNotificationChannel } from '../discord-notification.channel';
+import { CameraHealthService } from '../cameras/camera-health.service';
+import { JsonlAlertStore } from '../stores/jsonl-alert.store';
 import { AlertCategory, AlertStatus, AlertType, CameraState } from './alert-types';
 import * as fs from 'fs';
 import * as path from 'path';

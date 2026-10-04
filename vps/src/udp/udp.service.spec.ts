@@ -8,7 +8,7 @@ import { EventsGateway } from '../realtime/events.gateway';
 import { CamerasService } from '../cameras/cameras.service';
 import { FusionService } from '../fusion/fusion.service';
 import { TracksService } from '../tracks/tracks.service';
-import { AlertsService } from '../alerts.service';
+import { AlertsService } from '../alerts/alerts.service';
 import * as crypto from 'crypto';
 import { ClassificationService } from '../classification.service';
 import { TuningService } from '../tuning.service';

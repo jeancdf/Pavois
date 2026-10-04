@@ -18,15 +18,15 @@ import {
   AlertStore,
   CAMERA_LOG_STORE,
   CameraStateLogStore,
-} from './stores/alert-store.interface';
-import { EventsGateway } from './realtime/events.gateway';
-import { DiscordNotificationChannel } from './discord-notification.channel';
+} from '../stores/alert-store.interface';
+import { EventsGateway } from '../realtime/events.gateway';
+import { DiscordNotificationChannel } from '../discord-notification.channel';
 import {
   CameraHealthService,
   CameraHealthStatus,
   SystemHealthUpdate,
-} from './cameras/camera-health.service';
-import { formatDuration } from './discord-formatter';
+} from '../cameras/camera-health.service';
+import { formatDuration } from '../discord-formatter';
 
 export interface TrackAlertInput {
   trackId: string;

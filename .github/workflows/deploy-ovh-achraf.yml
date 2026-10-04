@@ -97,6 +97,14 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_ENABLED: ${{ vars.DISCORD_ENABLED }}
+          DISCORD_CATEGORIES: ${{ vars.DISCORD_CATEGORIES }}
+          DISCORD_MAX_ALERTS_PER_MIN: ${{ vars.DISCORD_MAX_ALERTS_PER_MIN }}
+          DISCORD_MENTION_ROLE_ID: ${{ vars.DISCORD_MENTION_ROLE_ID }}
+          DISCORD_INCLUDE_POSITION: ${{ vars.DISCORD_INCLUDE_POSITION }}
+          DISCORD_ENV_LABEL: ${{ vars.DISCORD_ENV_LABEL }}
+          OPERATOR_URL: ${{ vars.OPERATOR_URL }}
         run: |
           set -euo pipefail
           # Secrets pasted from Windows often carry CR / trailing spaces.
@@ -124,6 +132,14 @@ jobs:
               BRANCH="${BRANCH}" \
               GH_TOKEN="${GH_TOKEN}" \
               REPO="${REPO}" \
+              DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}" \
+              DISCORD_ENABLED="${DISCORD_ENABLED:-}" \
+              DISCORD_CATEGORIES="${DISCORD_CATEGORIES:-}" \
+              DISCORD_MAX_ALERTS_PER_MIN="${DISCORD_MAX_ALERTS_PER_MIN:-}" \
+              DISCORD_MENTION_ROLE_ID="${DISCORD_MENTION_ROLE_ID:-}" \
+              DISCORD_INCLUDE_POSITION="${DISCORD_INCLUDE_POSITION:-}" \
+              DISCORD_ENV_LABEL="${DISCORD_ENV_LABEL:-}" \
+              OPERATOR_URL="${OPERATOR_URL:-}" \
               bash -s <<'REMOTE'
           set -euo pipefail
           echo "--> Déploiement de la branche '$BRANCH' sur le VPS OVH..."
@@ -144,8 +160,72 @@ jobs:
           # Untracked files such as .env are left untouched.
           git checkout -f -B "$BRANCH" "origin/$BRANCH"
 
+          # Écriture sécurisée des variables Discord dans vps/.env
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          vps_dir = Path("vps")
+          vps_dir.mkdir(exist_ok=True)
+          env_path = vps_dir / ".env"
+          example_path = vps_dir / ".env.example"
+
+          if not env_path.exists():
+              if example_path.exists():
+                  env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
+              else:
+                  env_path.touch()
+
+          discord_vars = {
+              "DISCORD_WEBHOOK_URL": os.environ.get("DISCORD_WEBHOOK_URL", ""),
+              "DISCORD_ENABLED": os.environ.get("DISCORD_ENABLED", ""),
+              "DISCORD_CATEGORIES": os.environ.get("DISCORD_CATEGORIES", ""),
+              "DISCORD_MAX_ALERTS_PER_MIN": os.environ.get("DISCORD_MAX_ALERTS_PER_MIN", ""),
+              "DISCORD_MENTION_ROLE_ID": os.environ.get("DISCORD_MENTION_ROLE_ID", ""),
+              "DISCORD_INCLUDE_POSITION": os.environ.get("DISCORD_INCLUDE_POSITION", ""),
+              "DISCORD_ENV_LABEL": os.environ.get("DISCORD_ENV_LABEL", ""),
+              "OPERATOR_URL": os.environ.get("OPERATOR_URL", ""),
+          }
+
+          updates = {k: v for k, v in discord_vars.items() if v}
+
+          lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+          updated_lines = []
+          seen_keys = set()
+
+          for line in lines:
+              stripped = line.strip()
+              if stripped.startswith("#") or "=" not in stripped:
+                  updated_lines.append(line)
+                  continue
+              key = stripped.split("=", 1)[0].strip()
+              if key in updates:
+                  updated_lines.append(f'{key}="{updates[key]}"')
+                  seen_keys.add(key)
+              elif key in discord_vars:
+                  updated_lines.append(line)
+                  seen_keys.add(key)
+              else:
+                  updated_lines.append(line)
+
+          for key, val in updates.items():
+              if key not in seen_keys:
+                  updated_lines.append(f'{key}="{val}"')
+
+          env_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+          env_path.chmod(0o600)
+          PY
+
           chmod +x scripts/deploy_staging.sh scripts/deploy_vps.sh \
             2>/dev/null || true
 
           ./scripts/deploy_staging.sh
+
+          echo "--> Vérification des logs du conteneur VPS..."
+          DOCKER_CMD="docker"
+          if ! docker info >/dev/null 2>&1; then
+            DOCKER_CMD="sudo docker"
+          fi
+          $DOCKER_CMD compose -f docker-compose.yml logs --tail=50 vps-server | grep -E "Discord :" || true
           REMOTE
+

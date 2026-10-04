@@ -157,7 +157,7 @@ describeWithDetector('detector table in pavois++', () => {
     const source = readFileSync(detectorSource, 'utf8');
     const rows = [
       ...source.matchAll(
-        /\{"([a-z_]+)",\s*([\d.]+),\s*([\d.]+),\s*(true|false),/g,
+        /\{"([a-z_]+)",\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(true|false),/g,
       ),
     ].map(([, key, min, max, integer]) => ({
       key,

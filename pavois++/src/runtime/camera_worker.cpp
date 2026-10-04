@@ -28,8 +28,14 @@ constexpr auto kCameraReleaseWait = std::chrono::milliseconds(500);
 
 std::string describe_capture(const CameraConfig& c) {
     std::ostringstream out;
-    out << c.width << 'x' << c.height << ", shutter " << c.shutter_us
-        << " us, gain " << c.analogue_gain;
+    out << c.width << 'x' << c.height;
+    if (c.auto_exposure) {
+        // The shutter and gain in the config are not used: the camera picks them.
+        out << ", auto exposure";
+        if (c.ev != 0.0) out << ' ' << std::showpos << c.ev << std::noshowpos << " EV";
+    } else {
+        out << ", shutter " << c.shutter_us << " us, gain " << c.analogue_gain;
+    }
     if (!c.sensor_mode.empty()) out << ", mode " << c.sensor_mode;
     return out.str();
 }

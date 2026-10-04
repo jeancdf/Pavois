@@ -1,52 +1,16 @@
 services:
-  postgres-staging:
-    image: postgres:16-alpine
-    container_name: pavois-postgres-staging
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pavois}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-pavois}
-    volumes:
-      - pavois-postgres-staging-data:/var/lib/postgresql/data
-    # Pas de "ports:" : accessible uniquement depuis staging-net
-    networks:
-      - staging-net
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-      - FOWNER
-    mem_limit: 512m
-    cpus: 1.0
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pavois}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   vps-server-staging:
     build:
       context: ./vps
       dockerfile: Dockerfile
     container_name: pavois-vps-staging
     restart: unless-stopped
-    depends_on:
-      postgres-staging:
-        condition: service_healthy
     ports:
       - "41235:41234/udp"
       - "41234:41234/udp"
       - "3003:3002/tcp"
     env_file:
       - ./vps/.env.staging
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pavois}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres-staging:5432/${POSTGRES_DB:-pavois}?schema=public
     volumes:
       # Positions des caméras (CAMERAS_FILE), seul dossier inscriptible avec read_only
       - pavois-staging-data:/app/data
@@ -108,4 +72,3 @@ networks:
 
 volumes:
   pavois-staging-data:
-  pavois-postgres-staging-data:

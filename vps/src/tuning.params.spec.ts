@@ -99,6 +99,15 @@ describe('checkValues', () => {
     });
     expect(error({ ev: 9 })).toContain('hors des bornes');
   });
+
+  it('shows the exposure mode as a switch, and only choice lists ask for one', () => {
+    const all = [...DETECTOR_PARAMS, ...FUSION_PARAMS];
+    const switches = all.filter((param) => param.switch);
+    expect(switches.map((param) => param.key)).toEqual(['auto_exposure']);
+    for (const param of switches) {
+      expect(param.choices?.length).toBeGreaterThan(1);
+    }
+  });
 });
 
 describe('keepKnownValues', () => {

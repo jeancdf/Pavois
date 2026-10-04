@@ -85,12 +85,9 @@ RECORDING="$(cd "$RECORDING" && pwd)"
 
 # ---------------------------------------------------------------- preflight --
 log "checking prerequisites"
-for tool in cmake ffmpeg node npm python3 pg_isready; do
+for tool in cmake ffmpeg node npm python3; do
   command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
-pg_isready -q || die "PostgreSQL is not accepting connections. The vps calls
-       prisma \$connect() on boot and will not start without it. Start your
-       local postgres, or run the stack with docker compose instead."
 
 for cam in "${CAMERAS[@]}"; do
   [ -f "$RECORDING/$cam.meta.txt" ] || die "missing $cam.meta.txt in $RECORDING"
@@ -266,25 +263,12 @@ if [ ! -s "$TOKEN_FILE" ]; then
   (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$TOKEN_FILE")
 fi
 WS_TOKEN="$(cat "$TOKEN_FILE")"
-PGUSER_NAME="${PGUSER:-$(id -un)}"
-DB_URL="${DATABASE_URL:-postgresql://$PGUSER_NAME@localhost:5432/pavois_bench?schema=public&host=/var/run/postgresql}"
-
-log "preparing the database"
-psql -qtA -d postgres -c "SELECT 1 FROM pg_database WHERE datname='pavois_bench'" 2>/dev/null | grep -q 1 \
-  || psql -qtA -d postgres -c "CREATE DATABASE pavois_bench" >/dev/null 2>&1 \
-  || die "could not create the pavois_bench database as '$PGUSER_NAME'.
-       Either grant that role CREATEDB, or export DATABASE_URL pointing at a
-       database you can already reach."
 
 if [ ! -d "$REPO_ROOT/vps/node_modules" ]; then
   log "installing vps dependencies (first run)"
   (cd "$REPO_ROOT/vps" && npm install --no-audit --no-fund) >"$RUN_DIR/vps-install.log" 2>&1 \
     || { tail -20 "$RUN_DIR/vps-install.log"; die "vps npm install failed, see $RUN_DIR/vps-install.log"; }
 fi
-
-log "applying database migrations"
-(cd "$REPO_ROOT/vps" && DATABASE_URL="$DB_URL" npx prisma migrate deploy) >"$RUN_DIR/prisma.log" 2>&1 \
-  || { tail -20 "$RUN_DIR/prisma.log"; die "prisma migrate deploy failed, see $RUN_DIR/prisma.log"; }
 
 # Build explicitly rather than leaning on `nest start`. nest-cli deletes dist/
 # on every build while tsc keeps an incremental tsbuildinfo, so a stale
@@ -299,7 +283,6 @@ rm -f "$REPO_ROOT/vps/tsconfig.build.tsbuildinfo"
 log "starting vps (UDP 41234, WebSocket/HTTP 3002)"
 (
   cd "$REPO_ROOT/vps"
-  DATABASE_URL="$DB_URL" \
   UDP_PORT=41234 UDP_HOST=127.0.0.1 PORT=3002 \
   WS_AUTH_TOKEN="$WS_TOKEN" \
   UDP_HMAC_SECRET="$UDP_HMAC_SECRET" \

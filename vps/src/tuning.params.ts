@@ -31,6 +31,8 @@ export interface TuningParam {
   choices?: TuningChoice[];
   /** Ce que vaut 0 pour ce réglage, quand 0 n'est pas une valeur ordinaire. */
   zeroLabel?: string;
+  /** Liste courte que l'interface montre en boutons côte à côte plutôt qu'en liste déroulante. */
+  switch?: boolean;
 }
 
 export interface TuningPreset {

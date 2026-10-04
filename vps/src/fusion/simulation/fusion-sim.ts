@@ -8,9 +8,9 @@ import {
   makeIntrinsics,
   projectWorldToPixel,
   type Vec3,
-} from './fusion-geo';
-import { FusionService } from './fusion.service';
-import type { FusionObservation } from './fusion.types';
+} from '../geometry/fusion-geo';
+import { FusionService } from '../fusion.service';
+import type { FusionObservation } from '../fusion.types';
 
 export interface SimCamera {
   id: string;

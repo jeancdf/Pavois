@@ -1,11 +1,11 @@
-import type { CameraIntrinsics, CameraPose, Vec3 } from './fusion-geo';
+import type { CameraIntrinsics, CameraPose, Vec3 } from '../geometry/fusion-geo';
 import {
   lookAt,
   makeIntrinsics,
   projectWorldToPixel,
   vNorm,
   vSub,
-} from './fusion-geo';
+} from '../geometry/fusion-geo';
 import {
   pairIntersections,
   triangulate,

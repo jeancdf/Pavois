@@ -1316,6 +1316,37 @@ void test_live_tuning() {
         check(!capture_settings_differ(bright, file), "the previous capture settings come back");
     }
 
+    // Automatic exposure: 1 manual, 2 automatic, 0 keeps the config file's mode.
+    {
+        CameraConfig file;
+        file.ev = 0.5;
+        CameraConfig cfg = file;
+        check(apply_live_setting(cfg, "auto_exposure", "2") && cfg.auto_exposure,
+              "2 turns automatic exposure on");
+        check(capture_settings_differ(file, cfg),
+              "a new exposure mode needs the capture restarted");
+        check(apply_live_setting(cfg, "auto_exposure", "0") && cfg.auto_exposure,
+              "0 keeps the exposure mode");
+        check(apply_live_setting(cfg, "auto_exposure", "1") && !cfg.auto_exposure,
+              "1 goes back to manual exposure");
+        check(apply_live_setting(cfg, "ev", "-1.5") && cfg.ev == -1.5,
+              "the exposure compensation is applied");
+        check(apply_live_setting(cfg, "ev", "0") && cfg.ev == -1.5,
+              "0 keeps the exposure compensation");
+        check(apply_live_setting(cfg, "ev", "12") && cfg.ev == 8.0,
+              "a compensation above 8 stops is clamped");
+        check(capture_settings_differ(file, cfg),
+              "a new compensation needs the capture restarted");
+
+        CameraConfig automatic = file;
+        automatic.auto_exposure = true;
+        check(format_live_settings(automatic).find("auto_exposure=2") != std::string::npos &&
+                  format_live_settings(file).find("auto_exposure=1") != std::string::npos,
+              "the report says which exposure mode really runs");
+        keep_capture_settings(cfg, file);
+        check(!cfg.auto_exposure && cfg.ev == 0.5, "the previous exposure mode comes back");
+    }
+
     // Intrinsics follow the size: the same view, scaled.
     {
         const double kPi = std::atan(1.0) * 4.0;

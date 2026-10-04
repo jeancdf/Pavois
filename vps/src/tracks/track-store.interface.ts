@@ -1,4 +1,4 @@
-import { Track, TrackVerdict } from '../tracks/track-types';
+import { Track, TrackVerdict } from './track-types';
 
 export interface CreateTrackData {
   trackId: string;

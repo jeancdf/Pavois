@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { TracksService } from './tracks.service';
-import { JsonlTrackStore } from '../stores/jsonl-track.store';
+import { JsonlTrackStore } from './jsonl-track.store';
 import { TrackVerdict } from './track-types';
 import * as fs from 'fs';
 import * as path from 'path';

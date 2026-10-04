@@ -355,7 +355,7 @@ describe('FusionService', () => {
     const first = service.snapshot(nowMs).lastFuse;
     expect(first?.ok).toBe(true);
 
-    // jean runs ahead: the next ticks must wait for tanel and walid.
+    // jean est en avance : les ticks suivants attendent tanel et walid.
     const moved = { x: TARGET.x + 3, y: TARGET.y, z: TARGET.z };
     for (const ts of [1_033_000, 1_066_000]) {
       service.ingest(
@@ -385,7 +385,7 @@ describe('FusionService', () => {
     const nowMs = Date.now();
     ingestTriplet(service, TARGET, 1_000_000, nowMs);
     const first = service.snapshot(nowMs).lastFuse;
-    // walid goes quiet; jean and tanel keep streaming past the budget.
+    // walid se tait ; jean et tanel continuent d'émettre au-delà du délai.
     for (let ts = 1_033_000; ts <= 1_200_000; ts += 33_000) {
       for (const id of ['jean', 'tanel']) {
         service.ingest(
@@ -448,7 +448,7 @@ describe('FusionService', () => {
       confirmUpdates: 3,
     });
     const nowMs = Date.now();
-    // The target sits about 30 m out: inside the default 60 m range.
+    // La cible est à environ 30 m : dans la portée par défaut de 60 m.
     ingestTriplet(service, TARGET, 1_000_000, nowMs);
     expect(service.snapshot(nowMs).lastFuse?.ok).toBe(true);
 
@@ -474,7 +474,7 @@ describe('FusionService', () => {
       }
       return engine.snapshot(nowMs).tracks.length;
     };
-    // Three fused points are needed by default: two are not enough.
+    // Il faut trois points fusionnés par défaut : deux ne suffisent pas.
     expect(tracksAfterTwoTicks(service)).toBe(0);
 
     const eager = new FusionService();

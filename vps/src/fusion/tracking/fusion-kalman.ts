@@ -1,6 +1,7 @@
-// Constant-velocity Kalman filter + dense Gauss-Jordan Mat.
-// Port of pavois++ kalman_cv.hpp / linalg.hpp.
+// Filtre de Kalman à vitesse constante et petite classe de matrices (Mat).
+// Portage de kalman_cv.hpp et linalg.hpp de pavois++.
 
+/** Petite matrice de nombres, avec les opérations de base. */
 export class Mat {
   readonly rows: number;
   readonly cols: number;
@@ -72,7 +73,8 @@ export class Mat {
     return r;
   }
 
-  // Gauss-Jordan; zero matrix of the same size if singular.
+  // Inverse par pivot de Gauss-Jordan ; renvoie une matrice de zéros de
+  // même taille si la matrice n'est pas inversible.
   inverse(): Mat {
     const n = this.rows;
     const a = this.clone();
@@ -118,6 +120,10 @@ function eliminate(a: Mat, inv: Mat, col: number, n: number): void {
   }
 }
 
+/**
+ * Filtre de Kalman à vitesse constante. Il garde une estimation de la
+ * position et de la vitesse d'une cible, avec leur incertitude.
+ */
 export class KalmanCV {
   private dim = 0;
   private q = 1;
@@ -137,6 +143,7 @@ export class KalmanCV {
     return k;
   }
 
+  /** Démarre le filtre sur une première position. */
   init(
     dim: number,
     p0: number[],
@@ -169,6 +176,10 @@ export class KalmanCV {
     return this.inited;
   }
 
+  /**
+   * Fait avancer l'estimation de dt secondes en supposant une vitesse
+   * constante. L'incertitude grandit avec le temps.
+   */
   predict(dt: number): void {
     if (!this.inited || dt <= 0) return;
     const n = 2 * this.dim;
@@ -179,8 +190,9 @@ export class KalmanCV {
     this.P = F.mul(this.P).mul(F.transpose()).add(Q);
   }
 
-  // measCov: optional dim x dim row-major measurement covariance; falls back
-  // to the isotropic measNoise given at init.
+  // Corrige l'estimation avec une mesure z. measCov est la covariance de la
+  // mesure (dim x dim, ligne par ligne) ; sans elle, on utilise le bruit
+  // measNoise donné à l'initialisation.
   update(z: number[], measCov?: number[]): void {
     if (!this.inited) return;
     const n = 2 * this.dim;
@@ -191,14 +203,16 @@ export class KalmanCV {
     const S = H.mul(this.P).mul(H.transpose()).add(R);
     const K = this.P.mul(H.transpose()).mul(S.inverse());
     this.x = this.x.add(K.mul(y));
-    // Joseph form: stays symmetric positive definite with anisotropic R.
+    // Forme de Joseph : P reste symétrique et positive même quand le bruit
+    // de mesure n'est pas le même dans toutes les directions.
     const IKH = Mat.identity(n).sub(K.mul(H));
     this.P = IKH.mul(this.P)
       .mul(IKH.transpose())
       .add(K.mul(R).mul(K.transpose()));
   }
 
-  // Squared Mahalanobis distance of z to the predicted position.
+  // Distance de Mahalanobis au carré entre la mesure z et la position
+  // prédite : un écart compté en nombre d'incertitudes, pas en mètres.
   gatingDistance(z: number[], measCov?: number[]): number {
     const n = 2 * this.dim;
     const H = measH(this.dim, n);
@@ -210,12 +224,14 @@ export class KalmanCV {
     return d.at(0, 0);
   }
 
+  /** Position estimée. */
   position(): number[] {
     const p = new Array<number>(this.dim);
     for (let i = 0; i < this.dim; i++) p[i] = this.x.at(i, 0);
     return p;
   }
 
+  /** Vitesse estimée, axe par axe. */
   velocity(): number[] {
     const v = new Array<number>(this.dim);
     for (let i = 0; i < this.dim; i++) {
@@ -224,6 +240,7 @@ export class KalmanCV {
     return v;
   }
 
+  /** Vitesse estimée, en norme (m/s). */
   speed(): number {
     let s = 0;
     for (let i = 0; i < this.dim; i++) {
@@ -233,7 +250,8 @@ export class KalmanCV {
     return Math.sqrt(s);
   }
 
-  // dim x dim row-major position block of P.
+  // Partie « position » de P (dim x dim, ligne par ligne) : l'incertitude
+  // sur la position.
   positionCovariance(): number[] {
     const out: number[] = [];
     for (let i = 0; i < this.dim; i++) {
@@ -242,6 +260,7 @@ export class KalmanCV {
     return out;
   }
 
+  /** Construit la matrice de bruit de la mesure. */
   private measR(measCov?: number[]): Mat {
     if (!measCov || measCov.length !== this.dim * this.dim) {
       return measR(this.dim, this.r);
@@ -249,7 +268,8 @@ export class KalmanCV {
     const R = new Mat(this.dim, this.dim, 0);
     for (let i = 0; i < this.dim; i++) {
       for (let j = 0; j < this.dim; j++) {
-        // Symmetrise: a covariance from a numeric inverse is only nearly so.
+        // On la rend symétrique : une covariance issue d'une inversion
+        // numérique ne l'est qu'à peu près.
         const v = 0.5 * (measCov[i * this.dim + j] + measCov[j * this.dim + i]);
         R.put(i, j, v);
       }
@@ -257,6 +277,7 @@ export class KalmanCV {
     return R;
   }
 
+  /** Incertitude moyenne sur la position, en mètres. */
   positionUncertainty(): number {
     let t = 0;
     for (let i = 0; i < this.dim; i++) t += this.P.at(i, i);
@@ -282,6 +303,10 @@ function measR(dim: number, r: number): Mat {
   return R;
 }
 
+/**
+ * Bruit de modèle : de combien l'incertitude augmente pendant dt, parce
+ * que la cible peut accélérer.
+ */
 function processQ(n: number, dim: number, q: number, dt: number): Mat {
   const Q = new Mat(n, n, 0);
   const t2 = dt * dt;

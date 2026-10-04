@@ -78,7 +78,7 @@ describe('alignCandidates', () => {
   });
 
   it('interpolates each object with itself, never across objects', () => {
-    // Two objects far apart; the Pi reorders them between frames.
+    // Deux objets éloignés ; le Pi change leur ordre entre deux images.
     const t0 = [
       observation('A', { timestampUs: 0, x: 100, y: 100 }),
       observation('A', { timestampUs: 0, x: 900, y: 500 }),

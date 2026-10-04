@@ -1,3 +1,4 @@
+/** Une détection envoyée par un Pi : une tache dans l'image d'une caméra. */
 export interface FusionObservation {
   cameraId: string;
   frameIndex: number;
@@ -30,6 +31,7 @@ export interface FusionObservation {
   imageHeight?: number;
 }
 
+/** État d'une caméra vu par le moteur de fusion. */
 export interface FusionCameraState {
   cameraId: string;
   detectionCount: number;
@@ -43,11 +45,13 @@ export interface FusionCameraState {
   lastConfidence: number | null;
 }
 
+/** Résultat de la dernière triangulation, affiché par l'interface. */
 export interface FusionLastFuse {
   ok: boolean;
   rejectReason: string | null;
   residualM: number | null;
-  // RMS reprojection error of the inlier rays, in pixels.
+  // Erreur de reprojection des rayons gardés (moyenne quadratique), en
+  // pixels.
   residualPx?: number | null;
   parallaxDeg: number | null;
   confidence: number | null;
@@ -55,6 +59,7 @@ export interface FusionLastFuse {
   point: { x: number; y: number; z: number } | null;
 }
 
+/** Une piste : une cible suivie dans le temps, en mètres. */
 export interface FusionTrack {
   objectId: number;
   timestampUs: number;
@@ -66,7 +71,10 @@ export interface FusionTrack {
   classification: string;
 }
 
-/** Raw closest-point sample for one camera pair; never a tracked object. */
+/**
+ * Croisement brut des rayons d'une paire de caméras. Jamais une cible
+ * suivie.
+ */
 export interface FusionRayIntersection {
   point: { x: number; y: number; z: number };
   residualM: number;
@@ -75,7 +83,7 @@ export interface FusionRayIntersection {
   timestampUs: number;
 }
 
-/** WebSocket `track_update` payload (same shape as the UDP objN frame). */
+/** Message WebSocket `track_update` (même forme que la trame UDP objN). */
 export interface FusionTrackUpdate {
   type: 'track_update';
   trackId: string;
@@ -86,6 +94,7 @@ export interface FusionTrackUpdate {
   classification?: string;
 }
 
+/** État complet du moteur à un instant donné. */
 export interface FusionSnapshot {
   activeCameras: number;
   cameraCount: number;
@@ -97,7 +106,10 @@ export interface FusionSnapshot {
   tracks: FusionTrack[];
 }
 
-/** WebSocket `fuse_update`: 3D point in metres (rail frame during bench). */
+/**
+ * Message WebSocket `fuse_update` : point 3D en mètres (repère du rail
+ * pendant les essais sur banc).
+ */
 export interface FuseUpdate {
   type: 'fuse_update';
   lastFuse: FusionLastFuse | null;

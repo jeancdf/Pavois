@@ -7,8 +7,9 @@ import {
   type SimScenario,
 } from './fusion-sim';
 
-// End-to-end regression bench: synthetic scenes through FusionService.
-// Thresholds keep a margin over the measured values (see PR notes).
+// Banc de non-régression de bout en bout : des scènes fabriquées passent
+// dans FusionService. Les seuils gardent une marge sur les valeurs
+// mesurées (voir les notes de la PR).
 
 const CROSSING: SimScenario['targets'] = [
   straightLine({ x: -15, y: 25, z: 10 }, { x: 4, y: 0, z: 0 }),

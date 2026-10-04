@@ -1,9 +1,14 @@
 import { FusionObservation } from '../fusion.types';
 
+/** Donne l'heure de capture d'une observation, en microsecondes. */
 export function observationTimeUs(obs: FusionObservation): number {
   return obs.timestampUs;
 }
 
+/**
+ * Calcule une position intermédiaire entre deux observations a et b.
+ * f vaut 0 pour a et 1 pour b. On garde la confiance la plus faible.
+ */
 export function lerpObservation(
   a: FusionObservation,
   b: FusionObservation,
@@ -22,7 +27,10 @@ interface FrameGroup {
   blobs: FusionObservation[];
 }
 
-/** Frames bracketing tRef: latest at or before it, earliest at or after it. */
+/**
+ * Trouve les deux images qui encadrent l'instant tRef : la dernière avant
+ * (ou pile dessus) et la première après (ou pile dessus).
+ */
 function bracketFrames(
   history: readonly FusionObservation[],
   tRefUs: number,
@@ -36,7 +44,8 @@ function bracketFrames(
   }
   const group = (us: number): FrameGroup | null => {
     if (!Number.isFinite(us)) return null;
-    // Keep the frame's blob order: the Pi sends its best blob first.
+    // On garde l'ordre des taches de l'image : le Pi envoie la meilleure
+    // en premier.
     const blobs = history.filter((o) => observationTimeUs(o) === us);
     return { timestampUs: us, blobs };
   };
@@ -44,8 +53,9 @@ function bracketFrames(
 }
 
 /**
- * Pair every blob of `near` with the closest unused blob of `far` in pixel
- * space. Interpolating across frames is only valid for the same object.
+ * Associe chaque tache de l'image `near` à la tache libre la plus proche de
+ * l'image `far`, en pixels. Interpoler entre deux images n'a de sens que
+ * pour le même objet.
  */
 function matchBlobs(
   near: FusionObservation[],
@@ -71,15 +81,20 @@ function matchBlobs(
 }
 
 /**
- * Every blob of every camera brought to tRef. Blobs of the two frames that
- * bracket tRef are paired by pixel distance and interpolated; a blob with no
- * partner, or a camera with only one side, is held as-is (confidence x0.8)
- * when its frame lies within the window.
+ * Ramène toutes les taches de toutes les caméras à l'instant tRef.
+ * Les taches des deux images qui encadrent tRef sont associées par distance
+ * en pixels, puis interpolées. Une tache sans partenaire, ou une caméra qui
+ * n'a qu'une seule image, est gardée telle quelle (confiance x0,8) si son
+ * image est dans la fenêtre de temps.
  */
 export function alignCandidates(
+  // Pour chaque caméra, la liste de ses détections récentes.
   histories: ReadonlyMap<string, readonly FusionObservation[]>,
+  // L'instant où l'on veut calculer, en microsecondes.
   tRefUs: number,
+  // Tolérance en temps (20 ms par défaut).
   windowMs: number,
+  // Tolérance en distance (60 pixels par défaut).
   pairGatePx: number,
 ): Map<string, FusionObservation[]> {
   const windowUs = windowMs * 1000;
@@ -128,9 +143,9 @@ export function alignCandidates(
 }
 
 /**
- * Select the nearest captured frame from every camera and preserve every blob
- * emitted for that frame. Raw voxel rendering deliberately keeps all
- * cross-camera combinations; target association happens elsewhere.
+ * Prend, pour chaque caméra, l'image la plus proche de tRef et garde toutes
+ * ses taches. Sert à l'affichage brut de debug, qui montre volontairement
+ * tous les croisements entre caméras ; le choix des cibles se fait ailleurs.
  */
 export function timeAlignFrameGroups(
   histories: ReadonlyMap<string, readonly FusionObservation[]>,

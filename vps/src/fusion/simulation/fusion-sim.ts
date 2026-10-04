@@ -1,8 +1,10 @@
-// Synthetic multi-Pi scenes for the fusion engine: known trajectories are
-// projected into each camera, perturbed like the real rig (centroid noise,
-// IMU heading bias, clock offset, unsynchronised frames, network jitter,
-// false blobs, misses) and fed to FusionService in arrival order. Metrics
-// compare the emitted tracks with the truth.
+// Scènes fabriquées à plusieurs Pi pour tester le moteur de fusion. Des
+// trajectoires connues sont projetées dans chaque caméra, puis abîmées
+// comme sur le vrai matériel : bruit sur le centre des taches, erreur de
+// cap de l'IMU, décalage d'horloge, images non synchronisées, délais
+// réseau, fausses taches, détections ratées. Elles sont envoyées à
+// FusionService dans l'ordre d'arrivée. Les mesures comparent les pistes
+// obtenues à la vérité.
 import {
   lookAt,
   makeIntrinsics,
@@ -12,6 +14,7 @@ import {
 import { FusionService } from '../fusion.service';
 import type { FusionObservation } from '../fusion.types';
 
+/** Une caméra simulée : où elle est posée et ce qu'elle regarde. */
 export interface SimCamera {
   id: string;
   eye: Vec3;
@@ -19,27 +22,29 @@ export interface SimCamera {
   fovDeg?: number;
 }
 
+/** Description d'une scène à simuler. */
 export interface SimScenario {
   cameras: SimCamera[];
   targets: Array<(tS: number) => Vec3>;
   durationS: number;
   fps: number;
   pixelNoise: number;
-  // Std-dev of a constant per-camera heading error (IMU / calibration).
+  // Écart-type d'une erreur de cap constante par caméra (IMU, calibration).
   headingBiasDeg: number;
-  // Std-dev of a constant per-camera clock offset.
+  // Écart-type d'un décalage d'horloge constant par caméra.
   clockOffsetUs: number;
-  // Uniform per-packet network latency range.
+  // Plage du délai réseau par paquet (tirage uniforme).
   latencyMs: [number, number];
-  // Mean number of spurious blobs per frame and camera.
+  // Nombre moyen de fausses taches par image et par caméra.
   falseBlobsPerFrame: number;
-  // Probability that a camera misses a visible target on one frame.
+  // Probabilité qu'une caméra rate une cible visible sur une image.
   missRate: number;
   seed: number;
-  // Optional occlusion model; visible everywhere in frame by default.
+  // Modèle de masquage facultatif ; par défaut, visible partout dans l'image.
   visible?: (cameraId: string, target: number, tS: number) => boolean;
 }
 
+/** Mesures de qualité obtenues après une simulation. */
 export interface SimMetrics {
   rmseM: number;
   p95M: number;
@@ -48,7 +53,7 @@ export interface SimMetrics {
   falseRatio: number;
   distinctIds: number;
   idSwitches: number;
-  // Share of 100 ms bins, per target, that carry a matched track point.
+  // Part des tranches de 100 ms, par cible, qui ont un point de piste.
   coverage: number;
 }
 
@@ -56,6 +61,10 @@ const WIDTH = 1280;
 const HEIGHT = 720;
 const MATCH_M = 5;
 
+/**
+ * Générateur de nombres pseudo-aléatoires à graine : la même graine donne
+ * toujours la même suite, donc les tests sont reproductibles.
+ */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -66,6 +75,7 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
+/** Tire un nombre selon une loi normale (méthode de Box-Muller). */
 function gaussian(rng: () => number): number {
   let u = 0;
   let v = 0;
@@ -74,6 +84,7 @@ function gaussian(rng: () => number): number {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
+/** Tire un nombre d'événements selon une loi de Poisson de moyenne mean. */
 function poisson(rng: () => number, mean: number): number {
   const l = Math.exp(-mean);
   let k = 0;
@@ -90,7 +101,10 @@ interface Arrival {
   obs: FusionObservation;
 }
 
-/** Every observation the rig would send, sorted by arrival at the VPS. */
+/**
+ * Fabrique toutes les observations que le matériel enverrait, triées par
+ * ordre d'arrivée au VPS.
+ */
 export function generateObservations(
   sc: SimScenario,
   baseUs: number,
@@ -126,7 +140,7 @@ export function generateObservations(
           q: 0.3 + 0.3 * rng(),
         });
       }
-      // The Pi sends its best-scored blob first.
+      // Le Pi envoie sa tache la mieux notée en premier.
       blobs.sort((a, b) => b.q - a.q);
       const captureUs = baseUs + tS * 1e6;
       for (const b of blobs) {
@@ -179,11 +193,17 @@ export interface EngineLike {
   };
 }
 
+/**
+ * Joue un scénario dans le moteur et compare les pistes obtenues aux
+ * vraies trajectoires : erreur, faux points, changements d'identifiant,
+ * part du temps couverte.
+ */
 export function runScenario(
   sc: SimScenario,
   makeEngine: () => EngineLike = () => new FusionService(),
 ): SimMetrics {
-  // Real epoch so an engine pruning on Date.now() behaves as in production.
+  // Vraie date de départ, pour qu'un moteur qui purge selon Date.now() se
+  // comporte comme en production.
   const baseUs = Date.now() * 1000;
   const engine = makeEngine();
   const seen = new Set<string>();
@@ -244,7 +264,7 @@ export function runScenario(
   };
 }
 
-// The three-Pi field layout used across the fusion specs.
+// Disposition de terrain à trois Pi, utilisée dans les tests de fusion.
 export const FIELD_CAMERAS: SimCamera[] = [
   { id: 'jean', eye: { x: -12, y: -2, z: 2 }, lookAt: { x: 0, y: 30, z: 12 } },
   { id: 'tanel', eye: { x: 11, y: 1, z: 2 }, lookAt: { x: 0, y: 30, z: 12 } },
@@ -264,7 +284,7 @@ export const BASE_SCENARIO: Omit<SimScenario, 'targets'> = {
   seed: 1,
 };
 
-/** Straight pass at constant speed. */
+/** Trajectoire en ligne droite, à vitesse constante. */
 export function straightLine(from: Vec3, velocity: Vec3): (tS: number) => Vec3 {
   return (tS) => ({
     x: from.x + velocity.x * tS,
@@ -273,7 +293,7 @@ export function straightLine(from: Vec3, velocity: Vec3): (tS: number) => Vec3 {
   });
 }
 
-/** Horizontal circle, a drone orbiting a point. */
+/** Cercle horizontal : un drone qui tourne autour d'un point. */
 export function orbit(
   centre: Vec3,
   radiusM: number,

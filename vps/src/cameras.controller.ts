@@ -7,7 +7,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { AuthTokenGuard } from './access-control';
+import { AuthTokenGuard } from './auth/access-control';
 import { CamerasService, isCameraPosition } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
 import { EventsGateway } from './events.gateway';

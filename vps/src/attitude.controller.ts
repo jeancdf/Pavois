@@ -6,7 +6,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { AuthTokenGuard } from './access-control';
+import { AuthTokenGuard } from './auth/access-control';
 import { AttitudeDto } from './attitude.dto';
 import { parseCalibrationToken } from './udp-attitude';
 import { UdpService } from './udp.service';

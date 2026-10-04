@@ -7,7 +7,7 @@ import { UdpService } from './udp.service';
 import { EventsGateway } from './events.gateway';
 import { CamerasController } from './cameras.controller';
 import { CamerasService } from './cameras.service';
-import { AuthController } from './auth.controller';
+import { AuthController } from './auth/auth.controller';
 import { AttitudeController } from './attitude.controller';
 import { PreviewController } from './preview.controller';
 import { PreviewService } from './preview.service';

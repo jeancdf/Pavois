@@ -11,7 +11,7 @@ import {
   isIpAllowed,
   verifyOperatorToken,
   OperatorIdentity,
-} from './access-control';
+} from './auth/access-control';
 import { CamerasService } from './cameras.service';
 import { AlertsService } from './alerts.service';
 import { Inject, forwardRef } from '@nestjs/common';

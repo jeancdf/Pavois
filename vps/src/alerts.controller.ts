@@ -7,7 +7,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { AuthTokenGuard, verifyOperatorToken } from './access-control';
+import { AuthTokenGuard, verifyOperatorToken } from './auth/access-control';
 import { AlertsService } from './alerts.service';
 import { Alert, AlertStatus } from './alert-types';
 import { IncomingMessage } from 'http';

@@ -6,7 +6,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthTokenGuard } from './access-control';
+import { AuthTokenGuard } from './auth/access-control';
 import { CamerasService } from './cameras.service';
 import { EventsGateway } from './events.gateway';
 import { RailBenchDto } from './rail-bench.dto';

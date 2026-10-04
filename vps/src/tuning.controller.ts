@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { AuthTokenGuard } from './access-control';
+import { AuthTokenGuard } from './auth/access-control';
 import { EventsGateway } from './events.gateway';
 import { TuningService } from './tuning.service';
 import type { TuningState } from './tuning.service';

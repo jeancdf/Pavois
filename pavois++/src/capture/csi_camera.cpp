@@ -30,6 +30,14 @@ std::string text(const T& value) {
 
 }  // namespace
 
+std::vector<std::string> rpicam_exposure_args(const CameraConfig& config) {
+    return {
+        "--exposure", config.exposure_mode,
+        "--shutter", text(config.shutter_us),
+        "--gain", text(config.analogue_gain),
+    };
+}
+
 int yuv420_stride(const CameraConfig& config, std::string& reason) {
     reason.clear();
     if (config.width % 2 != 0 || config.height % 2 != 0) {
@@ -264,9 +272,10 @@ bool CsiCamera::spawn(const int fds[2]) {
         "--width", text(config_.width),
         "--height", text(config_.height),
         "--framerate", text(config_.fps),
-        "--exposure", config_.exposure_mode,
-        "--shutter", text(config_.shutter_us),
-        "--gain", text(config_.analogue_gain),
+    });
+    const auto exposure = rpicam_exposure_args(config_);
+    rpicam.insert(rpicam.end(), exposure.begin(), exposure.end());
+    rpicam.insert(rpicam.end(), {
         "--awb", "custom",
         "--awbgains", text(config_.awb_red_gain) + ',' + text(config_.awb_blue_gain),
         "--metadata", metadata_path_,

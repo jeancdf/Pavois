@@ -22,6 +22,9 @@ namespace pavois {
 // capture_stride.
 int yuv420_stride(const CameraConfig& config, std::string& reason);
 
+// The rpicam-vid arguments that set this camera's exposure.
+std::vector<std::string> rpicam_exposure_args(const CameraConfig& config);
+
 // Local CSI capture through rpicam-vid, without a network stream. Frames come
 // either as MJPEG decoded by FFmpeg, or as uncompressed YUV420 whose
 // luminance plane is read directly.

@@ -31,11 +31,18 @@ std::string text(const T& value) {
 }  // namespace
 
 std::vector<std::string> rpicam_exposure_args(const CameraConfig& config) {
-    return {
-        "--exposure", config.exposure_mode,
-        "--shutter", text(config.shutter_us),
-        "--gain", text(config.analogue_gain),
-    };
+    std::vector<std::string> args = {"--exposure", config.exposure_mode};
+    if (config.auto_exposure) {
+        // No --shutter and no --gain: libcamera's exposure control picks both
+        // for every frame, within what exposure_mode allows. --ev biases it.
+        if (config.ev != 0.0) args.insert(args.end(), {"--ev", text(config.ev)});
+    } else {
+        args.insert(args.end(), {
+            "--shutter", text(config.shutter_us),
+            "--gain", text(config.analogue_gain),
+        });
+    }
+    return args;
 }
 
 int yuv420_stride(const CameraConfig& config, std::string& reason) {

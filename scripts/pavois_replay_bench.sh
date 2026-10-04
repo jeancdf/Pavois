@@ -48,7 +48,7 @@ KEEP_FRAMES=0
 
 # Rail geometry: 1 m rig, adjacent baseline 3/7 m. These positions go with the
 # pose offsets fitted further down for the recording. The real rail is the other
-# way round, tanel - jean - walid seen from behind (vps/src/rail-bench.ts).
+# way round, tanel - jean - walid seen from behind (vps/src/bench/rail-bench.ts).
 declare -A RAIL_X=( [jean]=0.0 [tanel]=0.4286 [walid]=-0.4286 )
 
 die() { printf '\n[bench] ERROR: %s\n' "$*" >&2; exit 1; }

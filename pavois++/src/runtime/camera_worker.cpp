@@ -28,8 +28,14 @@ constexpr auto kCameraReleaseWait = std::chrono::milliseconds(500);
 
 std::string describe_capture(const CameraConfig& c) {
     std::ostringstream out;
-    out << c.width << 'x' << c.height << ", shutter " << c.shutter_us
-        << " us, gain " << c.analogue_gain;
+    out << c.width << 'x' << c.height;
+    if (c.auto_exposure) {
+        // The shutter and gain in the config are not used: the camera picks them.
+        out << ", auto exposure";
+        if (c.ev != 0.0) out << ' ' << std::showpos << c.ev << std::noshowpos << " EV";
+    } else {
+        out << ", shutter " << c.shutter_us << " us, gain " << c.analogue_gain;
+    }
     if (!c.sensor_mode.empty()) out << ", mode " << c.sensor_mode;
     return out.str();
 }
@@ -433,8 +439,15 @@ void CameraWorker::operator()() {
             send_classification_capture(frame, det, *capture_request);
         }
         if (debug.active()) debug.dump(frame, det);
+        // What the camera really used: with automatic exposure this follows
+        // the light. 0 when the source cannot tell (a replay, for one).
+        double shutter_us = 0.0;
+        double analogue_gain = 0.0;
+        const bool exposure_known = source->exposure(shutter_us, analogue_gain);
         maybe_emit_stats(wall_clock_us(), frame_id, stats_window_start_us,
-                         stats_window_frames, last_diag);
+                         stats_window_frames, last_diag,
+                         exposure_known ? shutter_us : 0.0,
+                         exposure_known ? 20.0 * std::log10(analogue_gain) : 0.0);
         maybe_emit_config(frame, wall_clock_us(), last_cfg_us);
 
         if (det.confirmed) {

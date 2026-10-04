@@ -34,6 +34,11 @@ camera.0.fov_deg=65.0
 camera.0.exposure_mode=sport
 camera.0.shutter_us=750
 camera.0.analogue_gain=4.0
+# true: the camera sets its own shutter and gain as the light changes, and
+# shutter_us / analogue_gain above are ignored. ev brightens (+) or darkens (-)
+# that automatic result, in stops. Both can also be changed from the tuning panel.
+camera.0.auto_exposure=false
+camera.0.ev=0
 camera.0.awb_red_gain=1.0
 camera.0.awb_blue_gain=1.0
 # Low-latency test confirmation; all valid blobs are sent.

@@ -102,6 +102,8 @@ void apply_camera_field(CameraConfig& c, const std::string& f, const std::string
         else if (f == "exposure_mode") c.exposure_mode = v;
         else if (f == "shutter_us") c.shutter_us = std::stoi(v);
         else if (f == "analogue_gain") c.analogue_gain = std::stod(v);
+        else if (f == "auto_exposure") c.auto_exposure = parse_bool(v);
+        else if (f == "ev") c.ev = std::stod(v);
         else if (f == "awb_red_gain") c.awb_red_gain = std::stod(v);
         else if (f == "awb_blue_gain") c.awb_blue_gain = std::stod(v);
         else if (f == "gps_lat") { c.gps_lat = std::stod(v); c.has_gps_pose = true; }
@@ -236,6 +238,7 @@ void finalize_camera(CameraConfig& c) {
     }
     c.shutter_us = std::clamp(c.shutter_us, 100, 1'000'000);
     c.analogue_gain = std::clamp(c.analogue_gain, 1.0, 32.0);
+    c.ev = std::clamp(c.ev, -8.0, 8.0);
     c.awb_red_gain = std::clamp(c.awb_red_gain, 0.1, 8.0);
     c.awb_blue_gain = std::clamp(c.awb_blue_gain, 0.1, 8.0);
 }

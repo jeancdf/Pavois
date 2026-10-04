@@ -129,6 +129,7 @@ describe('TuningPanel', () => {
   // Camera id -> when its last statistics line arrived (a running detector
   // sends one per second).
   let statsAt: Record<string, number>;
+  let exposureOf: Record<string, { exposureUs: number; gainDb: number }>;
   let loaded: TuningState;
   let fixture: ComponentFixture<TuningPanel>;
   let root: HTMLElement;
@@ -182,6 +183,7 @@ describe('TuningPanel', () => {
     vi.clearAllMocks();
     tuning.set(null);
     statsAt = { jean: Date.now(), tanel: Date.now(), walid: Date.now() };
+    exposureOf = {};
     api.refresh.mockImplementation(() => {
       tuning.set(loaded);
       return Promise.resolve(loaded);
@@ -205,7 +207,8 @@ describe('TuningPanel', () => {
           provide: RealtimeService,
           useValue: {
             tuning,
-            statsOf: (id: string) => (id in statsAt ? { receivedAt: statsAt[id] } : undefined),
+            statsOf: (id: string) =>
+              id in statsAt ? { receivedAt: statsAt[id], ...exposureOf[id] } : undefined,
           },
         },
         NotificationService,
@@ -354,6 +357,51 @@ describe('TuningPanel', () => {
     select.dispatchEvent(new Event('change'));
     vi.advanceTimersByTime(0);
     expect(api.setDetector).toHaveBeenCalledWith({ capture_width: 640 }, undefined);
+  });
+
+  it('shows the exposure mode as a switch and sends the mode clicked at once', () => {
+    const exposure: TuningParam = {
+      key: 'auto_exposure',
+      group: 'Image',
+      label: 'Exposition',
+      hint: 'Qui règle la pose.',
+      min: 0,
+      max: 2,
+      step: 1,
+      integer: true,
+      choices: [
+        { value: 0, label: 'Fichier du Pi' },
+        { value: 1, label: 'Manuelle' },
+        { value: 2, label: 'Automatique' },
+      ],
+      switch: true,
+    };
+    open(
+      makeState({
+        params: { detector: [...DETECTOR_PARAMS, exposure], fusion: FUSION_PARAMS },
+        detectorDefaults: { ...DEFAULTS, auto_exposure: 0 },
+      }),
+    );
+    const modes = () => [
+      ...root.querySelectorAll<HTMLButtonElement>('#detector-auto_exposure button'),
+    ];
+    expect(modes().map((mode) => mode.textContent?.trim())).toEqual([
+      'Fichier du Pi',
+      'Manuelle',
+      'Automatique',
+    ]);
+    expect(modes().map((mode) => mode.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+    ]);
+
+    modes()[2].click();
+    vi.advanceTimersByTime(0);
+    fixture.detectChanges();
+    expect(api.setDetector).toHaveBeenCalledWith({ auto_exposure: 2 }, undefined);
+    expect(modes()[2].classList.contains('on')).toBe(true);
+    expect(modes()[0].classList.contains('on')).toBe(false);
   });
 
   it('says what the Pis really run when a capture setting is left to their file', () => {
@@ -526,6 +574,27 @@ describe('TuningPanel', () => {
     vi.advanceTimersByTime(1000);
     fixture.detectChanges();
     expect(cameraRows()).toEqual(['jean 640×360 réglé']);
+  });
+
+  it('shows the exposure each running camera reports', () => {
+    // 10.88 dB is the ×3.5 gain the Pi measured; tanel's Pi does not know its own.
+    exposureOf = {
+      jean: { exposureUs: 1988, gainDb: 10.88 },
+      tanel: { exposureUs: 0, gainDb: 0 },
+    };
+    open(
+      makeState({
+        cameras: [
+          camera('jean', { mode: 'live', wanted: { ...DEFAULTS } }),
+          camera('tanel', { mode: 'live', wanted: { ...DEFAULTS } }),
+        ],
+      }),
+    );
+    expect(cameraRows()).toEqual(['jean 640×360 1988 µs ×3.5 réglé', 'tanel 640×360 réglé']);
+
+    vi.advanceTimersByTime(5000);
+    fixture.detectChanges();
+    expect(cameraRows()).toEqual(['jean 640×360 hors ligne', 'tanel 640×360 hors ligne']);
   });
 
   it('applies a preset as soon as it is chosen', async () => {

@@ -99,6 +99,17 @@ const LiveSetting kLiveSettings[] = {
      [](const CameraConfig& c) { return c.analogue_gain; },
      [](CameraConfig& c, double v) { c.analogue_gain = std::max(1.0, v); },
      true},
+    // 1 manual (shutter_us and analogue_gain), 2 automatic. Reported as 1 or 2,
+    // never 0, so the VPS always sees which mode the camera really runs.
+    {"auto_exposure", 0, 2, true,
+     [](const CameraConfig& c) { return c.auto_exposure ? 2.0 : 1.0; },
+     [](CameraConfig& c, double v) { c.auto_exposure = v >= 2.0; },
+     true},
+    // Exposure compensation in stops, automatic exposure only.
+    {"ev", -8, 8, false,
+     [](const CameraConfig& c) { return c.ev; },
+     [](CameraConfig& c, double v) { c.ev = v; },
+     true},
 };
 
 bool parse_number(const std::string& text, double& out) {
@@ -154,6 +165,7 @@ std::string format_live_settings(const CameraConfig& cfg) {
 bool capture_settings_differ(const CameraConfig& a, const CameraConfig& b) {
     return a.width != b.width || a.height != b.height ||
            a.shutter_us != b.shutter_us || a.analogue_gain != b.analogue_gain ||
+           a.auto_exposure != b.auto_exposure || a.ev != b.ev ||
            a.sensor_mode != b.sensor_mode;
 }
 
@@ -162,6 +174,8 @@ void keep_capture_settings(CameraConfig& cfg, const CameraConfig& from) {
     cfg.height = from.height;
     cfg.shutter_us = from.shutter_us;
     cfg.analogue_gain = from.analogue_gain;
+    cfg.auto_exposure = from.auto_exposure;
+    cfg.ev = from.ev;
     cfg.sensor_mode = from.sensor_mode;
 }
 

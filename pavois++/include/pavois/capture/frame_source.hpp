@@ -21,6 +21,14 @@ public:
     // false. Lets a bounded replay run terminate instead of falling through to
     // the attitude-only loop, which never returns when frames=-1.
     virtual bool at_end() const { return false; }
+    // The exposure the camera used for its latest frame, when it reports one:
+    // shutter time in microseconds and analogue gain as a plain factor.
+    // Automatic exposure moves both with the light. False when unknown.
+    virtual bool exposure(double& shutter_us, double& analogue_gain) const {
+        (void)shutter_us;
+        (void)analogue_gain;
+        return false;
+    }
 };
 
 // Picks a concrete source from the camera config:

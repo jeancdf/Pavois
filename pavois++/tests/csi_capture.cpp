@@ -190,6 +190,25 @@ void test_stride_rule() {
             "yuv420 needs even dimensions");
 }
 
+void test_exposure_args() {
+    using Args = std::vector<std::string>;
+    const Args manual = {"--exposure", "sport", "--shutter", "2000", "--gain", "8"};
+    pavois::CameraConfig cfg;
+    cfg.shutter_us = 2000;
+    cfg.analogue_gain = 8.0;
+    require(pavois::rpicam_exposure_args(cfg) == manual,
+            "manual exposure fixes the shutter and the gain");
+    cfg.auto_exposure = true;
+    require(pavois::rpicam_exposure_args(cfg) == Args({"--exposure", "sport"}),
+            "automatic exposure leaves the shutter and the gain to the camera");
+    cfg.ev = 1.5;
+    require(pavois::rpicam_exposure_args(cfg) == Args({"--exposure", "sport", "--ev", "1.5"}),
+            "automatic exposure passes the compensation");
+    cfg.auto_exposure = false;
+    require(pavois::rpicam_exposure_args(cfg) == manual,
+            "the compensation only applies to automatic exposure");
+}
+
 void test_capture(const fs::path& root) {
     const Bytes gray_1 = {1, 2, 3, 4, 5, 6, 7, 8};
     const Bytes gray_2 = {9, 10, 11, 12, 13, 14, 15, 16};
@@ -203,6 +222,11 @@ void test_capture(const fs::path& root) {
         auto source = pavois::make_frame_source(camera(4, 2));
         require(source->open(), "CSI source must open");
         expect_frames(*source, 4, 2, {gray_1, gray_2}, "mjpeg");
+        double shutter_us = 0.0;
+        double analogue_gain = 0.0;
+        require(source->exposure(shutter_us, analogue_gain) && shutter_us == 1988.0 &&
+                    analogue_gain == 3.5,
+                "the exposure the camera used comes from its metadata");
         pavois::GrayFrame frame;
         require(!source->read_frame(frame), "EOF must not become a stale frame");
         const std::string asked = calls(root);
@@ -429,7 +453,7 @@ int main() {
                "[ -f \"$dir/$codec.fail\" ] && exit 65\n"
                "if [ -f \"$dir/metadata\" ]; then cat \"$dir/metadata\" >\"$metadata\" &\n"
                "else { printf 'FrameWallClock=1700000000000000000\\n\\n'; "
-               "printf 'FrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
+               "printf 'ExposureTime=1988\\nAnalogueGain=3.5\\nFrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
                "fi\n"
                "cat \"$dir/$codec.bin\"\n";
         // The decoder passes bytes through and logs its options. With
@@ -448,6 +472,7 @@ int main() {
         ::setenv("PATH", (root.string() + ':' + old_path).c_str(), 1);
 
         test_stride_rule();
+        test_exposure_args();
         test_capture(root);
         std::cout << "CSI capture test passed\n";
     } catch (const std::exception& e) {

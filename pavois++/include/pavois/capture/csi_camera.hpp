@@ -22,6 +22,9 @@ namespace pavois {
 // capture_stride.
 int yuv420_stride(const CameraConfig& config, std::string& reason);
 
+// The rpicam-vid arguments that set this camera's exposure.
+std::vector<std::string> rpicam_exposure_args(const CameraConfig& config);
+
 // Local CSI capture through rpicam-vid, without a network stream. Frames come
 // either as MJPEG decoded by FFmpeg, or as uncompressed YUV420 whose
 // luminance plane is read directly.
@@ -32,6 +35,7 @@ public:
     bool open() override;
     bool read_frame(GrayFrame& out) override;
     const std::string& last_error() const override { return last_error_; }
+    bool exposure(double& shutter_us, double& analogue_gain) const override;
 
 private:
     enum class Format { Mjpeg, Yuv420 };
@@ -61,6 +65,9 @@ private:
     std::string metadata_path_;
     std::string metadata_buffer_;
     std::deque<std::uint64_t> metadata_timestamps_;
+    // Latest ExposureTime and AnalogueGain from the metadata; 0 until seen.
+    double metadata_shutter_us_ = 0.0;
+    double metadata_gain_ = 0.0;
     std::vector<std::uint8_t> scratch_;
     std::string last_error_;
 };

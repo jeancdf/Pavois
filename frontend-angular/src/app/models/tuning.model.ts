@@ -23,6 +23,8 @@ export interface TuningParam {
   choices?: TuningChoice[];
   // Ce que vaut 0 quand ce n'est pas une valeur ordinaire (« fichier du Pi »).
   zeroLabel?: string;
+  // Liste courte affichée en boutons côte à côte plutôt qu'en liste déroulante.
+  switch?: boolean;
 }
 
 export interface TuningPreset {

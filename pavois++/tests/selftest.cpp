@@ -1112,12 +1112,15 @@ void test_imu() {
         file << "camera.0.exposure_mode=sport\n";
         file << "camera.0.shutter_us=600\n";
         file << "camera.0.analogue_gain=5.5\n";
+        file << "camera.0.auto_exposure=true\n";
+        file << "camera.0.ev=-1.5\n";
         file << "camera.0.awb_red_gain=1.2\n";
         file << "camera.0.awb_blue_gain=1.4\n";
         file << "camera.0.capture_format=yuv420\n";
         file << "camera.0.capture_stride=1344\n";
         file << "camera.1.capture_format=h264\n";
         file << "camera.1.capture_stride=-8\n";
+        file << "camera.1.ev=20\n";
     }
     const AppConfig loaded = load_config_file(conf_path.string());
     check(loaded.imu_calib_file == "/tmp/custom_imu.bin",
@@ -1131,6 +1134,10 @@ void test_imu() {
     check(loaded.cameras[0].shutter_us == 600, "config fixed shutter");
     check_near(loaded.cameras[0].analogue_gain, 5.5, 1e-9,
                "config fixed analogue gain");
+    check(loaded.cameras[0].auto_exposure, "config turns automatic exposure on");
+    check_near(loaded.cameras[0].ev, -1.5, 1e-9, "config exposure compensation");
+    check(!loaded.cameras[1].auto_exposure, "automatic exposure is off by default");
+    check_near(loaded.cameras[1].ev, 8.0, 1e-9, "exposure compensation clamped to 8 stops");
     check_near(loaded.cameras[0].awb_red_gain, 1.2, 1e-9,
                "config fixed AWB red gain");
     check_near(loaded.cameras[0].awb_blue_gain, 1.4, 1e-9,
@@ -1307,6 +1314,37 @@ void test_live_tuning() {
               "a size above the range is clamped");
         keep_capture_settings(bright, file);
         check(!capture_settings_differ(bright, file), "the previous capture settings come back");
+    }
+
+    // Automatic exposure: 1 manual, 2 automatic, 0 keeps the config file's mode.
+    {
+        CameraConfig file;
+        file.ev = 0.5;
+        CameraConfig cfg = file;
+        check(apply_live_setting(cfg, "auto_exposure", "2") && cfg.auto_exposure,
+              "2 turns automatic exposure on");
+        check(capture_settings_differ(file, cfg),
+              "a new exposure mode needs the capture restarted");
+        check(apply_live_setting(cfg, "auto_exposure", "0") && cfg.auto_exposure,
+              "0 keeps the exposure mode");
+        check(apply_live_setting(cfg, "auto_exposure", "1") && !cfg.auto_exposure,
+              "1 goes back to manual exposure");
+        check(apply_live_setting(cfg, "ev", "-1.5") && cfg.ev == -1.5,
+              "the exposure compensation is applied");
+        check(apply_live_setting(cfg, "ev", "0") && cfg.ev == -1.5,
+              "0 keeps the exposure compensation");
+        check(apply_live_setting(cfg, "ev", "12") && cfg.ev == 8.0,
+              "a compensation above 8 stops is clamped");
+        check(capture_settings_differ(file, cfg),
+              "a new compensation needs the capture restarted");
+
+        CameraConfig automatic = file;
+        automatic.auto_exposure = true;
+        check(format_live_settings(automatic).find("auto_exposure=2") != std::string::npos &&
+                  format_live_settings(file).find("auto_exposure=1") != std::string::npos,
+              "the report says which exposure mode really runs");
+        keep_capture_settings(cfg, file);
+        check(!cfg.auto_exposure && cfg.ev == 0.5, "the previous exposure mode comes back");
     }
 
     // Intrinsics follow the size: the same view, scaled.

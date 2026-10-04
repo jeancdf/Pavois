@@ -31,6 +31,8 @@ export interface TuningParam {
   choices?: TuningChoice[];
   /** Ce que vaut 0 pour ce réglage, quand 0 n'est pas une valeur ordinaire. */
   zeroLabel?: string;
+  /** Liste courte que l'interface montre en boutons côte à côte plutôt qu'en liste déroulante. */
+  switch?: boolean;
 }
 
 export interface TuningPreset {
@@ -246,7 +248,7 @@ export const DETECTOR_PARAMS: TuningParam[] = [
     key: 'shutter_us',
     group: 'Image',
     label: 'Temps de pose',
-    hint: "Plus long : image plus claire, mais une cible en mouvement devient floue. Au-delà de 33 000 µs la caméra ne tient plus 30 images par seconde. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
+    hint: "Plus long : image plus claire, mais une cible en mouvement devient floue. Au-delà de 33 000 µs la caméra ne tient plus 30 images par seconde. Ignoré en exposition automatique. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
     unit: 'µs',
     min: 0,
     max: 1000000,
@@ -259,11 +261,41 @@ export const DETECTOR_PARAMS: TuningParam[] = [
     key: 'analogue_gain',
     group: 'Image',
     label: 'Gain',
-    hint: "Amplification du capteur. Plus haut : image plus claire, mais plus de bruit, donc plus de faux blobs. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
+    hint: "Amplification du capteur. Plus haut : image plus claire, mais plus de bruit, donc plus de faux blobs. Ignoré en exposition automatique. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
     min: 0,
     max: 32,
     sliderMax: 16,
     step: 0.1,
+    integer: false,
+    zeroLabel: 'fichier du Pi',
+  },
+  {
+    key: 'auto_exposure',
+    group: 'Image',
+    label: 'Exposition',
+    hint: "Automatique : la caméra règle elle-même temps de pose et gain selon la lumière (soleil, nuages, crépuscule), en continu ; les deux réglages ci-dessus sont alors ignorés. Manuelle : temps de pose et gain fixes. Changer de mode redémarre la caméra du Pi.",
+    min: 0,
+    max: 2,
+    step: 1,
+    integer: true,
+    choices: [
+      { value: 0, label: 'Fichier du Pi' },
+      { value: 1, label: 'Manuelle' },
+      { value: 2, label: 'Automatique' },
+    ],
+    switch: true,
+  },
+  {
+    key: 'ev',
+    group: 'Image',
+    label: 'Compensation',
+    hint: "Exposition automatique seulement : éclaircit (+) ou assombrit (−) le résultat, en indices de lumination. 0 : valeur du fichier du Pi. Le Pi redémarre sa caméra.",
+    unit: 'IL',
+    min: -8,
+    max: 8,
+    sliderMin: -3,
+    sliderMax: 3,
+    step: 0.5,
     integer: false,
     zeroLabel: 'fichier du Pi',
   },
@@ -291,6 +323,8 @@ export const DETECTOR_DEFAULTS: TuningValues = {
   capture_width: 0,
   shutter_us: 0,
   analogue_gain: 0,
+  auto_exposure: 0,
+  ev: 0,
 };
 
 export const FUSION_PARAMS: TuningParam[] = [

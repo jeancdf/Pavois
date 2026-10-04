@@ -3,13 +3,12 @@ name: Deploy OVH VPS (Achraf)
 on:
   push:
     branches:
-      - securite
       - main
   workflow_dispatch:
 
 jobs:
   check:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/securite'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

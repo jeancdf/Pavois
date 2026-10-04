@@ -100,14 +100,8 @@ jobs:
               exit 1
             fi
 
-            # Déterminer le dossier cible et le fichier compose selon la branche
-            if [ "$BRANCH" = "securite" ]; then
-              TARGET_DIR="${BASE_APP_DIR}-securite"
-              COMPOSE_FILE="docker-compose.securite.yml"
-            else
-              TARGET_DIR="${BASE_APP_DIR}"
-              COMPOSE_FILE="docker-compose.yml"
-            fi
+            TARGET_DIR="${BASE_APP_DIR}"
+            COMPOSE_FILE="docker-compose.yml"
 
             echo "--> Déploiement de la branche '$BRANCH' dans '$TARGET_DIR' avec $COMPOSE_FILE"
 

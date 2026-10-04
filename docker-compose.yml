@@ -1,33 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: pavois-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pavois}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-pavois}
-    volumes:
-      - pavois-postgres-data:/var/lib/postgresql/data
-    # Pas de "ports:" : accessible uniquement depuis le réseau Docker interne
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN            # Init du volume monté par l'entrypoint officiel
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-      - FOWNER
-    mem_limit: 512m
-    cpus: 1.0
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pavois}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   vps-server:
     build:
       context: ./vps
@@ -92,4 +63,3 @@ services:
 
 volumes:
   pavois-data:
-  pavois-postgres-data:

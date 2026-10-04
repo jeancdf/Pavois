@@ -139,12 +139,20 @@ button:focus-visible {
   gap: 6px;
 }
 
-.targets button {
+.switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.targets button,
+.switch button {
   padding: 4px 10px;
   color: #94a3b8;
 }
 
-.targets button.on {
+.targets button.on,
+.switch button.on {
   color: #0b1220;
   background: #93c5fd;
   border-color: #93c5fd;

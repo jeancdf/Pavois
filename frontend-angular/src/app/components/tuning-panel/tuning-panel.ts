@@ -185,6 +185,11 @@ export class TuningPanel implements OnInit, OnDestroy {
     this.edit(scope, param, event, SEND_DELAY_MS);
   }
 
+  /** Bouton d'un sélecteur : envoi immédiat de la valeur choisie. */
+  pick(scope: Scope, param: TuningParam, value: number): void {
+    this.apply(scope, param, value, 0);
+  }
+
   /** Curseur relâché ou valeur saisie : envoi immédiat. */
   commit(scope: Scope, param: TuningParam, event: Event): void {
     this.edit(scope, param, event, 0);

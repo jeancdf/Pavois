@@ -100,7 +100,26 @@
         @for (param of group.params; track param.key) {
           <div class="control">
             <label [for]="'detector-' + param.key" [title]="param.hint">{{ param.label }}</label>
-            @if (param.choices) {
+            @if (param.choices && param.switch) {
+              <div
+                class="switch"
+                role="radiogroup"
+                [id]="'detector-' + param.key"
+                [attr.aria-label]="param.label"
+              >
+                @for (choice of param.choices; track choice.value) {
+                  <button
+                    type="button"
+                    role="radio"
+                    [class.on]="choice.value === detectorValue(param)"
+                    [attr.aria-checked]="choice.value === detectorValue(param)"
+                    (click)="pick('detector', param, choice.value)"
+                  >
+                    {{ choice.label }}
+                  </button>
+                }
+              </div>
+            } @else if (param.choices) {
               <select
                 class="choice"
                 [id]="'detector-' + param.key"

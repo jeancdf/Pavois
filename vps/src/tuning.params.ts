@@ -283,6 +283,7 @@ export const DETECTOR_PARAMS: TuningParam[] = [
       { value: 1, label: 'Manuelle' },
       { value: 2, label: 'Automatique' },
     ],
+    switch: true,
   },
   {
     key: 'ev',

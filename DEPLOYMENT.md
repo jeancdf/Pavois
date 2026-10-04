@@ -59,18 +59,8 @@ chmod +x scripts/deploy_vps.sh frontend-angular/docker-entrypoint.d/40-env-js.sh
 
 ## GitHub Action secrets
 
-Add these repository secrets (Settings → Secrets and variables → Actions):
-
-- `VPS_HOST`
-- `VPS_USER`
-- `VPS_SSH_KEY`
-- `VPS_PORT`
-- `VPS_APP_DIR`
-
-`VPS_APP_DIR` should be the absolute path of the repo on the VPS, for example `/home/deploy/Pavois`.
-
-The Achraf OVH workflow (`deploy-ovh-achraf.yml`) uses its own secrets, not the
-production `VPS_*` ones:
+The deploy workflow (`deploy-ovh-achraf.yml`) reads these repository secrets
+(Settings → Secrets and variables → Actions):
 
 - `OVH_VPS_SSH_KEY` (private key for the Achraf VPS)
 - `OVH_VPS_HOST` (default `51.91.98.159`)

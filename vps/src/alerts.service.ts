@@ -26,12 +26,15 @@ import {
   CameraHealthStatus,
   SystemHealthUpdate,
 } from './camera-health.service';
+import { formatDuration } from './discord-formatter';
 
 export interface TrackAlertInput {
   trackId: string;
   classification?: string;
   cameraIds?: string[];
   confidence?: number;
+  lat?: number;
+  lng?: number;
 }
 
 export interface ListAlertsOptions {
@@ -49,7 +52,11 @@ export class AlertsService {
   private readonly activeTrackAlerts = new Map<string, string>(); // trackId -> alertId
   private readonly activeTrackLastSeen = new Map<string, number>();
   private readonly cameraIncidentAlerts = new Map<string, string>(); // cameraId -> alertId
+  private readonly cameraIncidentStartTime = new Map<string, number>(); // cameraId -> startTime
+  private readonly droneNotifiedTracks = new Set<string>(); // trackIds with sent Discord notification
+
   private systemBlindAlertId: string | null = null;
+  private systemBlindStartTime: number | null = null;
   private trackCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -133,11 +140,19 @@ export class AlertsService {
       this.activeTrackAlerts.set(track.trackId, alertId);
       this.eventsGateway.broadcast('alert', alert);
 
-      if (type === AlertType.CRITICAL) {
+      // Envoi Discord unique par incident
+      if (type === AlertType.CRITICAL && !this.droneNotifiedTracks.has(track.trackId)) {
+        this.droneNotifiedTracks.add(track.trackId);
         void this.discordChannel.send({
           title: '🚨 DRONE CONFIRMÉ',
           description: message,
           severity: 'CRITICAL',
+          category: AlertCategory.DRONE_CONFIRMED,
+          alertId: alert.id,
+          cameraIds,
+          confidence,
+          lat: track.lat,
+          lng: track.lng,
           timestamp: new Date(),
         });
       }
@@ -161,12 +176,21 @@ export class AlertsService {
         nextMessage = `DRONE CONFIRMÉ — Piste ${track.trackId} (Confiance: ${(confidence * 100).toFixed(0)}%)`;
         shouldUpdate = true;
 
-        void this.discordChannel.send({
-          title: '🚨 DRONE CONFIRMÉ',
-          description: nextMessage,
-          severity: 'CRITICAL',
-          timestamp: new Date(),
-        });
+        if (!this.droneNotifiedTracks.has(track.trackId)) {
+          this.droneNotifiedTracks.add(track.trackId);
+          void this.discordChannel.send({
+            title: '🚨 DRONE CONFIRMÉ',
+            description: nextMessage,
+            severity: 'CRITICAL',
+            category: AlertCategory.DRONE_CONFIRMED,
+            alertId,
+            cameraIds,
+            confidence,
+            lat: track.lat,
+            lng: track.lng,
+            timestamp: new Date(),
+          });
+        }
       } else if (
         confidence >= 0.4 &&
         existing.category === AlertCategory.OBJECT_DETECTED
@@ -264,12 +288,20 @@ export class AlertsService {
         this.cameraIncidentAlerts.delete(status.cameraId);
       }
 
-      // Notification Discord de rétablissement si l'incident précédent était critique
+      // Notification Discord de rétablissement avec référence à l'incident d'origine et durée
       if (status.previousState === CameraState.HORS_SERVICE || status.previousState === CameraState.DEGRADED_BLIND) {
+        const startTime = this.cameraIncidentStartTime.get(status.cameraId) || Date.now();
+        const durationMs = Date.now() - startTime;
+        this.cameraIncidentStartTime.delete(status.cameraId);
+
         void this.discordChannel.send({
-          title: '✅ CAMÉRA RÉTABLIE',
-          description: message,
+          title: `✅ CAMÉRA RÉTABLIE — ${status.displayName}`,
+          description: `Fonctionnement nominal rétabli après ${formatDuration(durationMs)}.`,
           severity: 'INFO',
+          category: AlertCategory.CAMERA_RECOVERED,
+          incidentDurationMs: durationMs,
+          cameraIds: [status.cameraId],
+          reliability: globalUpdate.reliability,
           timestamp: new Date(),
         });
       }
@@ -310,10 +342,21 @@ export class AlertsService {
       this.eventsGateway.broadcast('alert', alert);
 
       if (isCritical) {
+        this.cameraIncidentStartTime.set(status.cameraId, Date.now());
+        const title =
+          status.state === CameraState.HORS_SERVICE
+            ? `📷 ${status.displayName} HORS SERVICE`
+            : `📷 ${status.displayName} MASQUÉE`;
+
         void this.discordChannel.send({
-          title: '🚨 ALERTE CRITIQUE CAMÉRA',
+          title,
           description: message,
           severity: 'CRITICAL',
+          category: AlertCategory.CAMERA_STATUS,
+          alertId: alert.id,
+          cameraIds: [status.cameraId],
+          cause: status.reason,
+          reliability: globalUpdate.reliability,
           timestamp: new Date(),
         });
       }
@@ -350,12 +393,16 @@ export class AlertsService {
       }
 
       this.systemBlindAlertId = blindAlert.id;
+      this.systemBlindStartTime = Date.now();
       this.eventsGateway.broadcast('alert', blindAlert);
 
       void this.discordChannel.send({
         title: '🚨 SYSTÈME AVEUGLE',
         description: globalUpdate.message,
         severity: 'CRITICAL',
+        category: AlertCategory.SYSTEM_BLIND,
+        alertId: blindAlert.id,
+        reliability: 'RED',
         timestamp: new Date(),
       });
     } else if (
@@ -370,7 +417,21 @@ export class AlertsService {
       } catch (err) {
         this.logger.warn(`Échec de résolution alerte système aveugle : ${err}`);
       }
+
+      const startTime = this.systemBlindStartTime || Date.now();
+      const durationMs = Date.now() - startTime;
       this.systemBlindAlertId = null;
+      this.systemBlindStartTime = null;
+
+      void this.discordChannel.send({
+        title: '✅ SYSTÈME RESTAURÉ',
+        description: `Fiabilité 3D restaurée après ${formatDuration(durationMs)} (${globalUpdate.message}).`,
+        severity: 'INFO',
+        category: AlertCategory.SYSTEM_BLIND,
+        incidentDurationMs: durationMs,
+        reliability: globalUpdate.reliability,
+        timestamp: new Date(),
+      });
     }
 
     // Diffusion WS de l'état caméras mis à jour
@@ -452,6 +513,7 @@ export class AlertsService {
           this.activeTrackAlerts.delete(trackId);
         }
         this.activeTrackLastSeen.delete(trackId);
+        this.droneNotifiedTracks.delete(trackId);
       }
     }
   }

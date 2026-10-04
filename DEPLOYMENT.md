@@ -78,6 +78,6 @@ On every push to `main`, `deploy-ovh-achraf.yml`:
 1. runs the backend and Angular tests
 2. connects to the Achraf VPS over SSH
 3. checks out the pushed commit (untracked files such as `.env` are kept)
-4. writes the Discord settings from GitHub into `vps/.env`
+4. writes the Discord settings from GitHub into `vps/.env.staging`
 5. runs `scripts/deploy_staging.sh`, which rebuilds and restarts
    `docker-compose.staging.yml`: the interface on port 8081, the API on 3003

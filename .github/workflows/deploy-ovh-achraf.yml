@@ -160,15 +160,15 @@ jobs:
           # Untracked files such as .env are left untouched.
           git checkout -f -B "$BRANCH" "origin/$BRANCH"
 
-          # Écriture sécurisée des variables Discord dans vps/.env
+          # Écriture sécurisée des variables Discord dans vps/.env.staging, le fichier lu par la pile staging
           python3 <<'PY'
           import os
           from pathlib import Path
 
           vps_dir = Path("vps")
           vps_dir.mkdir(exist_ok=True)
-          env_path = vps_dir / ".env"
-          example_path = vps_dir / ".env.example"
+          env_path = vps_dir / ".env.staging"
+          example_path = vps_dir / ".env.staging.example"
 
           if not env_path.exists():
               if example_path.exists():

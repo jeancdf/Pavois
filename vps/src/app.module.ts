@@ -23,7 +23,7 @@ import { ClassificationService } from './classification.service';
 import { TuningController } from './tuning.controller';
 import { TuningService } from './tuning.service';
 import { CameraHealthService } from './cameras/camera-health.service';
-import { DiscordNotificationChannel } from './discord-notification.channel';
+import { DiscordNotificationChannel } from './notifications/discord-notification.channel';
 import { AlertsCleanUpService } from './alerts/alerts-clean-up.service';
 import { SimulationService } from './simulation.service';
 import { ALERT_STORE, CAMERA_LOG_STORE } from './alerts/alert-store.interface';

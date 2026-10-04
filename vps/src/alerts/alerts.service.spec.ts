@@ -1,6 +1,6 @@
 import { AlertsService } from './alerts.service';
 import { EventsGateway } from '../realtime/events.gateway';
-import { DiscordNotificationChannel } from '../discord-notification.channel';
+import { DiscordNotificationChannel } from '../notifications/discord-notification.channel';
 import { CameraHealthService } from '../cameras/camera-health.service';
 import { JsonlAlertStore } from './jsonl-alert.store';
 import { AlertCategory, AlertStatus, AlertType, CameraState } from './alert-types';

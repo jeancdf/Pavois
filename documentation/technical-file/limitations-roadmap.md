@@ -48,7 +48,7 @@ Kalman ») ont été retirées.
   Décision SCRUM-70 : ne **pas** fusionner `feature/pattern-matching-*`
   (elles patchaient l’ancien `UdpService` et le store React). Le scorecard
   v2 (vitesse, accélération, altitude GPS, taux de cap) est porté dans
-  `vps/src/fusion-classify.ts` et appliqué aux pistes Kalman. Première
+  `vps/src/fusion/fusion-classify.ts` et appliqué aux pistes Kalman. Première
   mesure → `"other"`. Une classe CSV explicite (6ᵉ champ `obj*`) gagne
   encore sur le chemin UDP local. Les seuils ne sont **pas calibrés** ;
   l’alerte Angular « DRONE confirmé » peut partir sur un faux positif.

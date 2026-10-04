@@ -1,4 +1,4 @@
-import { FusionObservation } from './fusion.types';
+import { FusionObservation } from './fusion/fusion.types';
 import { alignCandidates, timeAlignFrameGroups } from './fusion-align';
 
 function observation(

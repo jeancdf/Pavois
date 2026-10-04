@@ -4,12 +4,12 @@ import * as crypto from 'crypto';
 import { EventsGateway } from '../realtime/events.gateway';
 import { CamerasService } from '../cameras/cameras.service';
 import type { CameraConfig } from '../cameras/cameras.service';
-import { FusionService } from '../fusion.service';
+import { FusionService } from '../fusion/fusion.service';
 import type {
   FusionObservation,
   FusionTrackUpdate,
   FuseUpdate,
-} from '../fusion.types';
+} from '../fusion/fusion.types';
 import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
 import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';

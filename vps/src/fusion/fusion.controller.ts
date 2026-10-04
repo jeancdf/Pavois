@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { AuthTokenGuard } from './auth/access-control';
+import { AuthTokenGuard } from '../auth/access-control';
 import { FusionService } from './fusion.service';
 import type { FusionSnapshot } from './fusion.types';
 

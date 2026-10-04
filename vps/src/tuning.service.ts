@@ -7,7 +7,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import { CamerasService } from './cameras/cameras.service';
-import { FusionService } from './fusion.service';
+import { FusionService } from './fusion/fusion.service';
 import {
   BUILTIN_PRESETS,
   DETECTOR_DEFAULTS,

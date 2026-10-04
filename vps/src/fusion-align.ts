@@ -1,4 +1,4 @@
-import { FusionObservation } from './fusion.types';
+import { FusionObservation } from './fusion/fusion.types';
 
 export function observationTimeUs(obs: FusionObservation): number {
   return obs.timestampUs;

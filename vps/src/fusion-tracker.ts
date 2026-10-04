@@ -2,7 +2,7 @@
 // Mahalanobis gating, per-measurement covariance and track re-identification.
 import { KalmanCV } from './fusion-kalman';
 import type { Vec3 } from './fusion-geo';
-import type { FusionTrack } from './fusion.types';
+import type { FusionTrack } from './fusion/fusion.types';
 import {
   classifyKinematics,
   headingDegEnu,

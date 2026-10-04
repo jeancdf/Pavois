@@ -1,4 +1,4 @@
-import { FusionService } from './fusion.service';
+import { FusionService } from './fusion/fusion.service';
 import {
   BASE_SCENARIO,
   orbit,

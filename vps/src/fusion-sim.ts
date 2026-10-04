@@ -9,8 +9,8 @@ import {
   projectWorldToPixel,
   type Vec3,
 } from './fusion-geo';
-import { FusionService } from './fusion.service';
-import type { FusionObservation } from './fusion.types';
+import { FusionService } from './fusion/fusion.service';
+import type { FusionObservation } from './fusion/fusion.types';
 
 export interface SimCamera {
   id: string;

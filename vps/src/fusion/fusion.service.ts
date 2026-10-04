@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { createWriteStream, type WriteStream } from 'fs';
-import { alignCandidates, timeAlignFrameGroups } from './fusion-align';
+import { alignCandidates, timeAlignFrameGroups } from '../fusion-align';
 import {
   enuToGps,
   gpsToEnu,
@@ -13,7 +13,7 @@ import {
   type CameraPose,
   type GeoOrigin,
   type Vec3,
-} from './fusion-geo';
+} from '../fusion-geo';
 import {
   DEFAULT_TRIANGULATION_CONFIG,
   triangulate,
@@ -21,13 +21,13 @@ import {
   type TriangulateObservation,
   type TriangulationConfig,
   type TriangulationResult,
-} from './fusion-triangulate';
+} from '../fusion-triangulate';
 import {
   DEFAULT_TRACKER_CONFIG,
   Tracker,
   type PredictedTrack,
   type TrackerConfig,
-} from './fusion-tracker';
+} from '../fusion-tracker';
 import {
   FusionCameraState,
   FusionLastFuse,

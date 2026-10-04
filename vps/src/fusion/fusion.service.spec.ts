@@ -6,7 +6,7 @@ import {
   vNorm,
   vSub,
   type Vec3,
-} from './fusion-geo';
+} from '../fusion-geo';
 import { FusionService } from './fusion.service';
 import { FusionObservation } from './fusion.types';
 

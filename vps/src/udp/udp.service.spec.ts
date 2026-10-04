@@ -6,7 +6,7 @@ import {
 } from './udp.service';
 import { EventsGateway } from '../realtime/events.gateway';
 import { CamerasService } from '../cameras/cameras.service';
-import { FusionService } from '../fusion.service';
+import { FusionService } from '../fusion/fusion.service';
 import { TracksService } from '../tracks.service';
 import { AlertsService } from '../alerts.service';
 import * as crypto from 'crypto';

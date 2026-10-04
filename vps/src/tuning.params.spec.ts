@@ -82,6 +82,23 @@ describe('checkValues', () => {
       }),
     ).toEqual({ values: { capture_width: 0, shutter_us: 0, analogue_gain: 0 } });
   });
+
+  it('takes the exposure mode from its list and a compensation within 8 stops', () => {
+    const error = (input: unknown) => {
+      const checked = checkValues(DETECTOR_PARAMS, input);
+      return 'error' in checked ? checked.error : null;
+    };
+    for (const mode of [0, 1, 2]) {
+      expect(checkValues(DETECTOR_PARAMS, { auto_exposure: mode })).toEqual({
+        values: { auto_exposure: mode },
+      });
+    }
+    expect(error({ auto_exposure: 3 })).toContain('Exposition');
+    expect(checkValues(DETECTOR_PARAMS, { ev: -1.5 })).toEqual({
+      values: { ev: -1.5 },
+    });
+    expect(error({ ev: 9 })).toContain('hors des bornes');
+  });
 });
 
 describe('keepKnownValues', () => {

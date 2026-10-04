@@ -356,6 +356,51 @@ describe('TuningPanel', () => {
     expect(api.setDetector).toHaveBeenCalledWith({ capture_width: 640 }, undefined);
   });
 
+  it('shows the exposure mode as a switch and sends the mode clicked at once', () => {
+    const exposure: TuningParam = {
+      key: 'auto_exposure',
+      group: 'Image',
+      label: 'Exposition',
+      hint: 'Qui règle la pose.',
+      min: 0,
+      max: 2,
+      step: 1,
+      integer: true,
+      choices: [
+        { value: 0, label: 'Fichier du Pi' },
+        { value: 1, label: 'Manuelle' },
+        { value: 2, label: 'Automatique' },
+      ],
+      switch: true,
+    };
+    open(
+      makeState({
+        params: { detector: [...DETECTOR_PARAMS, exposure], fusion: FUSION_PARAMS },
+        detectorDefaults: { ...DEFAULTS, auto_exposure: 0 },
+      }),
+    );
+    const modes = () => [
+      ...root.querySelectorAll<HTMLButtonElement>('#detector-auto_exposure button'),
+    ];
+    expect(modes().map((mode) => mode.textContent?.trim())).toEqual([
+      'Fichier du Pi',
+      'Manuelle',
+      'Automatique',
+    ]);
+    expect(modes().map((mode) => mode.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+    ]);
+
+    modes()[2].click();
+    vi.advanceTimersByTime(0);
+    fixture.detectChanges();
+    expect(api.setDetector).toHaveBeenCalledWith({ auto_exposure: 2 }, undefined);
+    expect(modes()[2].classList.contains('on')).toBe(true);
+    expect(modes()[0].classList.contains('on')).toBe(false);
+  });
+
   it('says what the Pis really run when a capture setting is left to their file', () => {
     open(captureState({ mode: 'live', wanted: { ...DEFAULTS, capture_width: 0, shutter_us: 0 } }));
     expect(note('shutter_us')).toBe('fichier du Pi : 16000 µs');

@@ -4,8 +4,8 @@ import {
   expectedTarget,
   railPitchMm,
 } from './rail-bench';
-import { makeIntrinsics } from './fusion/fusion-geo';
-import { triangulate } from './fusion/fusion-triangulate';
+import { makeIntrinsics } from '../fusion/fusion-geo';
+import { triangulate } from '../fusion/fusion-triangulate';
 
 describe('rail-bench geometry', () => {
   it('places tanel / jean / walid 3 pitches apart on a 1 m rig', () => {

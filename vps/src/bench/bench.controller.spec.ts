@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BenchController } from './bench.controller';
-import { CamerasService } from './cameras/cameras.service';
-import { EventsGateway } from './realtime/events.gateway';
+import { CamerasService } from '../cameras/cameras.service';
+import { EventsGateway } from '../realtime/events.gateway';
 import { buildRailBenchState } from './rail-bench';
 
 describe('BenchController', () => {

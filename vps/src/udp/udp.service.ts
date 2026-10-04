@@ -16,7 +16,7 @@ import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';
 import { udpDebug } from './udp-log';
 import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
-import type { RailLocalPose } from '../rail-bench';
+import type { RailLocalPose } from '../bench/rail-bench';
 import { ClassificationService } from '../classification/classification.service';
 import { TuningService } from '../tuning/tuning.service';
 

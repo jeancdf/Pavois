@@ -8,7 +8,7 @@ import {
   type RailBenchOptions,
   type RailBenchState,
   type RailLocalPose,
-} from '../rail-bench';
+} from '../bench/rail-bench';
 
 /** Pose d'une caméra, diffusée au frontend par l'événement `camera_positions`. */
 export interface CameraConfig {

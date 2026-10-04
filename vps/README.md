@@ -1,98 +1,104 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# PAVOIS — serveur VPS (NestJS)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Le VPS reçoit ce que voient les trois Raspberry Pi (jean, tanel, walid), en déduit la position 3D des cibles, les suit dans le temps, lève les alertes et pousse tout en direct vers l'interface Angular.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Vue d'ensemble
 
-## Description
+```mermaid
+flowchart LR
+    Pi["Raspberry Pi<br/>(pavois++)"]
+    UI["Interface Angular"]
+    Discord["Discord"]
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+    subgraph VPS["VPS — vps/src"]
+        udp["udp/<br/>réception UDP"]
+        fusion["fusion/<br/>triangulation + suivi"]
+        tracks["tracks/<br/>historique"]
+        alerts["alerts/<br/>règles d'alerte"]
+        notif["notifications/"]
+        cameras["cameras/<br/>poses, santé, aperçus"]
+        classif["classification/"]
+        tuning["tuning/<br/>réglages à chaud"]
+        realtime["realtime/<br/>WebSocket"]
+    end
 
-## Project setup
-
-```bash
-$ npm install
+    Pi -- "UDP : blobs, stats,<br/>attitude, réglages" --> udp
+    Pi -- "HTTP : aperçus JPEG" --> cameras
+    Pi -- "HTTP : photos de la cible" --> classif
+    udp --> fusion
+    udp --> cameras
+    udp --> tuning
+    fusion --> tracks
+    fusion --> alerts
+    alerts --> notif --> Discord
+    tuning -- "UDP signé : nouveaux réglages" --> Pi
+    udp & cameras & alerts & classif & tuning --> realtime
+    realtime -- "WebSocket /ws" --> UI
+    UI -- "HTTP /api (jeton opérateur)" --> VPS
 ```
 
-## Compile and run the project
+## Organisation du code
+
+Un dossier par fonctionnalité. Chaque dossier garde ensemble son contrôleur (routes HTTP), son service (logique), ses types et ses tests (`*.spec.ts` à côté du fichier testé).
+
+| Dossier | Rôle | Fichiers principaux |
+|---|---|---|
+| `main.ts`, `app.module.ts` | Démarrage : variables d'environnement, sécurité HTTP (helmet), WebSocket, déclaration de tous les contrôleurs et services | |
+| `auth/` | Jeton opérateur : vérification et garde des routes | `access-control.ts`, `auth.controller.ts` |
+| `common/` | Code partagé par toutes les fonctionnalités | `http-body.ts` (format et taille maximale des corps de requête : JSON, JPEG brut) |
+| `udp/` | Serveur UDP : lit chaque ligne envoyée par un Pi, l'aiguille vers le bon service, renvoie les réglages aux Pi | `udp.service.ts`, `udp-route.ts`, un analyseur par type de ligne (`udp-raw`, `udp-stats`, `udp-attitude`, `udp-config`) |
+| `cameras/` | Position et cap de chaque caméra, état de santé calculé depuis ses statistiques, aperçus JPEG | `cameras.service.ts`, `camera-health.service.ts`, `preview.service.ts` |
+| `fusion/` | Cœur du calcul : alignement dans le temps des blobs, triangulation, filtre de Kalman, classement par le mouvement | `fusion.service.ts`, `fusion-align.ts`, `fusion-triangulate.ts`, `fusion-tracker.ts`, `fusion-kalman.ts`, `fusion-classify.ts`, `fusion-geo.ts` |
+| `tracks/` | Historique des positions de chaque piste, enregistré en JSONL, et verdict de l'opérateur sur une piste | `tracks.service.ts`, `jsonl-track.store.ts` |
+| `alerts/` | Règles d'alerte (objet détecté, drone confirmé, caméra aveugle…), acquittement, purge des anciennes alertes | `alerts.service.ts`, `jsonl-alert.store.ts`, `alerts-clean-up.service.ts` |
+| `notifications/` | Envoi des alertes sur Discord, avec file d'attente, limite de débit et nouvelles tentatives | `discord-notification.channel.ts`, `discord-formatter.ts` |
+| `classification/` | Photos de la cible prises par chaque Pi, puis classifieur OpenCV (`classifier/classify_target.py`) | `classification.service.ts` |
+| `tuning/` | Réglages du détecteur et de la fusion modifiables depuis le panneau, préréglages | `tuning.params.ts` (la table des réglages), `tuning.service.ts` |
+| `realtime/` | Passerelle WebSocket : authentifie l'écran puis lui diffuse chaque événement | `events.gateway.ts` |
+| `bench/` | Outils de test : banc sur rail, simulateur de détections (`SIMULATION_MODE`, jamais en production) | `rail-bench.ts`, `simulation.service.ts` |
+
+Le stockage passe par une interface (`alert-store.interface.ts`, `track-store.interface.ts`) : les services ne savent pas que les données sont en JSONL, on peut changer de stockage sans les toucher.
+
+## Le trajet d'une détection
+
+1. Chaque Pi envoie en UDP une ligne `raw` par blob détecté. `udp/udp-route.ts` reconnaît la ligne, `udp/udp-raw.ts` la lit.
+2. `udp/udp.service.ts` la passe à `fusion/fusion.service.ts` avec la pose de la caméra (`cameras/cameras.service.ts`).
+3. La fusion ramène les blobs de toutes les caméras au même instant (`fusion-align.ts`), croise leurs rayons pour obtenir un point 3D (`fusion-triangulate.ts`) et le donne au suivi multi-cibles (`fusion-tracker.ts`, filtre de Kalman dans `fusion-kalman.ts`). `fusion-classify.ts` juge si la trajectoire ressemble à un drone.
+4. Chaque mise à jour de piste est diffusée à l'interface (`realtime/events.gateway.ts`), enregistrée (`tracks/tracks.service.ts`) et passée aux règles d'alerte (`alerts/alerts.service.ts`), qui préviennent Discord (`notifications/`).
+5. Quand une cible passe à portée et que les trois caméras sont en ligne, `classification/` demande une photo à chaque Pi et lance le classifieur une fois toutes les photos reçues.
+
+## Routes HTTP
+
+Derrière nginx, l'interface les appelle sous `/api/…` (nginx retire le préfixe). Les routes de l'interface exigent le jeton opérateur.
+
+| Route | Rôle |
+|---|---|
+| `GET /auth/verify` | Vérifie le jeton opérateur |
+| `GET /cameras`, `PUT /cameras/:id/position` | Liste des caméras, position d'une caméra |
+| `POST /attitude` | Cap d'une caméra |
+| `POST /preview` | Aperçu JPEG envoyé par un Pi |
+| `GET /fusion` | État courant de la fusion |
+| `GET /tracks`, `PATCH /tracks/:id` | Historique des pistes, verdict sur une piste |
+| `GET /alerts`, `POST /alerts/:id/acknowledge` | Alertes, acquittement |
+| `POST /classification/capture` | Photo d'une cible envoyée par un Pi |
+| `GET /tuning`, `PUT`/`DELETE /tuning/detector`, `PUT`/`DELETE /tuning/fusion` | Réglages à chaud |
+| `POST /tuning/presets`, `DELETE /tuning/presets/:id`, `POST /tuning/presets/:id/apply` | Préréglages |
+| `GET`/`POST`/`DELETE /bench/rail` | Banc sur rail |
+
+L'interface ouvre le WebSocket sur `/ws`, que nginx transmet au serveur.
+
+## Données
+
+Dans `data/` (ou `ALERTS_DATA_DIR`) : `alerts.jsonl`, `camera-states.jsonl`, `tracks.jsonl`, plus `cameras.json` (`CAMERAS_FILE`) et `tuning.json` (`TUNING_FILE`). Les variables d'environnement sont décrites dans `.env.example`.
+
+## Commandes
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+npm run start:dev    # développement, rechargement automatique
+npm test             # tests unitaires
+npm run test:e2e     # démarre toute l'application et teste les routes
+npm run build        # compile dans dist/ (lancé par node dist/main.js)
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Le déploiement (Docker, staging sur le VPS) est décrit dans [`../DEPLOYMENT.md`](../DEPLOYMENT.md).

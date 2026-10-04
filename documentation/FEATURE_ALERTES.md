@@ -87,41 +87,41 @@ sequenceDiagram
 ## 5. Explication du Code Fichier par Fichier
 
 ### A. Pi Embarqué (C++)
-1. [image_ops.hpp](file:///c:/Users/Lucli/drone/Pavois/pavois++/include/pavois/detection/image_ops.hpp) & [image_ops.cpp](file:///c:/Users/Lucli/drone/Pavois/pavois++/src/detection/image_ops.cpp) :
+1. [image_ops.hpp](../pavois++/include/pavois/detection/image_ops.hpp) & [image_ops.cpp](../pavois++/src/detection/image_ops.cpp) :
    * Contient la structure `ImageDiagnostics` et la fonction `compute_image_diagnostics()`.
    * **Rôle** : Calcule à 5 Hz la luminance moyenne, l'écart-type spatial, la différence inter-images et la variance du Laplacien sur une frame sous-échantillonnée. Mesure précise via `std::chrono::steady_clock`.
-2. [camera_worker.hpp](file:///c:/Users/Lucli/drone/Pavois/pavois++/include/pavois/runtime/camera_worker.hpp) & [camera_worker.cpp](file:///c:/Users/Lucli/drone/Pavois/pavois++/src/runtime/camera_worker.cpp) :
+2. [camera_worker.hpp](../pavois++/include/pavois/runtime/camera_worker.hpp) & [camera_worker.cpp](../pavois++/src/runtime/camera_worker.cpp) :
    * **Rôle** : Émet la trame UDP de statistiques au format v2 : `stats,v2,cam_id,fps,frame_id,now_us,lum_mean,lum_stddev,frame_diff,laplacian_var,exposure_us,gain_db`.
 
 ### B. Backend NestJS (Serveur VPS)
-1. [alert-types.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/alert-types.ts) & [track-types.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/track-types.ts) :
+1. [alert-types.ts](../vps/src/alerts/alert-types.ts) & [track-types.ts](../vps/src/tracks/track-types.ts) :
    * Définitions des types et enums TypeScript autonomes sans dépendance Prisma (`AlertType`, `AlertCategory`, `AlertStatus`, `CameraState`, `TrackVerdict`).
-2. [alert-store.interface.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/stores/alert-store.interface.ts) & [track-store.interface.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/stores/track-store.interface.ts) :
+2. [alert-store.interface.ts](../vps/src/alerts/alert-store.interface.ts) & [track-store.interface.ts](../vps/src/tracks/track-store.interface.ts) :
    * Interfaces abstraites pour la création, la mise à jour, la relecture et la purge des alertes et des pistes.
-3. [jsonl-alert.store.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/stores/jsonl-alert.store.ts) & [jsonl-track.store.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/stores/jsonl-track.store.ts) :
+3. [jsonl-alert.store.ts](../vps/src/alerts/jsonl-alert.store.ts) & [jsonl-track.store.ts](../vps/src/tracks/jsonl-track.store.ts) :
    * Implémentations concrètes In-Memory + Journal JSONL append-only avec file d'écriture asynchrone, tolérance aux lignes corrompues et purge atomique.
-4. [camera-health.service.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/camera-health.service.ts) :
+4. [camera-health.service.ts](../vps/src/cameras/camera-health.service.ts) :
    * **Machine à états des caméras** (`EN_ATTENTE` ➔ `OK` | `DEGRADED_FROZEN` | `DEGRADED_BLIND` | `REDUCED_VISIBILITY_NIGHT` | `HORS_SERVICE`).
    * Initialise les caméras en `EN_ATTENTE` avec un **délai de grâce au démarrage de 10 s** (`CAMERA_INITIAL_GRACE_SECONDS`) évitant les fausses alarmes.
    * Maintient la **ligne de base glissante 60 s gelée** pendant les anomalies.
    * Détecte les assombrissements environnementaux collectifs (nuages/nuit) pour éviter les faux positifs.
    * Calcule la fiabilité globale (`GREEN` 3/3, `ORANGE` 2/3, `RED` <=1/3).
-5. [alerts.service.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/alerts.service.ts) :
+5. [alerts.service.ts](../vps/src/alerts/alerts.service.ts) :
    * **Machine à états des alertes** (`NEW` ➔ `ACKNOWLEDGED` ➔ `RESOLVED`).
    * Implémente la **Feature B Évolutive** (`OBJECT_DETECTED` ➔ `TO_VERIFY` ➔ `DRONE_CONFIRMED`).
    * Tolérance aux erreurs de disque avec fallback temporary ID pour ne jamais interrompre la diffusion WebSocket/Discord.
    * Gère l'acquittement authentifié et la résolution automatique des objets perdus (`OBJECT_LOST_TIMEOUT_SECONDS = 5`).
-6. [discord-formatter.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/discord-formatter.ts) :
+6. [discord-formatter.ts](../vps/src/notifications/discord-formatter.ts) :
    * Fonctions utilitaires de sécurité et de formatage : `escapeDiscordMarkdown` (prévention d'injection et remplacement de `@` par `ⓐ`), `maskWebhookUrl` (masquage secret `https://discord.com/api/webhooks/***`), `isValidWebhookUrl` et `formatDuration` (`X min Y s`).
-7. [discord-notification.channel.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/discord-notification.channel.ts) :
+7. [discord-notification.channel.ts](../vps/src/notifications/discord-notification.channel.ts) :
    * Canal de notification asynchrone non-bloquant avec `.catch` explicite, timeout de 5 s (`AbortController`), limitation anti-spam à 5 msgs/min (avec résumé de débordement `⚠️ +N alertes critiques`), retries HTTP 429 (`retry_after`) & HTTP 5xx (backoff exponentiel), et désactivation définitive sur 401/403/404.
-8. [scripts/test-discord.ts](file:///c:/Users/Lucli/drone/Pavois/vps/scripts/test-discord.ts) :
+8. [scripts/test-discord.ts](../vps/scripts/test-discord.ts) :
    * Script CLI de test (`npm run test:discord`) émettant 6 scénarios d'alertes réels (Masquée, Down, Système Aveugle, Drone 3D, Rétablissement, Système Restauré).
-9. [access-control.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/access-control.ts) :
+9. [access-control.ts](../vps/src/auth/access-control.ts) :
    * Décodage des jetons d'opérateur (`op:<username>:<secret>`). Blocage strict des jetons de dev en production.
-10. [events.gateway.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/events.gateway.ts) :
+10. [events.gateway.ts](../vps/src/realtime/events.gateway.ts) :
    * Gestion de l'authentification dans le handshake WS et des acquittements répercutés à tous les écrans. `forwardRef()` utilisé pour résoudre les dépendances circulaires.
-11. [alerts-clean-up.service.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/alerts-clean-up.service.ts) :
+11. [alerts-clean-up.service.ts](../vps/src/alerts/alerts-clean-up.service.ts) :
    * Tâche planifiée quotidienne effectuant la purge atomique des alertes de plus de 30 jours via `AlertStore.purgeOlderThan()`.
 12. [.github/workflows/deploy-ovh-achraf.yml](../.github/workflows/deploy-ovh-achraf.yml) :
    * Workflow GitHub Actions de déploiement SSH sur le VPS OVH Achraf : lance les tests, met à jour le dépôt sur le serveur, écrit les variables Discord dans `vps/.env.staging` (droits 600) et redémarre la pile staging.

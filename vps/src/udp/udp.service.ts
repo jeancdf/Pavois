@@ -17,7 +17,7 @@ import { udpDebug } from './udp-log';
 import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
 import type { RailLocalPose } from '../rail-bench';
-import { ClassificationService } from '../classification.service';
+import { ClassificationService } from '../classification/classification.service';
 import { TuningService } from '../tuning.service';
 
 import { CameraHealthService } from '../cameras/camera-health.service';

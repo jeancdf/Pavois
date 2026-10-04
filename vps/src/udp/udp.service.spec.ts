@@ -10,7 +10,7 @@ import { FusionService } from '../fusion/fusion.service';
 import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
 import * as crypto from 'crypto';
-import { ClassificationService } from '../classification.service';
+import { ClassificationService } from '../classification/classification.service';
 import { TuningService } from '../tuning.service';
 import { routeUdpLine } from './udp-route';
 import { CameraHealthService } from '../cameras/camera-health.service';

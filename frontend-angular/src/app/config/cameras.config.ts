@@ -4,7 +4,7 @@ import { CameraPosition } from '../models/world-position.model';
  * Configuration physique d'une caméra. La liste est stockée par le backend
  * (`PUT /cameras/:id/position`) et reçue par l'événement WebSocket `camera_positions`.
  * La portée (rangeM) est fournie par le backend, avec une valeur par défaut
- * réaliste — voir vps/src/cameras.service.ts.
+ * réaliste — voir vps/src/cameras/cameras.service.ts.
  */
 export interface CameraGpsConfig {
   id: string;

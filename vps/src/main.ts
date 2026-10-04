@@ -13,8 +13,8 @@ import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
-import { applyBodyParsers } from './http-body';
-import { assertAuthTokenConfigured } from './access-control';
+import { applyBodyParsers } from './common/http-body';
+import { assertAuthTokenConfigured } from './auth/access-control';
 
 async function bootstrap() {
   try {

@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
-import { DiscordNotificationChannel } from '../src/discord-notification.channel';
-import { maskWebhookUrl } from '../src/discord-formatter';
+import { DiscordNotificationChannel } from '../src/notifications/discord-notification.channel';
+import { maskWebhookUrl } from '../src/notifications/discord-formatter';
 
 dotenv.config();
 

@@ -114,7 +114,7 @@ Avec une seule caméra activée, le runtime prévoit des observations 2D brutes.
 
 Conserver une référence GPS correcte pour l'intégration actuelle : sans référence,
 `src/runtime/camera_worker.cpp:79` émet des coordonnées locales sous le même préfixe
-`obj`, alors que `vps/src/udp.service.ts` interprète ces champs comme latitude et
+`obj`, alors que `vps/src/udp/udp.service.ts` interprète ces champs comme latitude et
 longitude. Avec la référence fournie, les formats CSV et le port UDP 41234
 concordent côté producteur et consommateur, par inspection du code.
 

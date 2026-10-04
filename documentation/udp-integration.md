@@ -76,7 +76,7 @@ graph LR
   * Le VPS renvoie la commande tant que la version annoncée diffère de celle voulue :
     une commande perdue ou un Pi qui redémarre se rattrapent en une seconde.
 * **Réglages acceptés** : seuils de détection uniquement, listés avec leurs bornes dans
-  `pavois++/src/config/live_tuning.cpp` (même table côté VPS dans `vps/src/tuning.params.ts`).
+  `pavois++/src/config/live_tuning.cpp` (même table côté VPS dans `vps/src/tuning/tuning.params.ts`).
   Ni la taille d'image, ni la cadence, ni la pose ne se changent par cette voie.
 * Un détecteur sans `UDP_HMAC_SECRET` refuse toute commande `set`.
 * **Événement WS** : `"tuning_state"` (état complet du panneau « Réglages »).
@@ -87,7 +87,7 @@ graph LR
 
 ## 3. Sécurisation
 
-Contrôles appliqués dans `vps/src/access-control.ts` et `vps/src/events.gateway.ts` :
+Contrôles appliqués dans `vps/src/auth/access-control.ts` et `vps/src/realtime/events.gateway.ts` :
 
 | Contrôle | Mécanisme | Échec |
 |---|---|---|

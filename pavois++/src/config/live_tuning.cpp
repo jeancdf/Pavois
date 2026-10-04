@@ -25,7 +25,7 @@ struct LiveSetting {
 // The OV5647 1080p crop, the mode rpicam-vid picks for the deployed 1280x720.
 constexpr const char* kSensorMode1080p = "1920:1080:10:P";
 
-// Bounds mirror vps/src/tuning.params.ts; the VPS validates first, this clamp
+// Bounds mirror vps/src/tuning/tuning.params.ts; the VPS validates first, this clamp
 // is what protects the detector from a value that got past it.
 const LiveSetting kLiveSettings[] = {
     {"diff_threshold", 1, 255, true,

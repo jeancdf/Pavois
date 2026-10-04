@@ -1,4 +1,4 @@
-// Miroir de vps/src/tuning.service.ts : l'état complet du panneau « Réglages ».
+// Miroir de vps/src/tuning/tuning.service.ts : l'état complet du panneau « Réglages ».
 
 export type TuningValues = Record<string, number>;
 

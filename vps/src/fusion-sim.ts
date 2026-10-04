@@ -8,7 +8,7 @@ import {
   makeIntrinsics,
   projectWorldToPixel,
   type Vec3,
-} from './fusion-geo';
+} from './fusion/fusion-geo';
 import { FusionService } from './fusion/fusion.service';
 import type { FusionObservation } from './fusion/fusion.types';
 

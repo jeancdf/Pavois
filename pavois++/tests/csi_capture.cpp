@@ -222,6 +222,11 @@ void test_capture(const fs::path& root) {
         auto source = pavois::make_frame_source(camera(4, 2));
         require(source->open(), "CSI source must open");
         expect_frames(*source, 4, 2, {gray_1, gray_2}, "mjpeg");
+        double shutter_us = 0.0;
+        double analogue_gain = 0.0;
+        require(source->exposure(shutter_us, analogue_gain) && shutter_us == 1988.0 &&
+                    analogue_gain == 3.5,
+                "the exposure the camera used comes from its metadata");
         pavois::GrayFrame frame;
         require(!source->read_frame(frame), "EOF must not become a stale frame");
         const std::string asked = calls(root);
@@ -448,7 +453,7 @@ int main() {
                "[ -f \"$dir/$codec.fail\" ] && exit 65\n"
                "if [ -f \"$dir/metadata\" ]; then cat \"$dir/metadata\" >\"$metadata\" &\n"
                "else { printf 'FrameWallClock=1700000000000000000\\n\\n'; "
-               "printf 'FrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
+               "printf 'ExposureTime=1988\\nAnalogueGain=3.5\\nFrameWallClock=1700000000033333000\\n\\n'; } >\"$metadata\" &\n"
                "fi\n"
                "cat \"$dir/$codec.bin\"\n";
         // The decoder passes bytes through and logs its options. With

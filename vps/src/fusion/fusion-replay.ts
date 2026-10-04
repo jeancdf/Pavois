@@ -8,8 +8,8 @@
 // --truth is a static target in the fusion frame (e.g. the rail mark), used
 // for the error figures.
 import { readFileSync } from 'fs';
-import { FusionService } from './fusion/fusion.service';
-import type { FusionObservation } from './fusion/fusion.types';
+import { FusionService } from './fusion.service';
+import type { FusionObservation } from './fusion.types';
 
 export interface ReplaySummary {
   observations: number;

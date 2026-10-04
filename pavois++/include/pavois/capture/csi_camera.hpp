@@ -35,6 +35,7 @@ public:
     bool open() override;
     bool read_frame(GrayFrame& out) override;
     const std::string& last_error() const override { return last_error_; }
+    bool exposure(double& shutter_us, double& analogue_gain) const override;
 
 private:
     enum class Format { Mjpeg, Yuv420 };
@@ -64,6 +65,9 @@ private:
     std::string metadata_path_;
     std::string metadata_buffer_;
     std::deque<std::uint64_t> metadata_timestamps_;
+    // Latest ExposureTime and AnalogueGain from the metadata; 0 until seen.
+    double metadata_shutter_us_ = 0.0;
+    double metadata_gain_ = 0.0;
     std::vector<std::uint8_t> scratch_;
     std::string last_error_;
 };

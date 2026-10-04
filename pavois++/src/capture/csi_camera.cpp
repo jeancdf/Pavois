@@ -28,6 +28,17 @@ std::string text(const T& value) {
     return out.str();
 }
 
+// A "Key=number" metadata line. False when the line is about another key; a
+// malformed number leaves `out` as it was.
+bool metadata_number(const std::string& line, const std::string& key, double& out) {
+    if (line.compare(0, key.size(), key) != 0) return false;
+    try {
+        out = std::stod(line.substr(key.size()));
+    } catch (...) {
+    }
+    return true;
+}
+
 }  // namespace
 
 std::vector<std::string> rpicam_exposure_args(const CameraConfig& config) {
@@ -102,6 +113,8 @@ void CsiCamera::close_metadata() {
     }
     metadata_buffer_.clear();
     metadata_timestamps_.clear();
+    metadata_shutter_us_ = 0.0;
+    metadata_gain_ = 0.0;
 }
 
 void CsiCamera::drain_metadata() {
@@ -125,6 +138,8 @@ void CsiCamera::drain_metadata() {
         std::string line = metadata_buffer_.substr(0, newline);
         metadata_buffer_.erase(0, newline + 1);
         if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (metadata_number(line, "ExposureTime=", metadata_shutter_us_)) continue;
+        if (metadata_number(line, "AnalogueGain=", metadata_gain_)) continue;
         constexpr char prefix[] = "FrameWallClock=";
         if (line.rfind(prefix, 0) != 0) continue;
         try {
@@ -135,6 +150,13 @@ void CsiCamera::drain_metadata() {
             // fail the frame instead of silently assigning a late timestamp.
         }
     }
+}
+
+bool CsiCamera::exposure(double& shutter_us, double& analogue_gain) const {
+    if (metadata_shutter_us_ <= 0.0 || metadata_gain_ <= 0.0) return false;
+    shutter_us = metadata_shutter_us_;
+    analogue_gain = metadata_gain_;
+    return true;
 }
 
 bool CsiCamera::next_sensor_timestamp(std::uint64_t& timestamp_us) {

@@ -116,7 +116,7 @@ describe('detector command body', () => {
         'min_blob_fill_ratio=0.1,max_blob_aspect=6,border_ignore_px=6,' +
         'confirm_m=2,confirm_n=3,bg_learn_rate=0.05,bg_learn_rate_fg=0.002,' +
         'bg_hold_frames=90,illumination_hot_ratio=0.45,' +
-        'capture_width=0,shutter_us=0,analogue_gain=0',
+        'capture_width=0,shutter_us=0,analogue_gain=0,auto_exposure=0,ev=0',
     );
   });
 

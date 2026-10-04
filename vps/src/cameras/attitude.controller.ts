@@ -6,10 +6,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { AuthTokenGuard } from './auth/access-control';
+import { AuthTokenGuard } from '../auth/access-control';
 import { AttitudeDto } from './attitude.dto';
-import { parseCalibrationToken } from './udp/udp-attitude';
-import { UdpService } from './udp/udp.service';
+import { parseCalibrationToken } from '../udp/udp-attitude';
+import { UdpService } from '../udp/udp.service';
 
 @Controller()
 @UseGuards(AuthTokenGuard)

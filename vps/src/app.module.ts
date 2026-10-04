@@ -8,7 +8,7 @@ import { EventsGateway } from './realtime/events.gateway';
 import { CamerasController } from './cameras/cameras.controller';
 import { CamerasService } from './cameras/cameras.service';
 import { AuthController } from './auth/auth.controller';
-import { AttitudeController } from './attitude.controller';
+import { AttitudeController } from './cameras/attitude.controller';
 import { PreviewController } from './preview.controller';
 import { PreviewService } from './preview.service';
 import { FusionController } from './fusion.controller';

@@ -6,3 +6,8 @@ dist
 
 # Positions des caméras enregistrées en local (CAMERAS_FILE)
 /data
+
+# Scripts run through ts-node; compiled copies stay local
+/scripts/*.js
+/scripts/*.js.map
+/scripts/*.d.ts

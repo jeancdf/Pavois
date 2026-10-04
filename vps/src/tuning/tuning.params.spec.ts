@@ -172,7 +172,7 @@ describe('detector command body', () => {
 // or the panel would offer a value the Pi silently changes.
 const detectorSource = join(
   __dirname,
-  '../../pavois++/src/config/live_tuning.cpp',
+  '../../../pavois++/src/config/live_tuning.cpp',
 );
 const describeWithDetector = existsSync(detectorSource)
   ? describe

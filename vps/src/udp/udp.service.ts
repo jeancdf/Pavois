@@ -18,7 +18,7 @@ import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
 import type { RailLocalPose } from '../rail-bench';
 import { ClassificationService } from '../classification/classification.service';
-import { TuningService } from '../tuning.service';
+import { TuningService } from '../tuning/tuning.service';
 
 import { CameraHealthService } from '../cameras/camera-health.service';
 

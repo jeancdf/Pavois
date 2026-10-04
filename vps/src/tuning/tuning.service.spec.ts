@@ -1,15 +1,15 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { CamerasService } from './cameras/cameras.service';
-import { FusionService } from './fusion/fusion.service';
+import { CamerasService } from '../cameras/cameras.service';
+import { FusionService } from '../fusion/fusion.service';
 import {
   DETECTOR_DEFAULTS,
   detectorSettingsLine,
   settingsVersion,
 } from './tuning.params';
 import { TuningService } from './tuning.service';
-import type { DetectorReport } from './udp/udp-config';
+import type { DetectorReport } from '../udp/udp-config';
 
 const ENV_KEYS = [
   'TUNING_FILE',

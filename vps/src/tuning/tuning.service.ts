@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CamerasService } from './cameras/cameras.service';
-import { FusionService } from './fusion/fusion.service';
+import { CamerasService } from '../cameras/cameras.service';
+import { FusionService } from '../fusion/fusion.service';
 import {
   BUILTIN_PRESETS,
   DETECTOR_DEFAULTS,
@@ -22,7 +22,7 @@ import {
   type TuningPreset,
   type TuningValues,
 } from './tuning.params';
-import type { DetectorReport } from './udp/udp-config';
+import type { DetectorReport } from '../udp/udp-config';
 
 /** Ce que le VPS veut pour un détecteur. */
 type DetectorWish = { mode: 'file' } | { mode: 'live'; values: TuningValues };

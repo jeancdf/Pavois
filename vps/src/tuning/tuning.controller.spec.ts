@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EventsGateway } from './realtime/events.gateway';
+import { EventsGateway } from '../realtime/events.gateway';
 import { TuningController } from './tuning.controller';
 import { TuningService } from './tuning.service';
-import { UdpService } from './udp/udp.service';
+import { UdpService } from '../udp/udp.service';
 
 describe('TuningController', () => {
   let controller: TuningController;

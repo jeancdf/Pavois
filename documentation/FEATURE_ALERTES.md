@@ -123,8 +123,8 @@ sequenceDiagram
    * Gestion de l'authentification dans le handshake WS et des acquittements répercutés à tous les écrans. `forwardRef()` utilisé pour résoudre les dépendances circulaires.
 11. [alerts-clean-up.service.ts](file:///c:/Users/Lucli/drone/Pavois/vps/src/alerts-clean-up.service.ts) :
    * Tâche planifiée quotidienne effectuant la purge atomique des alertes de plus de 30 jours via `AlertStore.purgeOlderThan()`.
-12. [.github/workflows/deploy-vps.yml](file:///c:/Users/Lucli/drone/Pavois/.github/workflows/deploy-vps.yml) :
-   * Workflow GitHub Actions de déploiement SSH sur le VPS. Injection sécurisée sans fuite de secrets via `envs` dans `vps/.env` avec `chmod 600` et vérification post-déploiement du log `Discord : activé`.
+12. [.github/workflows/deploy-ovh-achraf.yml](../.github/workflows/deploy-ovh-achraf.yml) :
+   * Workflow GitHub Actions de déploiement SSH sur le VPS OVH Achraf : lance les tests, met à jour le dépôt sur le serveur, écrit les variables Discord dans `vps/.env` (droits 600) et redémarre la pile staging.
 
 ---
 

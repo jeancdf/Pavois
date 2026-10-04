@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { headingDeltaDeg, wrapHeadingDeg } from './udp/udp-attitude';
+import { headingDeltaDeg, wrapHeadingDeg } from '../udp/udp-attitude';
 import {
   buildRailBenchState,
   localPoseOf,
   type RailBenchOptions,
   type RailBenchState,
   type RailLocalPose,
-} from './rail-bench';
+} from '../rail-bench';
 
 /** Pose d'une caméra, diffusée au frontend par l'événement `camera_positions`. */
 export interface CameraConfig {

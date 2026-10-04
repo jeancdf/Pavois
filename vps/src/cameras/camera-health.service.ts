@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { CameraState } from './alert-types';
-import { CameraStats } from './udp/udp-stats';
+import { CameraState } from '../alert-types';
+import { CameraStats } from '../udp/udp-stats';
 
 export interface CameraHealthStatus {
   cameraId: string;

@@ -2,8 +2,8 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as dgram from 'dgram';
 import * as crypto from 'crypto';
 import { EventsGateway } from '../realtime/events.gateway';
-import { CamerasService } from '../cameras.service';
-import type { CameraConfig } from '../cameras.service';
+import { CamerasService } from '../cameras/cameras.service';
+import type { CameraConfig } from '../cameras/cameras.service';
 import { FusionService } from '../fusion.service';
 import type {
   FusionObservation,
@@ -20,7 +20,7 @@ import type { RailLocalPose } from '../rail-bench';
 import { ClassificationService } from '../classification.service';
 import { TuningService } from '../tuning.service';
 
-import { CameraHealthService } from '../camera-health.service';
+import { CameraHealthService } from '../cameras/camera-health.service';
 
 interface CameraEndpoint {
   address: string;

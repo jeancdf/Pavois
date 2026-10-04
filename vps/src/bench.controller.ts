@@ -7,7 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthTokenGuard } from './auth/access-control';
-import { CamerasService } from './cameras.service';
+import { CamerasService } from './cameras/cameras.service';
 import { EventsGateway } from './realtime/events.gateway';
 import { RailBenchDto } from './rail-bench.dto';
 import type { RailBenchState } from './rail-bench';

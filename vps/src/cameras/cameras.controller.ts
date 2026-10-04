@@ -7,10 +7,10 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { AuthTokenGuard } from './auth/access-control';
+import { AuthTokenGuard } from '../auth/access-control';
 import { CamerasService, isCameraPosition } from './cameras.service';
 import type { CameraConfig } from './cameras.service';
-import { EventsGateway } from './realtime/events.gateway';
+import { EventsGateway } from '../realtime/events.gateway';
 
 @Controller('cameras')
 @UseGuards(AuthTokenGuard)

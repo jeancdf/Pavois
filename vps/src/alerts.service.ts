@@ -25,7 +25,7 @@ import {
   CameraHealthService,
   CameraHealthStatus,
   SystemHealthUpdate,
-} from './camera-health.service';
+} from './cameras/camera-health.service';
 import { formatDuration } from './discord-formatter';
 
 export interface TrackAlertInput {

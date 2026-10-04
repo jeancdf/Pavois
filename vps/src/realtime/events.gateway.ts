@@ -12,7 +12,7 @@ import {
   verifyOperatorToken,
   OperatorIdentity,
 } from '../auth/access-control';
-import { CamerasService } from '../cameras.service';
+import { CamerasService } from '../cameras/cameras.service';
 import { AlertsService } from '../alerts.service';
 import { Inject, forwardRef } from '@nestjs/common';
 

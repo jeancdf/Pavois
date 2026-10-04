@@ -1,5 +1,5 @@
 import { CameraHealthService } from './camera-health.service';
-import { CameraState } from './alert-types';
+import { CameraState } from '../alert-types';
 
 describe('CameraHealthService', () => {
   let service: CameraHealthService;

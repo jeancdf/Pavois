@@ -102,8 +102,8 @@ Le script Blender existant `pixeltovoxelprojector/blenderrenderscript.py` génè
 - `README.md` : composants actuels.
 - `pavois++/src/detection/motion_detector.cpp` : détection par changement d’image.
 - `vps/src/fusion/fusion.service.ts` : alignement, triangulation et émission des pistes.
-- `vps/src/fusion/fusion-triangulate.ts` : intersection approchée et contrôles géométriques.
-- `vps/src/fusion/fusion-tracker.ts` : suivi Kalman et confirmation temporelle.
+- `vps/src/fusion/triangulation/fusion-triangulate.ts` : intersection approchée et contrôles géométriques.
+- `vps/src/fusion/tracking/fusion-tracker.ts` : suivi Kalman et confirmation temporelle.
 - `documentation/technical-file/limitations-roadmap.md` : distinction pipeline actuel/prototype voxel et limites de validation.
 - `frontend-angular/src/styles.css` et `frontend-angular/src/app/components/top-bar/top-bar.html` : palette, typographie et symbole.
 - `mounts/README.md`, `mounts/README_MODULAR_RIG_V05.md` : géométrie matérielle réutilisable.

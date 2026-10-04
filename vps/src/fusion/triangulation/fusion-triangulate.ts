@@ -1,4 +1,4 @@
-import type { CameraIntrinsics, CameraPose, Ray, Vec3 } from './fusion-geo';
+import type { CameraIntrinsics, CameraPose, Ray, Vec3 } from '../geometry/fusion-geo';
 import {
   invert3,
   leastSquaresIntersection,
@@ -12,7 +12,7 @@ import {
   vNorm,
   vScale,
   vSub,
-} from './fusion-geo';
+} from '../geometry/fusion-geo';
 
 export interface TriangulationConfig {
   minParallaxDeg: number; // default 2

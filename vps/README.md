@@ -48,7 +48,7 @@ Un dossier par fonctionnalité. Chaque dossier garde ensemble son contrôleur (r
 | `common/` | Code partagé par toutes les fonctionnalités | `http-body.ts` (format et taille maximale des corps de requête : JSON, JPEG brut) |
 | `udp/` | Serveur UDP : lit chaque ligne envoyée par un Pi, l'aiguille vers le bon service, renvoie les réglages aux Pi | `udp.service.ts`, `udp-route.ts`, un analyseur par type de ligne (`udp-raw`, `udp-stats`, `udp-attitude`, `udp-config`) |
 | `cameras/` | Position et cap de chaque caméra, état de santé calculé depuis ses statistiques, aperçus JPEG | `cameras.service.ts`, `camera-health.service.ts`, `preview.service.ts` |
-| `fusion/` | Cœur du calcul : alignement dans le temps des blobs, triangulation, filtre de Kalman, classement par le mouvement | `fusion.service.ts`, `fusion-align.ts`, `fusion-triangulate.ts`, `fusion-tracker.ts`, `fusion-kalman.ts`, `fusion-classify.ts`, `fusion-geo.ts` |
+| `fusion/` | Cœur du calcul : alignement dans le temps des blobs, triangulation, filtre de Kalman, classement par le mouvement | `fusion.service.ts`, puis un dossier par rôle : `alignment/`, `geometry/`, `triangulation/`, `tracking/`, `simulation/` |
 | `tracks/` | Historique des positions de chaque piste, enregistré en JSONL, et verdict de l'opérateur sur une piste | `tracks.service.ts`, `jsonl-track.store.ts` |
 | `alerts/` | Règles d'alerte (objet détecté, drone confirmé, caméra aveugle…), acquittement, purge des anciennes alertes | `alerts.service.ts`, `jsonl-alert.store.ts`, `alerts-clean-up.service.ts` |
 | `notifications/` | Envoi des alertes sur Discord, avec file d'attente, limite de débit et nouvelles tentatives | `discord-notification.channel.ts`, `discord-formatter.ts` |
@@ -63,7 +63,7 @@ Le stockage passe par une interface (`alert-store.interface.ts`, `track-store.in
 
 1. Chaque Pi envoie en UDP une ligne `raw` par blob détecté. `udp/udp-route.ts` reconnaît la ligne, `udp/udp-raw.ts` la lit.
 2. `udp/udp.service.ts` la passe à `fusion/fusion.service.ts` avec la pose de la caméra (`cameras/cameras.service.ts`).
-3. La fusion ramène les blobs de toutes les caméras au même instant (`fusion-align.ts`), croise leurs rayons pour obtenir un point 3D (`fusion-triangulate.ts`) et le donne au suivi multi-cibles (`fusion-tracker.ts`, filtre de Kalman dans `fusion-kalman.ts`). `fusion-classify.ts` juge si la trajectoire ressemble à un drone.
+3. La fusion ramène les blobs de toutes les caméras au même instant (`alignment/fusion-align.ts`), croise leurs rayons pour obtenir un point 3D (`triangulation/fusion-triangulate.ts`) et le donne au suivi multi-cibles (`tracking/fusion-tracker.ts`, filtre de Kalman dans `tracking/fusion-kalman.ts`). `tracking/fusion-classify.ts` juge si la trajectoire ressemble à un drone.
 4. Chaque mise à jour de piste est diffusée à l'interface (`realtime/events.gateway.ts`), enregistrée (`tracks/tracks.service.ts`) et passée aux règles d'alerte (`alerts/alerts.service.ts`), qui préviennent Discord (`notifications/`).
 5. Quand une cible passe à portée et que les trois caméras sont en ligne, `classification/` demande une photo à chaque Pi et lance le classifieur une fois toutes les photos reçues.
 

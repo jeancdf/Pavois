@@ -305,7 +305,7 @@ def window_features(times, bearings, areas, fills, points, deg_per_px):
 # feature values means the negatives are measured the same way the positives
 # are; if the feature code changes, both move together.
 #
-# The kinematics follow the bands already encoded in vps/src/fusion/fusion-classify.ts
+# The kinematics follow the bands already encoded in vps/src/fusion/tracking/fusion-classify.ts
 # (airplane fast and committed, bird slow and erratic), which is domain
 # knowledge rather than measurement -- so these rows are marked synthetic and a
 # model's score against real birds should be treated as unproven until real

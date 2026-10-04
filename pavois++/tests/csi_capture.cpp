@@ -190,6 +190,25 @@ void test_stride_rule() {
             "yuv420 needs even dimensions");
 }
 
+void test_exposure_args() {
+    using Args = std::vector<std::string>;
+    const Args manual = {"--exposure", "sport", "--shutter", "2000", "--gain", "8"};
+    pavois::CameraConfig cfg;
+    cfg.shutter_us = 2000;
+    cfg.analogue_gain = 8.0;
+    require(pavois::rpicam_exposure_args(cfg) == manual,
+            "manual exposure fixes the shutter and the gain");
+    cfg.auto_exposure = true;
+    require(pavois::rpicam_exposure_args(cfg) == Args({"--exposure", "sport"}),
+            "automatic exposure leaves the shutter and the gain to the camera");
+    cfg.ev = 1.5;
+    require(pavois::rpicam_exposure_args(cfg) == Args({"--exposure", "sport", "--ev", "1.5"}),
+            "automatic exposure passes the compensation");
+    cfg.auto_exposure = false;
+    require(pavois::rpicam_exposure_args(cfg) == manual,
+            "the compensation only applies to automatic exposure");
+}
+
 void test_capture(const fs::path& root) {
     const Bytes gray_1 = {1, 2, 3, 4, 5, 6, 7, 8};
     const Bytes gray_2 = {9, 10, 11, 12, 13, 14, 15, 16};
@@ -448,6 +467,7 @@ int main() {
         ::setenv("PATH", (root.string() + ':' + old_path).c_str(), 1);
 
         test_stride_rule();
+        test_exposure_args();
         test_capture(root);
         std::cout << "CSI capture test passed\n";
     } catch (const std::exception& e) {

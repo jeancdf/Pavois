@@ -23,7 +23,7 @@ const DEMO_CAMERAS = [
   { id: 'cam1', lat: 48.8260968, lon: 2.3658928, alt: 58.524, headingDeg: 249.0, fovDeg: 69.0, rangeM: 60 },
 ];
 
-// IDs et poses du parc réel (vps/src/cameras.service.ts).
+// IDs et poses du parc réel (vps/src/cameras/cameras.service.ts).
 const TERRAIN_CAMERAS = [
   { id: 'jean', lat: 48.826132, lon: 2.365856, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: 60 },
   { id: 'tanel', lat: 48.826134, lon: 2.365869, alt: 58.524, headingDeg: 164, fovDeg: 65, rangeM: 60 },

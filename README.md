@@ -48,7 +48,7 @@ Voir `--help` pour les options (fenêtre temporelle, résolution, sans frontend)
 ### Classifieur de pistes (pattern matching)
 
 Deux scripts transforment des sessions enregistrées en jeu de données puis en
-modèle. `vps/src/fusion/fusion-classify.ts` reste l'heuristique par seuils ; ce modèle
+modèle. `vps/src/fusion/tracking/fusion-classify.ts` reste l'heuristique par seuils ; ce modèle
 apprend les mêmes entrées à partir de vols réels.
 
 ```bash

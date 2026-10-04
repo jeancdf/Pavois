@@ -1,8 +1,8 @@
 // Multi-target CV Kalman tracker. Port of pavois++ tracker.cpp, with
 // Mahalanobis gating, per-measurement covariance and track re-identification.
 import { KalmanCV } from './fusion-kalman';
-import type { Vec3 } from './fusion-geo';
-import type { FusionTrack } from './fusion.types';
+import type { Vec3 } from '../geometry/fusion-geo';
+import type { FusionTrack } from '../fusion.types';
 import {
   classifyKinematics,
   headingDegEnu,

@@ -1,4 +1,4 @@
-import { vNorm, vSub } from './fusion-geo';
+import { vNorm, vSub } from '../geometry/fusion-geo';
 import { Tracker, type TrackerConfig } from './fusion-tracker';
 
 describe('Tracker', () => {

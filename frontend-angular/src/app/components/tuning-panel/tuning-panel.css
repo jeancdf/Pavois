@@ -171,6 +171,7 @@ button:focus-visible {
 
 .cameras li {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: baseline;
 }
@@ -180,7 +181,8 @@ button:focus-visible {
   color: #3b82f6;
 }
 
-.size {
+.size,
+.exposure {
   color: #64748b;
 }
 

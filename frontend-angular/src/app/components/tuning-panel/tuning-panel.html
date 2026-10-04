@@ -78,11 +78,17 @@
     <ul class="cameras">
       @for (camera of current.cameras; track camera.cameraId) {
         @let status = syncStatus(camera);
+        @let exposure = exposureNote(camera);
         <li>
           <strong>{{ camera.cameraId }}</strong>
           <span class="size">
             {{ camera.width && camera.height ? camera.width + '×' + camera.height : '—' }}
           </span>
+          @if (exposure) {
+            <span class="exposure" title="Temps de pose et gain utilisés par la caméra">
+              {{ exposure }}
+            </span>
+          }
           <span
             class="sync"
             [class.ok]="status.tone === 'ok'"

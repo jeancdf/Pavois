@@ -180,6 +180,17 @@ export class TuningPanel implements OnInit, OnDestroy {
       : { label: 'config du Pi', tone: 'ok' };
   }
 
+  /**
+   * Temps de pose et gain que la caméra a utilisés pour ses dernières images :
+   * en exposition automatique, c'est elle qui les choisit.
+   */
+  exposureNote(camera: TuningCameraState): string | null {
+    const stats = this.realtime.statsOf(camera.cameraId);
+    if (!stats?.exposureUs || this.now() - stats.receivedAt > ONLINE_WINDOW_MS) return null;
+    const gain = Math.pow(10, (stats.gainDb ?? 0) / 20);
+    return `${Math.round(stats.exposureUs)} µs ×${gain.toFixed(1)}`;
+  }
+
   /** Curseur en mouvement : affichage immédiat, envoi regroupé. */
   slide(scope: Scope, param: TuningParam, event: Event): void {
     this.edit(scope, param, event, SEND_DELAY_MS);

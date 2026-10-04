@@ -73,9 +73,11 @@ the Achraf VPS. Password SSH is disabled in the workflow.
 
 ## What auto-deploy does
 
-On every push to `main` or `master`, GitHub Actions will:
+On every push to `main`, `deploy-ovh-achraf.yml`:
 
-1. SSH into the VPS
-2. `git pull` the latest commit
-3. rebuild the containers
-4. restart the stack with `docker compose up -d --build`
+1. runs the backend and Angular tests
+2. connects to the Achraf VPS over SSH
+3. checks out the pushed commit (untracked files such as `.env` are kept)
+4. writes the Discord settings from GitHub into `vps/.env`
+5. runs `scripts/deploy_staging.sh`, which rebuilds and restarts
+   `docker-compose.staging.yml`: the interface on port 8081, the API on 3003

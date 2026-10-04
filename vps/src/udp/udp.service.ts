@@ -14,7 +14,7 @@ import { wrapHeadingDeg, type AttitudePacket } from './udp-attitude';
 import type { RawDetection } from './udp-raw';
 import { routeUdpLine, type RoutedUdp, type UdpObjTrack } from './udp-route';
 import { udpDebug } from './udp-log';
-import { TracksService } from '../tracks.service';
+import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts.service';
 import type { RailLocalPose } from '../rail-bench';
 import { ClassificationService } from '../classification.service';

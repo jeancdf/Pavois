@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Track, TrackVerdict } from './track-types';
-import { TRACK_STORE, TrackStore } from './stores/track-store.interface';
+import { TRACK_STORE, TrackStore } from '../stores/track-store.interface';
 
 export interface RecordableTrack {
   trackId: string;

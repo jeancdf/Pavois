@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-import { Track } from '../track-types';
+import { Track } from '../tracks/track-types';
 import {
   CreateTrackData,
   ListTracksOptions,

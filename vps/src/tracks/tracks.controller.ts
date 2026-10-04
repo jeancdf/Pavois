@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AuthTokenGuard } from './auth/access-control';
+import { AuthTokenGuard } from '../auth/access-control';
 import { TracksService } from './tracks.service';
 import { ReviewTrackDto } from './tracks.dto';
 import { TrackVerdict, Track } from './track-types';

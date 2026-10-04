@@ -21,7 +21,6 @@ venv/
 ENV/
 env/
 myenv/
-pixeltovoxelprojector/.venv/
 
 # Test / type / lint caches
 .pytest_cache/
@@ -61,8 +60,6 @@ local_settings.py
 
 # --- Media / artefacts d'expérience (SCRUM-76) ---
 *.mp4
-pixeltovoxelprojector/single_cam_run/*.jpg
-pixeltovoxelprojector/single_cam_run/*.bin
 
 # Personal Claude Code settings stay on each machine
 .claude/settings.local.json

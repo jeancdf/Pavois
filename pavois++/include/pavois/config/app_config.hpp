@@ -124,6 +124,15 @@ struct CameraConfig {
     std::string exposure_mode = "sport";
     int shutter_us = 750;
     double analogue_gain = 4.0;
+    // Off: shutter_us and analogue_gain above are fixed. On: libcamera's
+    // automatic exposure picks them frame by frame as the light changes (sun,
+    // clouds, dusk), still steered by exposure_mode ("sport" favours short
+    // shutters). Its changes are gradual, which the detector's brightness
+    // drift correction and background learning absorb.
+    bool auto_exposure = false;
+    // Exposure compensation in stops, used by automatic exposure only.
+    // Positive brightens, negative darkens.
+    double ev = 0.0;
     double awb_red_gain = 1.0;
     double awb_blue_gain = 1.0;
 };

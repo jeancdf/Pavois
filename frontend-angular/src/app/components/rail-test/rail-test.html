@@ -25,6 +25,8 @@
     </div>
   </header>
 
+  <app-rail-order [bench]="bench()"></app-rail-order>
+
   <div class="rail-status">
     <span [class.ok]="realtime.connected()">
       WS {{ realtime.connected() ? 'connecté' : 'hors ligne' }}

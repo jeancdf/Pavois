@@ -1,0 +1,71 @@
+.rail-order {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  background: #0b1220;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.caption,
+.check {
+  margin: 0;
+  text-align: center;
+}
+
+.caption strong {
+  color: #e2e8f0;
+}
+
+.target {
+  color: #f59e0b;
+}
+
+.slots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 76px;
+  padding: 6px 10px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  background: #020617;
+}
+
+.slot strong {
+  font-size: 13px;
+  color: #93c5fd;
+}
+
+.slot.center {
+  border-color: #3b82f6;
+}
+
+.gap {
+  flex: 1;
+  min-width: 48px;
+  border-top: 1px dashed #475569;
+  padding-top: 2px;
+  text-align: center;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.check {
+  font-size: 10px;
+  color: #64748b;
+}

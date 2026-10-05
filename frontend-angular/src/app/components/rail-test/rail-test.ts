@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { RailOrder } from '../rail-order/rail-order';
 import { RailVolume } from '../rail-volume/rail-volume';
 import { TuningPanel } from '../tuning-panel/tuning-panel';
 import { NotificationService } from '../../services/notification.service';
@@ -14,7 +15,7 @@ import type {
 
 @Component({
   selector: 'app-rail-test',
-  imports: [RailVolume, TuningPanel, DecimalPipe],
+  imports: [RailOrder, RailVolume, TuningPanel, DecimalPipe],
   templateUrl: './rail-test.html',
   styleUrl: './rail-test.css',
 })

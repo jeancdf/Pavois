@@ -100,6 +100,28 @@ export function railCameraPoses(options: RailBenchOptions = {}): RailLocalPose[]
   }));
 }
 
+export type RailSide = 'gauche' | 'centre' | 'droite';
+
+export interface RailSlot {
+  id: string;
+  side: RailSide;
+}
+
+const RAIL_SIDES: RailSide[] = ['gauche', 'centre', 'droite'];
+
+/**
+ * Où poser chaque caméra sur le rail, de gauche à droite, vu de derrière les
+ * caméras (dans le sens où elles regardent). Suit le banc actif, poses
+ * calibrées comprises ; sans banc, la disposition par défaut.
+ */
+export function railLayout(bench: RailBenchState | null): RailSlot[] {
+  const cameras = (bench?.cameras ?? railCameraPoses()).slice().sort((a, b) => a.x - b.x);
+  return cameras.map((camera, index) => ({
+    id: camera.id,
+    side: RAIL_SIDES[Math.min(index, RAIL_SIDES.length - 1)],
+  }));
+}
+
 export function buildRailBenchState(options: RailBenchOptions = {}): RailBenchState {
   const rigWidthMm = clamp(options.rigWidthMm ?? DEFAULT_RIG_WIDTH_MM, 840, 1050);
   const rangeM = clamp(options.rangeM ?? DEFAULT_RANGE_M, 0.5, 20);

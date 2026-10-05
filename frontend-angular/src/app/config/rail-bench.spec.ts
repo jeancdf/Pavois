@@ -4,6 +4,7 @@ import {
   distanceM,
   expectedTarget,
   railVoxelOf,
+  railLayout,
   railPitchMm,
   railVolumePoints,
 } from './rail-bench';
@@ -49,5 +50,24 @@ describe('rail bench volume points', () => {
     });
     expect(voxel?.y).toBeCloseTo(2.55);
     expect(railVoxelOf({ x: Number.NaN, y: 0, z: 0 })).toBeNull();
+  });
+});
+
+describe('rail layout reminder', () => {
+  it('puts tanel on the left, jean in the middle, walid on the right', () => {
+    expect(railLayout(null)).toEqual([
+      { id: 'tanel', side: 'gauche' },
+      { id: 'jean', side: 'centre' },
+      { id: 'walid', side: 'droite' },
+    ]);
+  });
+
+  it('follows the measured rail poses of an active bench', () => {
+    const bench = buildRailBenchState();
+    const swapped = {
+      ...bench,
+      cameras: bench.cameras.map((camera) => ({ ...camera, x: -camera.x })),
+    };
+    expect(railLayout(swapped).map((slot) => slot.id)).toEqual(['walid', 'jean', 'tanel']);
   });
 });

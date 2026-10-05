@@ -1,0 +1,21 @@
+<section class="rail-order" aria-label="Position des caméras sur le rail">
+  <p class="caption">
+    Position des caméras — vu <strong>de derrière</strong>, dans le sens où elles regardent
+  </p>
+  <div class="target">▲ cible devant, à {{ rangeM() }} m</div>
+  <ol class="slots">
+    @for (slot of slots(); track slot.id; let last = $last) {
+      <li class="slot" [class.center]="slot.side === 'centre'">
+        <strong>{{ slot.id }}</strong>
+        <span>{{ slot.side }}</span>
+      </li>
+      @if (!last) {
+        <li class="gap" aria-hidden="true">{{ gapCm() }} cm</li>
+      }
+    }
+  </ol>
+  <p class="check">
+    Vérif : une cible doit apparaître plus à droite dans l'image de
+    {{ slots()[0].id }} que dans celle de {{ slots()[slots().length - 1].id }}.
+  </p>
+</section>

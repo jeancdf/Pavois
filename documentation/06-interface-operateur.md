@@ -60,6 +60,7 @@ Tant que l'opérateur n'est pas connecté, seule la page **Connexion** s'affiche
 | `toast` | Notifications passagères (nouvelle alerte, erreurs) |
 | `tuning-panel` | Panneau **Réglages** : curseurs générés depuis la table du VPS, préréglages, retour au fichier des Pi ; pour chaque caméra, l'exposition réelle et la luminosité de l'image |
 | `rail-test` + `rail-volume` | Page du banc : scène three.js orbitale avec les trois caméras, la cible attendue, une sphère et une traînée par piste |
+| `rail-order` | Pense-bête en haut de la page du banc : **quelle Pi va où sur le rail**, vu de derrière les caméras (`tanel` à gauche, `jean` au centre, `walid` à droite), l'écart entre elles et le contrôle à faire. L'ordre vient du même calcul que la fusion (`railLayout()` dans `config/rail-bench.ts`) |
 
 ## 🔌 Le temps réel : `RealtimeService`
 

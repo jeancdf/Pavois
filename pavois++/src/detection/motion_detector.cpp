@@ -169,6 +169,24 @@ double MotionDetector::advance_clock(const GrayFrame& frame) {
     return dt;
 }
 
+// Warm-up: build the background from a short temporal mean before detecting.
+// Seeding from a single frame would bake any object present at t=0 into the
+// model as a permanent negative ghost; averaging washes a moving target out.
+void MotionDetector::learn_warmup() {
+    const float n = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
+    for_each_range(executor_, 0, bg_.size(),
+                   [&](std::size_t first, std::size_t last) {
+        for (std::size_t i = first; i < last; ++i) {
+            bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
+            const float d =
+                std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
+            noise_[i] += kWarmupNoiseRate * (d - noise_[i]);
+            noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
+        }
+    });
+    --warmup_left_;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -182,22 +200,8 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
              executor_);
 
-    // Warm-up: build the background from a short temporal mean before detecting.
-    // Seeding from a single frame would bake any object present at t=0 into the
-    // model as a permanent negative ghost; averaging washes a moving target out.
     if (warmup_left_ > 0) {
-        const float n = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
-        for_each_range(executor_, 0, frame.size(),
-                       [&](std::size_t first, std::size_t last) {
-            for (std::size_t i = first; i < last; ++i) {
-                bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
-                const float d =
-                    std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
-                noise_[i] += kWarmupNoiseRate * (d - noise_[i]);
-                noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
-            }
-        });
-        --warmup_left_;
+        learn_warmup();
         return out;
     }
 

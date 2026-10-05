@@ -94,6 +94,7 @@ private:
     // The steps of process(), in the order it runs them.
     void reinitialise(const GrayFrame& frame);
     double advance_clock(const GrayFrame& frame);
+    void learn_warmup();
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

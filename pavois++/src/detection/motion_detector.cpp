@@ -187,6 +187,21 @@ void MotionDetector::learn_warmup() {
     --warmup_left_;
 }
 
+// Global brightness bias (exposure / white-balance drift): the mean signed
+// delta over the whole frame is dominated by the illumination shift, not by
+// the tiny target, so subtracting it makes the detector shift-invariant.
+// Deliberately offset-only. Modelling auto-exposure as gain+offset needs
+// enough variance in the background to identify the gain; on a low-texture
+// scene it is ill-conditioned and corrupts every pixel.
+double MotionDetector::brightness_bias() const {
+    double bias = 0.0;
+    for (std::size_t i = 0; i < bg_.size(); ++i) {
+        bias += static_cast<double>(blur_[i]) - bg_[i];
+    }
+    bias /= static_cast<double>(bg_.size());
+    return bias;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -205,17 +220,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         return out;
     }
 
-    // Global brightness bias (exposure / white-balance drift): the mean signed
-    // delta over the whole frame is dominated by the illumination shift, not by
-    // the tiny target, so subtracting it makes the detector shift-invariant.
-    // Deliberately offset-only. Modelling auto-exposure as gain+offset needs
-    // enough variance in the background to identify the gain; on a low-texture
-    // scene it is ill-conditioned and corrupts every pixel.
-    double bias = 0.0;
-    for (std::size_t i = 0; i < frame.size(); ++i) {
-        bias += static_cast<double>(blur_[i]) - bg_[i];
-    }
-    bias /= static_cast<double>(frame.size());
+    const double bias = brightness_bias();
 
     diff_.resize(frame.size());
     mask_.resize(frame.size());

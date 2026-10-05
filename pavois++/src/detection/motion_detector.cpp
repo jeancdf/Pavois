@@ -237,6 +237,14 @@ bool MotionDetector::threshold_against_background(double bias) {
     return hot_ratio > cfg_.illumination_hot_ratio;
 }
 
+// Opening removes isolated pixels, closing fills small holes in an object;
+// then the mask's connected pixels are grouped into blobs.
+std::vector<MotionDetector::Blob> MotionDetector::extract_blobs() {
+    morph_open(mask_, w_, h_, std::max(0, cfg_.morph_open), executor_);
+    morph_close(mask_, w_, h_, std::max(0, cfg_.morph_close), executor_);
+    return connected_components(mask_, diff_);
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -260,12 +268,8 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const bool illumination_event = threshold_against_background(bias);
     const double base = static_cast<double>(cfg_.diff_threshold);
 
-    std::vector<Blob> blobs;
-    if (!illumination_event) {
-        morph_open(mask_, w_, h_, std::max(0, cfg_.morph_open), executor_);
-        morph_close(mask_, w_, h_, std::max(0, cfg_.morph_close), executor_);
-        blobs = connected_components(mask_, diff_);
-    }
+    const std::vector<Blob> blobs =
+        illumination_event ? std::vector<Blob>{} : extract_blobs();
 
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
     const int b = std::max(0, cfg_.border_ignore_px);

@@ -97,6 +97,7 @@ private:
     void learn_warmup();
     double brightness_bias() const;
     bool threshold_against_background(double bias);
+    std::vector<Blob> extract_blobs();
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

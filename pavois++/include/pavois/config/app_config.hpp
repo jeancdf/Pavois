@@ -215,7 +215,7 @@ struct AppConfig {
     int imu_axis_map = 0x24;
     int imu_axis_sign = 0x00;
 
-    bool preview_enabled = true;
+    bool preview_enabled = false;
     int preview_fps = 2;
     int preview_width = 320;
     int preview_quality = 55;
@@ -225,7 +225,7 @@ struct AppConfig {
 
     // One full-resolution frame is uploaded only when the VPS asks for a
     // close-target classification. Encoding and HTTP run off the camera loop.
-    bool classification_enabled = true;
+    bool classification_enabled = false;
     int classification_quality = 90;
     std::string classification_host;
     int classification_http_port = 8081;

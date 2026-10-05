@@ -22,6 +22,7 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     process.env.WS_AUTH_TOKEN = TEST_AUTH_TOKEN;
     process.env.UDP_HMAC_SECRET = TEST_SHARED_SECRET;
+    process.env.IMAGE_UPLOADS = 'true';
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -123,6 +124,16 @@ describe('AppController (e2e)', () => {
       .send(JPEG)
       .expect(201)
       .expect({ ok: true });
+  });
+
+  it('/preview (POST) does not exist when image uploads are off', () => {
+    process.env.IMAGE_UPLOADS = 'false';
+    return request(app.getHttpServer())
+      .post('/preview?cameraId=jean')
+      .set('Content-Type', 'image/jpeg')
+      .set(signedPreview('cameraId=jean', JPEG))
+      .send(JPEG)
+      .expect(404);
   });
 
   it('/preview (POST) rejects an unsigned image', () => {

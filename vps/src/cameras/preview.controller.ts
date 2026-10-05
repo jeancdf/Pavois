@@ -9,6 +9,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { PreviewService } from './preview.service';
+import { ImageUploadsGuard } from '../common/image-uploads.guard';
 import { SignedUploadGuard } from '../common/signed-upload.guard';
 
 @Controller()
@@ -16,7 +17,7 @@ export class PreviewController {
   constructor(private readonly previews: PreviewService) {}
 
   @SkipThrottle()
-  @UseGuards(SignedUploadGuard)
+  @UseGuards(ImageUploadsGuard, SignedUploadGuard)
   @Post(['preview', 'api/preview'])
   ingest(
     @Query('cameraId') cameraId: string,

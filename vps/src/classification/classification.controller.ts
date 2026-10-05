@@ -10,6 +10,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ClassificationService } from './classification.service';
 import type { ClassificationCaptureMeta } from './classification.types';
+import { ImageUploadsGuard } from '../common/image-uploads.guard';
 import { SignedUploadGuard } from '../common/signed-upload.guard';
 
 function optionalNumber(value: string | undefined): number | null {
@@ -23,7 +24,7 @@ export class ClassificationController {
   constructor(private readonly classification: ClassificationService) {}
 
   @SkipThrottle()
-  @UseGuards(SignedUploadGuard)
+  @UseGuards(ImageUploadsGuard, SignedUploadGuard)
   @Post(['classification/capture', 'api/classification/capture'])
   ingest(
     @Query('requestId') requestId: string,

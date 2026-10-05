@@ -17,6 +17,7 @@ import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
 import type { RailLocalPose } from '../bench/rail-bench';
 import { ClassificationService } from '../classification/classification.service';
+import { imageUploadsEnabled } from '../common/image-uploads.guard';
 import { TuningService } from '../tuning/tuning.service';
 import { CameraHealthService } from '../cameras/camera-health.service';
 import {
@@ -313,10 +314,12 @@ export class UdpService implements OnModuleInit, OnModuleDestroy {
     this.eventsGateway.broadcast('raw_detection', detection);
     const snap = this.fusion.snapshot();
     this.scheduleFuseBroadcast();
-    const trigger = this.classification.considerFusion(
-      snap.lastFuse,
-      this.onlineCameraIds(),
-    );
+    const trigger = imageUploadsEnabled()
+      ? this.classification.considerFusion(
+          snap.lastFuse,
+          this.onlineCameraIds(),
+        )
+      : null;
     if (trigger) this.sendCaptureRequests(trigger);
     for (const update of this.fusion.pullTrackUpdates()) {
       this.eventsGateway.broadcast('track_update', update);

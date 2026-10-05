@@ -240,15 +240,6 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
     const int b = std::max(0, cfg_.border_ignore_px);
 
-    struct Candidate {
-        const Blob* blob = nullptr;
-        double cx = 0.0;
-        double cy = 0.0;
-        double fill = 0.0;
-        double snr = 0.0;
-        double score = 0.0;
-        bool clipped = false;   // bounding box touches the frame edge
-    };
     std::vector<Candidate> candidates;
     candidates.reserve(blobs.size());
     for (const auto& bl : blobs) {

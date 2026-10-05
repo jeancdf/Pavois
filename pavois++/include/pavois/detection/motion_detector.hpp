@@ -77,6 +77,17 @@ private:
         double energy = 0.0;                     // mean diff over blob
     };
 
+    // A blob that passed the shape filters, with what is needed to rank it.
+    struct Candidate {
+        const Blob* blob = nullptr;
+        double cx = 0.0;
+        double cy = 0.0;
+        double fill = 0.0;
+        double snr = 0.0;
+        double score = 0.0;
+        bool clipped = false;   // bounding box touches the frame edge
+    };
+
     std::vector<Blob> connected_components(const std::vector<std::uint8_t>& mask,
                                            const std::vector<float>& diff);
 

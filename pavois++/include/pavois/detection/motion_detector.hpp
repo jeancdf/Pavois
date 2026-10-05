@@ -103,6 +103,8 @@ private:
                     DetectionResult& out);
     void protect_targets(const std::vector<Candidate>& candidates);
     int confirm(DetectionResult& out);
+    void rate_blobs(const std::vector<Candidate>& candidates, int hits,
+                    DetectionResult& out) const;
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

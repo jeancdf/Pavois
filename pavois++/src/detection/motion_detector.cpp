@@ -386,6 +386,45 @@ int MotionDetector::confirm(DetectionResult& out) {
     return hits;
 }
 
+// Quality in [0, 1] for every candidate: support in the confirmation window,
+// signal-to-noise, fill and, for the tracked one, how sure the filter is.
+// Fills out.blobs, best first, the tracked one with the filtered centroid.
+void MotionDetector::rate_blobs(const std::vector<Candidate>& candidates,
+                                int hits, DetectionResult& out) const {
+    if (!out.has_blob) return;
+    const double support = static_cast<double>(hits) / static_cast<double>(cfg_.confirm_n);
+    const double tight = std::clamp(
+        1.0 - centroid_kf_.position_uncertainty() / kTightnessScalePx, 0.0, 1.0);
+    out.blobs.reserve(candidates.size());
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        const Candidate& candidate = candidates[index];
+        const double snr_score = std::min(1.0, candidate.snr / kSnrForFullScore);
+        const double fill_score = std::clamp(candidate.fill / kFillForFullScore, 0.0, 1.0);
+        const double filter_score = index == 0 ? tight : kUntrackedFilterScore;
+        double quality = std::clamp(
+            kQualityBase + kQualitySupportWeight * support +
+                kQualitySnrWeight * snr_score + kQualityFillWeight * fill_score +
+                kQualityFilterWeight * filter_score,
+            0.0, 1.0);
+        // Clipped target: the centroid is biased, so the bearing is worth
+        // less to triangulation even though the detection itself is real.
+        if (candidate.clipped) quality *= kClippedQualityFactor;
+        out.blobs.push_back({
+            index == 0 ? out.cx : candidate.cx,
+            index == 0 ? out.cy : candidate.cy,
+            candidate.blob->area,
+            candidate.fill,
+            candidate.snr,
+            quality,
+            candidate.blob->x0,
+            candidate.blob->y0,
+            candidate.blob->x1,
+            candidate.blob->y1,
+        });
+    }
+    out.quality = out.blobs.front().quality;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -419,40 +458,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
 
     const int hits = confirm(out);
 
-    // Quality: temporal support, fill, SNR, filter tightness.
-    if (out.has_blob) {
-        const double support = static_cast<double>(hits) / static_cast<double>(cfg_.confirm_n);
-        const double tight = std::clamp(
-            1.0 - centroid_kf_.position_uncertainty() / kTightnessScalePx, 0.0, 1.0);
-        out.blobs.reserve(candidates.size());
-        for (std::size_t index = 0; index < candidates.size(); ++index) {
-            const Candidate& candidate = candidates[index];
-            const double snr_score = std::min(1.0, candidate.snr / kSnrForFullScore);
-            const double fill_score = std::clamp(candidate.fill / kFillForFullScore, 0.0, 1.0);
-            const double filter_score = index == 0 ? tight : kUntrackedFilterScore;
-            double quality = std::clamp(
-                kQualityBase + kQualitySupportWeight * support +
-                    kQualitySnrWeight * snr_score + kQualityFillWeight * fill_score +
-                    kQualityFilterWeight * filter_score,
-                0.0, 1.0);
-            // Clipped target: the centroid is biased, so the bearing is worth
-            // less to triangulation even though the detection itself is real.
-            if (candidate.clipped) quality *= kClippedQualityFactor;
-            out.blobs.push_back({
-                index == 0 ? out.cx : candidate.cx,
-                index == 0 ? out.cy : candidate.cy,
-                candidate.blob->area,
-                candidate.fill,
-                candidate.snr,
-                quality,
-                candidate.blob->x0,
-                candidate.blob->y0,
-                candidate.blob->x1,
-                candidate.blob->y1,
-            });
-        }
-        out.quality = out.blobs.front().quality;
-    }
+    rate_blobs(candidates, hits, out);
 
     // Background + per-pixel noise update.
     const float a_bg = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));

@@ -52,6 +52,7 @@ struct DetectionResult {
 //   running-average background -> adaptive per-pixel threshold ->
 //   morphology -> connected components -> blob filtering & scoring ->
 //   2D constant-velocity Kalman on the centroid -> M-of-N confirmation.
+// process() runs these as the private steps declared below, in that order.
 class MotionDetector {
 public:
     explicit MotionDetector(const CameraConfig& cfg,
@@ -88,6 +89,7 @@ private:
         bool clipped = false;   // bounding box touches the frame edge
     };
 
+    // Groups the mask's connected pixels into blobs; used by extract_blobs().
     std::vector<Blob> connected_components(const std::vector<std::uint8_t>& mask,
                                            const std::vector<float>& diff);
 

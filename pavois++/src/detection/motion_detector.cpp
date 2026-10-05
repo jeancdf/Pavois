@@ -472,42 +472,38 @@ void MotionDetector::update_background(bool illumination_event) {
     });
 }
 
+// One frame through the whole chain. Each step is a method above; this
+// function only decides their order and what passes from one to the next.
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
-
     if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
         reinitialise(frame);
     }
-
     const double dt = advance_clock(frame);
-
     box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
              executor_);
-
     if (warmup_left_ > 0) {
         learn_warmup();
         return out;
     }
 
-    const double bias = brightness_bias();
+    // Which pixels moved, and is it a global illumination jump?
+    const bool illumination_event =
+        threshold_against_background(brightness_bias());
 
-    const bool illumination_event = threshold_against_background(bias);
-
+    // Which groups of moving pixels look like targets, best first.
     const std::vector<Blob> blobs =
         illumination_event ? std::vector<Blob>{} : extract_blobs();
-
     const std::vector<Candidate> candidates = select_candidates(blobs);
+
+    // Follow the best one, confirm over time, rate every one.
     track_best(candidates, dt, out);
-
     protect_targets(candidates);
-
     const int hits = confirm(out);
-
     rate_blobs(candidates, hits, out);
 
     update_background(illumination_event);
-
     if (want_debug_) {
         out.mask = mask_;
         out.mask_w = w_;

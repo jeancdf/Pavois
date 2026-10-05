@@ -1,4 +1,4 @@
-name: DevSecOps — SAST & DAST Security Analysis
+name: Security
 
 on:
   push:
@@ -8,83 +8,118 @@ on:
     branches:
       - main
   schedule:
-    # Lancement hebdomadaire le lundi à 4h00 du matin
     - cron: '0 4 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  # ============================================================================
-  # 1. SAST — STATIC APPLICATION SECURITY TESTING (Analyse statique du code)
-  # ============================================================================
-  sast-codeql:
-    name: SAST — CodeQL & Static Code Analysis
+  tests:
+    name: Security tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: vps/package-lock.json
+      - name: VPS unit tests
+        working-directory: vps
+        run: |
+          npm ci
+          npm test
+      - name: Detector self-test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          cmake -S pavois++ -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target pavois_selftest --parallel 2
+          ./build/pavois_selftest
+
+  codeql:
+    name: SAST - CodeQL
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
       actions: read
-      contents: read
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        continue-on-error: true
+      - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:javascript-typescript"
 
-  sast-semgrep:
-    name: SAST — Semgrep Code Security Scan
+  semgrep:
+    name: SAST - Semgrep
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run Semgrep Security Rules
-        run: semgrep scan --config auto --severity ERROR --error || true
-
-  sast-trivy-dependencies:
-    name: SAST — Trivy Vulnerability & Dependency Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner in repo
-        uses: aquasecurity/trivy-action@master
+      - uses: actions/checkout@v4
         with:
-          scan-type: 'fs'
-          ignore-unfixed: true
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
+          persist-credentials: false
+      - run: semgrep scan --config auto --severity ERROR --error
 
-  # ============================================================================
-  # 2. DAST — DYNAMIC APPLICATION SECURITY TESTING (Analyse dynamique Staging)
-  # ============================================================================
-  dast-owasp-zap:
-    name: DAST — OWASP ZAP Live Security Scan
+  trivy-repo:
+    name: SCA - Trivy dependencies
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      contents: read
-    if: always()
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
 
-      - name: OWASP ZAP Baseline Scan on Staging Environment
-        uses: zaproxy/action-baseline@v0.14.0
+  trivy-images:
+    name: SCA - Trivy image ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [vps, frontend-angular]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build -t pavois-${{ matrix.image }}:ci ./${{ matrix.image }}
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: pavois-${{ matrix.image }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+  zap:
+    name: DAST - OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: zaproxy/action-baseline@v0.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target: 'http://51.91.98.159:8081'
           cmd_options: '-a'
-          issue_title: 'DAST Security Alert — OWASP ZAP Scan'
+          issue_title: 'DAST - OWASP ZAP baseline'
           fail_action: false

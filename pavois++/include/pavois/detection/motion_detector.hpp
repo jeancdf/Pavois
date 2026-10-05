@@ -99,6 +99,8 @@ private:
     bool threshold_against_background(double bias);
     std::vector<Blob> extract_blobs();
     std::vector<Candidate> select_candidates(const std::vector<Blob>& blobs) const;
+    void track_best(const std::vector<Candidate>& candidates, double dt,
+                    DetectionResult& out);
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

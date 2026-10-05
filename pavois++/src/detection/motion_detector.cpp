@@ -303,44 +303,16 @@ std::vector<MotionDetector::Candidate> MotionDetector::select_candidates(
     return candidates;
 }
 
-DetectionResult MotionDetector::process(const GrayFrame& frame) {
-    DetectionResult out;
-    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
-
-    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
-        reinitialise(frame);
-    }
-
-    const double dt = advance_clock(frame);
-
-    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
-             executor_);
-
-    if (warmup_left_ > 0) {
-        learn_warmup();
-        return out;
-    }
-
-    const double bias = brightness_bias();
-
-    const bool illumination_event = threshold_against_background(bias);
-    const double base = static_cast<double>(cfg_.diff_threshold);
-
-    const std::vector<Blob> blobs =
-        illumination_event ? std::vector<Blob>{} : extract_blobs();
-
-    const std::vector<Candidate> candidates = select_candidates(blobs);
+// Follows the best candidate with the centroid Kalman filter and records a
+// hit or a miss for the confirmation window. Without a candidate, the
+// reported centroid is the filter's prediction.
+void MotionDetector::track_best(const std::vector<Candidate>& candidates,
+                                double dt, DetectionResult& out) {
     const Candidate* best = candidates.empty() ? nullptr : &candidates.front();
 
     // Kalman predict step happens every frame.
     if (centroid_kf_.initialized()) centroid_kf_.predict(dt);
 
-    fg_mask_.resize(frame.size());
-    for_each_range(executor_, 0, frame.size(),
-                   [&](std::size_t first, std::size_t last) {
-        std::fill(fg_mask_.begin() + static_cast<std::ptrdiff_t>(first),
-                  fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
-    });
     if (best != nullptr) {
         const double mx = best->cx;
         const double my = best->cy;
@@ -375,6 +347,43 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             out.cy = p[1];
         }
     }
+}
+
+DetectionResult MotionDetector::process(const GrayFrame& frame) {
+    DetectionResult out;
+    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
+
+    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
+        reinitialise(frame);
+    }
+
+    const double dt = advance_clock(frame);
+
+    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
+             executor_);
+
+    if (warmup_left_ > 0) {
+        learn_warmup();
+        return out;
+    }
+
+    const double bias = brightness_bias();
+
+    const bool illumination_event = threshold_against_background(bias);
+    const double base = static_cast<double>(cfg_.diff_threshold);
+
+    const std::vector<Blob> blobs =
+        illumination_event ? std::vector<Blob>{} : extract_blobs();
+
+    const std::vector<Candidate> candidates = select_candidates(blobs);
+    track_best(candidates, dt, out);
+
+    fg_mask_.resize(frame.size());
+    for_each_range(executor_, 0, frame.size(),
+                   [&](std::size_t first, std::size_t last) {
+        std::fill(fg_mask_.begin() + static_cast<std::ptrdiff_t>(first),
+                  fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
+    });
 
     // Preserve every valid component in the slow-update foreground mask. If
     // only the best one is protected, simultaneous targets are absorbed into

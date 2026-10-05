@@ -24,6 +24,16 @@ constexpr float kNoiseLearnRate = 0.03f;   // learning rate afterwards
 // target never raises the threshold that has to find it.
 constexpr float kNoiseResidualFactor = 3.0f;
 
+// Ranking of the candidates of one frame. Empirical weights: they only order
+// the candidates; the shape filters decide which ones are kept.
+constexpr double kAreaForFullScore = 800.0;     // px; larger counts as 1
+constexpr double kEnergyForFullScore = 60.0;    // mean grey-level difference
+constexpr double kContinuityScalePx = 40.0;     // exp(-distance / scale)
+constexpr double kScoreAreaWeight = 0.35;
+constexpr double kScoreFillWeight = 0.20;
+constexpr double kScoreEnergyWeight = 0.20;
+constexpr double kScoreContinuityWeight = 0.25;
+
 // At least one hit to confirm, in a window at least that long: "2 of 1"
 // could never be reached.
 void sanitize_confirmation(CameraConfig& cfg) {
@@ -242,11 +252,13 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         double continuity = 0.0;
         if (have_last_) {
             const double dist = std::hypot(cx - last_cx_, cy - last_cy_);
-            continuity = std::exp(-dist / 40.0);
+            continuity = std::exp(-dist / kContinuityScalePx);
         }
-        const double area_score = std::min(1.0, static_cast<double>(bl.area) / 800.0);
-        const double energy_score = std::min(1.0, bl.energy / 60.0);
-        const double score = 0.35 * area_score + 0.20 * fill + 0.20 * energy_score + 0.25 * continuity;
+        const double area_score = std::min(1.0, static_cast<double>(bl.area) / kAreaForFullScore);
+        const double energy_score = std::min(1.0, bl.energy / kEnergyForFullScore);
+        const double score = kScoreAreaWeight * area_score + kScoreFillWeight * fill +
+                             kScoreEnergyWeight * energy_score +
+                             kScoreContinuityWeight * continuity;
         const std::size_t ci =
             static_cast<std::size_t>(std::clamp<int>(static_cast<int>(cy), 0, h_ - 1)) * w_ +
             std::clamp<int>(static_cast<int>(cx), 0, w_ - 1);

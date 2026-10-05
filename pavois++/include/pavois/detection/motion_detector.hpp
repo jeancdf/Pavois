@@ -101,6 +101,7 @@ private:
     std::vector<Candidate> select_candidates(const std::vector<Blob>& blobs) const;
     void track_best(const std::vector<Candidate>& candidates, double dt,
                     DetectionResult& out);
+    void protect_targets(const std::vector<Candidate>& candidates);
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

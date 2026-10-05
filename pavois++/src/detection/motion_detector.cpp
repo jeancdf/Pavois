@@ -349,6 +349,34 @@ void MotionDetector::track_best(const std::vector<Candidate>& candidates,
     }
 }
 
+// Preserve every valid component in the slow-update foreground mask. If
+// only the best one is protected, simultaneous targets are absorbed into
+// the background before they can be emitted on following frames.
+void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
+    fg_mask_.resize(bg_.size());
+    for_each_range(executor_, 0, bg_.size(),
+                   [&](std::size_t first, std::size_t last) {
+        std::fill(fg_mask_.begin() + static_cast<std::ptrdiff_t>(first),
+                  fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
+    });
+    for (const auto& candidate : candidates) {
+        const Blob& blob = *candidate.blob;
+        for (int y = std::max(0, blob.y0 - kProtectionPadPx);
+             y <= std::min(h_ - 1, blob.y1 + kProtectionPadPx); ++y) {
+            for (int x = std::max(0, blob.x0 - kProtectionPadPx);
+                 x <= std::min(w_ - 1, blob.x1 + kProtectionPadPx); ++x) {
+                const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
+                if (mask_[bi]) {
+                    fg_mask_[bi] = 1;
+                    fg_hold_[bi] =
+                        static_cast<std::uint16_t>(std::max(0, cfg_.bg_hold_frames));
+                }
+            }
+        }
+    }
+    if (!candidates.empty()) dilate(fg_mask_, w_, h_, kProtectionPadPx, executor_);
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -378,32 +406,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const std::vector<Candidate> candidates = select_candidates(blobs);
     track_best(candidates, dt, out);
 
-    fg_mask_.resize(frame.size());
-    for_each_range(executor_, 0, frame.size(),
-                   [&](std::size_t first, std::size_t last) {
-        std::fill(fg_mask_.begin() + static_cast<std::ptrdiff_t>(first),
-                  fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
-    });
-
-    // Preserve every valid component in the slow-update foreground mask. If
-    // only the best one is protected, simultaneous targets are absorbed into
-    // the background before they can be emitted on following frames.
-    for (const auto& candidate : candidates) {
-        const Blob& blob = *candidate.blob;
-        for (int y = std::max(0, blob.y0 - kProtectionPadPx);
-             y <= std::min(h_ - 1, blob.y1 + kProtectionPadPx); ++y) {
-            for (int x = std::max(0, blob.x0 - kProtectionPadPx);
-                 x <= std::min(w_ - 1, blob.x1 + kProtectionPadPx); ++x) {
-                const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
-                if (mask_[bi]) {
-                    fg_mask_[bi] = 1;
-                    fg_hold_[bi] =
-                        static_cast<std::uint16_t>(std::max(0, cfg_.bg_hold_frames));
-                }
-            }
-        }
-    }
-    if (!candidates.empty()) dilate(fg_mask_, w_, h_, kProtectionPadPx, executor_);
+    protect_targets(candidates);
 
     while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
     const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);

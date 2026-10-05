@@ -13,6 +13,17 @@ namespace {
 constexpr double kDefaultDt = 1.0 / 30.0;
 constexpr int kWarmupFrames = 12;
 
+// Per-pixel noise, in grey levels: a mean of |frame - background| that sets
+// how far above diff_threshold the pixel's own threshold sits.
+constexpr float kInitialNoise = 4.0f;      // before the warm-up has measured it
+constexpr float kNoiseFloor = 1.5f;        // a calm pixel keeps some margin
+constexpr float kNoiseCeiling = 18.0f;     // a busy pixel never goes blind
+constexpr float kWarmupNoiseRate = 0.1f;   // learning rate during the warm-up
+constexpr float kNoiseLearnRate = 0.03f;   // learning rate afterwards
+// Only residuals below this many diff_threshold feed the noise estimate, so a
+// target never raises the threshold that has to find it.
+constexpr float kNoiseResidualFactor = 3.0f;
+
 // At least one hit to confirm, in a window at least that long: "2 of 1"
 // could never be reached.
 void sanitize_confirmation(CameraConfig& cfg) {
@@ -96,7 +107,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         w_ = frame.width;
         h_ = frame.height;
         bg_.resize(frame.size());
-        noise_.assign(frame.size(), 4.0f);
+        noise_.assign(frame.size(), kInitialNoise);
         fg_hold_.assign(frame.size(), 0);
         fg_streak_.assign(frame.size(), 0);
         for_each_range(executor_, 0, frame.size(),
@@ -133,8 +144,8 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
                 bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
                 const float d =
                     std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
-                noise_[i] += 0.1f * (d - noise_[i]);
-                noise_[i] = std::clamp(noise_[i], 1.5f, 18.0f);
+                noise_[i] += kWarmupNoiseRate * (d - noise_[i]);
+                noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
             }
         });
         --warmup_left_;
@@ -357,8 +368,6 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     const float a_bg = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
     const float a_fg = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
     const float a_catchup = illumination_event ? 0.25f : a_bg;
-    const float a_noise = 0.03f;
-    const float noise_cap = 18.0f;
     for_each_range(executor_, 0, frame.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
@@ -389,9 +398,9 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             // Update the noise estimate only from quiet pixels, and only from
             // small residuals, so it remains a floor and never chases signal.
             if (!fg_mask_[i] &&
-                diff_[i] < 3.0f * static_cast<float>(base)) {
-                noise_[i] += a_noise * (diff_[i] - noise_[i]);
-                noise_[i] = std::clamp(noise_[i], 1.5f, noise_cap);
+                diff_[i] < kNoiseResidualFactor * static_cast<float>(base)) {
+                noise_[i] += kNoiseLearnRate * (diff_[i] - noise_[i]);
+                noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
             }
         }
     });

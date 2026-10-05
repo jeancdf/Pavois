@@ -65,7 +65,7 @@ public:
 
     // Forgets the background: the next frame starts a new warm-up, as the
     // first one did. For a restarted capture, whose image no longer matches.
-    void reset() { w_ = 0; h_ = 0; }
+    void reset() { reinit_pending_ = true; }
 
     DetectionResult process(const GrayFrame& frame);
 
@@ -99,6 +99,7 @@ private:
     int w_ = 0;
     int h_ = 0;
     bool want_debug_ = false;
+    bool reinit_pending_ = false;  // set by reset(), honoured by the next frame
 
     std::vector<float> bg_;        // background model (grey)
     std::vector<float> noise_;     // per-pixel EMA of |frame - bg| (sigma proxy)

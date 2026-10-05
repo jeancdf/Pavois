@@ -136,9 +136,10 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
     return blobs;
 }
 
-// First frame, new frame size: every per-pixel buffer starts again from this
-// frame, and so does the warm-up.
+// First frame, new frame size or reset(): every per-pixel buffer starts again
+// from this frame, and so does the warm-up.
 void MotionDetector::reinitialise(const GrayFrame& frame) {
+    reinit_pending_ = false;
     w_ = frame.width;
     h_ = frame.height;
     bg_.resize(frame.size());
@@ -162,7 +163,9 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
 
-    if (w_ != frame.width || h_ != frame.height) reinitialise(frame);
+    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
+        reinitialise(frame);
+    }
 
     double dt = kDefaultDt;
     if (last_us_ != 0 && frame.captured_us > last_us_) {

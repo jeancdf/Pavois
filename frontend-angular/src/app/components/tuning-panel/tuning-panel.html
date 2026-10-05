@@ -79,6 +79,7 @@
       @for (camera of current.cameras; track camera.cameraId) {
         @let status = syncStatus(camera);
         @let exposure = exposureNote(camera);
+        @let lum = luminanceNote(camera);
         <li>
           <strong>{{ camera.cameraId }}</strong>
           <span class="size">
@@ -87,6 +88,15 @@
           @if (exposure) {
             <span class="exposure" title="Temps de pose et gain utilisés par la caméra">
               {{ exposure }}
+            </span>
+          }
+          @if (lum) {
+            <span
+              class="lum"
+              [class.lum-off]="lum.level !== 'correcte'"
+              title="Luminosité moyenne de l'image, de 0 (noir) à 255 (blanc). Viser 90 à 150."
+            >
+              lum {{ lum.value }} · {{ lum.label }}
             </span>
           }
           <span

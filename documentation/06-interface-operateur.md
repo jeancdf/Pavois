@@ -51,14 +51,14 @@ Tant que l'opérateur n'est pas connecté, seule la page **Connexion** s'affiche
 |---|---|
 | `login` | Demande le jeton opérateur, le vérifie (`GET /auth/verify`) avant d'ouvrir l'interface |
 | `top-bar` | Navigation, **badge de fiabilité** (🟢 3/3, 🟠 2/3, 🔴 aveugle), une pastille d'état par caméra, nombre d'aperçus vivants |
-| `sidebar` | Une carte par caméra : position GPS, azimut, champ, portée, **bloc IMU** (qualité, calibration, âge, cap, élévation, roulis), formulaire pour corriger la position |
+| `sidebar` | Une carte par caméra : position GPS, azimut, champ, portée, **bloc IMU** (qualité, calibration, âge, cap, élévation, roulis), **luminosité de l'image** avec sa jauge et l'exposition réelle, aperçu vidéo, formulaire pour corriger la position |
 | `map` | Carte Leaflet (tuiles OpenStreetMap) : caméras et **cônes de vision**, **rayons bruts** de chaque détection (fondu rapide), icônes de pistes par classe avec traînée. Les caméras peuvent être **déplacées à la souris** |
 | `track-feed` | Dernières positions GPS par piste, avec leur classe |
 | `detection-feed` | Flux des détections brutes avec un **filtre de confiance minimale** |
 | `alert-feed` | Alertes en cours, bouton **Acquitter** |
 | `track-detail` | Panneau de la piste sélectionnée : classe, latitude, longitude, altitude… |
 | `toast` | Notifications passagères (nouvelle alerte, erreurs) |
-| `tuning-panel` | Panneau **Réglages** : curseurs générés depuis la table du VPS, préréglages, retour au fichier des Pi |
+| `tuning-panel` | Panneau **Réglages** : curseurs générés depuis la table du VPS, préréglages, retour au fichier des Pi ; pour chaque caméra, l'exposition réelle et la luminosité de l'image |
 | `rail-test` + `rail-volume` | Page du banc : scène three.js orbitale avec les trois caméras, la cible attendue, une sphère et une traînée par piste |
 
 ## 🔌 Le temps réel : `RealtimeService`
@@ -85,6 +85,8 @@ flowchart LR
     S1 & S2 --> SB["sidebar"]
     S1 & F1 & F2 --> MAP["map"]
     S4 --> TB["top-bar"]
+    S4 --> SB
+    S4 --> TP
     S3 --> TB
     S5 & S7 & S6 --> RT["rail-test"]
     S6 --> TP["tuning-panel"]
@@ -98,6 +100,11 @@ flowchart LR
   automatique** 2 s après une coupure.
 - **Acquitter** une alerte envoie `{"event":"acknowledge_alert","data":{"alertId":…}}`
   sur la même socket.
+- **Luminosité de l'image** : chaque ligne `stats` porte la luminosité moyenne
+  (0 = noir, 255 = blanc). La barre latérale l'affiche avec une jauge dont la
+  bande verte marque la plage visée, **90 à 150** ; en dessous de 70 l'image est
+  « trop sombre », au-dessus de 180 « trop claire » (`utils/luminance.ts`).
+  C'est le repère pour régler le temps de pose et le gain.
 - **Les alertes sont décidées par le serveur.** `AlertTriggerService` ne fait que
   relayer l'événement `alert` vers un toast : un onglet fermé au moment de
   l'événement ne perd rien, l'alerte est persistée côté VPS.

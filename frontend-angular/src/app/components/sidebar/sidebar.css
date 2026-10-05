@@ -92,6 +92,44 @@
   color: #f59e0b;
 }
 
+.lum-correcte {
+  color: #34d399;
+}
+
+.lum-sombre,
+.lum-claire {
+  color: #f59e0b;
+}
+
+/* Jauge 0–255 : bande verte = plage visée (90–150), trait = luminosité actuelle. */
+.lum-gauge {
+  position: relative;
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  background: linear-gradient(90deg, #020617, #e2e8f0);
+  border-radius: 2px;
+}
+
+.lum-target {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 35.3%;
+  width: 23.5%;
+  background: rgba(52, 211, 153, 0.45);
+}
+
+.lum-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
 .camera-preview {
   width: 100%;
   margin-top: 6px;

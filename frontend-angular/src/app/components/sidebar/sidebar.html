@@ -68,6 +68,21 @@
             } @else {
               <span class="imu-block imu-missing">IMU aucune donnée</span>
             }
+            @if (luminanceOf(camera.id); as lum) {
+              <span
+                class="imu-block lum-{{ lum.level }}"
+                title="Luminosité moyenne de l'image analysée, de 0 (noir) à 255 (blanc). Viser 90 à 150."
+              >
+                image lum {{ lum.value }}/255 · {{ lum.label }}
+                @if (exposureOf(camera.id); as exposure) {
+                  · {{ exposure }}
+                }
+              </span>
+              <span class="lum-gauge" aria-hidden="true">
+                <span class="lum-target"></span>
+                <span class="lum-marker lum-{{ lum.level }}" [style.left.%]="lum.percent"></span>
+              </span>
+            }
             @if (previewOf(camera.id); as preview) {
               <img
                 class="camera-preview"

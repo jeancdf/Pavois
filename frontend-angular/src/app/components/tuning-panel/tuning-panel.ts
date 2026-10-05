@@ -2,6 +2,7 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { NotificationService } from '../../services/notification.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { TuningService } from '../../services/tuning.service';
+import { formatExposure, luminanceReading, type LuminanceReading } from '../../utils/luminance';
 import type {
   TuningCameraState,
   TuningParam,
@@ -185,10 +186,12 @@ export class TuningPanel implements OnInit, OnDestroy {
    * en exposition automatique, c'est elle qui les choisit.
    */
   exposureNote(camera: TuningCameraState): string | null {
-    const stats = this.realtime.statsOf(camera.cameraId);
-    if (!stats?.exposureUs || this.now() - stats.receivedAt > ONLINE_WINDOW_MS) return null;
-    const gain = Math.pow(10, (stats.gainDb ?? 0) / 20);
-    return `${Math.round(stats.exposureUs)} µs ×${gain.toFixed(1)}`;
+    return formatExposure(this.realtime.statsOf(camera.cameraId), this.now());
+  }
+
+  /** Luminosité de l'image : ce que le temps de pose et le gain produisent. */
+  luminanceNote(camera: TuningCameraState): LuminanceReading | null {
+    return luminanceReading(this.realtime.statsOf(camera.cameraId), this.now());
   }
 
   /** Curseur en mouvement : affichage immédiat, envoi regroupé. */

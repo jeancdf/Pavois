@@ -186,6 +186,14 @@ button:focus-visible {
   color: #64748b;
 }
 
+.lum {
+  color: #34d399;
+}
+
+.lum.lum-off {
+  color: #f59e0b;
+}
+
 .sync {
   margin-left: auto;
   color: #64748b;

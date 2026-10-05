@@ -86,6 +86,10 @@ function broadcast(event, data) {
   });
 }
 
+function sendEvent(socket, event, data) {
+  if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ event, data }));
+}
+
 function handleHttpRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
@@ -313,6 +317,10 @@ function simulatedStats(cameraId, fps) {
     fps,
     frameIndex: frameIndex,
     timestamp: Date.now(),
+    lumMean: 115 + 10 * Math.sin(Date.now() / 5000),
+    lumStddev: 38,
+    exposureUs: 300,
+    gainDb: 0,
   };
 }
 

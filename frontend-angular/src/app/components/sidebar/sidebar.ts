@@ -12,6 +12,7 @@ import { CameraPreview } from '../../models/camera-preview.model';
 import { CameraConfigService } from '../../services/camera-config.service';
 import { NotificationService } from '../../services/notification.service';
 import { RealtimeService } from '../../services/realtime.service';
+import { formatExposure, luminanceReading, type LuminanceReading } from '../../utils/luminance';
 import {
   IMU_QUALITY_LABELS,
   ImuQuality,
@@ -80,6 +81,15 @@ export class Sidebar implements OnDestroy {
   previewOf(id: string): CameraPreview | undefined {
     this.now();
     return this.realtime.previewOf(id);
+  }
+
+  /** Luminosité de l'image, pour régler l'exposition. */
+  luminanceOf(id: string): LuminanceReading | null {
+    return luminanceReading(this.realtime.statsOf(id), this.now());
+  }
+
+  exposureOf(id: string): string | null {
+    return formatExposure(this.realtime.statsOf(id), this.now());
   }
 
   previewAge(id: string): string {

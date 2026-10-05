@@ -377,6 +377,15 @@ void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
     if (!candidates.empty()) dilate(fg_mask_, w_, h_, kProtectionPadPx, executor_);
 }
 
+// M-of-N confirmation: the frame's detection is confirmed when a target was
+// found on at least confirm_m of the last confirm_n frames. Returns that count.
+int MotionDetector::confirm(DetectionResult& out) {
+    while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
+    const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);
+    out.confirmed = out.has_blob && hits >= cfg_.confirm_m;
+    return hits;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -408,9 +417,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
 
     protect_targets(candidates);
 
-    while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
-    const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);
-    out.confirmed = out.has_blob && hits >= cfg_.confirm_m;
+    const int hits = confirm(out);
 
     // Quality: temporal support, fill, SNR, filter tightness.
     if (out.has_blob) {

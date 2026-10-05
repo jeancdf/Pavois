@@ -10,56 +10,12 @@
 
 namespace pavois {
 namespace {
-constexpr double kDefaultDt = 1.0 / 30.0;
+// Frames averaged into the background before detection starts.
 constexpr int kWarmupFrames = 12;
-// A longer gap is a pause, not motion: dt is capped so the Kalman filter does
-// not extrapolate across it.
-constexpr double kMaxFrameGapS = 1.0;
-
-// Per-pixel noise, in grey levels: a mean of |frame - background| that sets
-// how far above diff_threshold the pixel's own threshold sits.
-constexpr float kInitialNoise = 4.0f;      // before the warm-up has measured it
-constexpr float kNoiseFloor = 1.5f;        // a calm pixel keeps some margin
-constexpr float kNoiseCeiling = 18.0f;     // a busy pixel never goes blind
-constexpr float kWarmupNoiseRate = 0.1f;   // learning rate during the warm-up
-constexpr float kNoiseLearnRate = 0.03f;   // learning rate afterwards
-// Only residuals below this many diff_threshold feed the noise estimate, so a
-// target never raises the threshold that has to find it.
-constexpr float kNoiseResidualFactor = 3.0f;
-
-// Ranking of the candidates of one frame. Empirical weights: they only order
-// the candidates; the shape filters decide which ones are kept.
-constexpr double kAreaForFullScore = 800.0;     // px; larger counts as 1
-constexpr double kEnergyForFullScore = 60.0;    // mean grey-level difference
-constexpr double kContinuityScalePx = 40.0;     // exp(-distance / scale)
-constexpr double kScoreAreaWeight = 0.35;
-constexpr double kScoreFillWeight = 0.20;
-constexpr double kScoreEnergyWeight = 0.20;
-constexpr double kScoreContinuityWeight = 0.25;
-
-// Quality in [0, 1] sent with every blob; the VPS weights the triangulation
-// by it.
-constexpr double kQualityBase = 0.15;
-constexpr double kQualitySupportWeight = 0.35;  // hits in the confirm window
-constexpr double kQualitySnrWeight = 0.25;
-constexpr double kQualityFillWeight = 0.15;
-constexpr double kQualityFilterWeight = 0.10;   // how sure the Kalman filter is
-constexpr double kSnrForFullScore = 6.0;
-constexpr double kFillForFullScore = 0.6;
-constexpr double kTightnessScalePx = 12.0;      // filter uncertainty that scores 0
-constexpr double kUntrackedFilterScore = 0.5;   // blobs the filter does not follow
-// A blob cut by the frame edge has a biased centroid: its bearing is worth less.
-constexpr double kClippedQualityFactor = 0.6;
-
-// Reported centroid: mostly the measurement, which blur, morphology and
-// weighting already make precise; the filter adds smoothing.
-constexpr double kMeasurementWeight = 0.85;
-constexpr double kFilterWeight = 0.15;
-
-// Background learning rate right after a global illumination jump.
-constexpr float kCatchUpLearnRate = 0.25f;
-// Margin around a target, in pixels, that the background must not learn.
-constexpr int kProtectionPadPx = 2;
+// Per-pixel noise, in grey levels, stays in this range: a calm pixel keeps
+// some margin above diff_threshold, a busy one never goes blind.
+constexpr float kNoiseFloor = 1.5f;
+constexpr float kNoiseCeiling = 18.0f;
 
 // At least one hit to confirm, in a window at least that long: "2 of 1"
 // could never be reached.
@@ -139,6 +95,9 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
 // First frame, new frame size or reset(): every per-pixel buffer starts again
 // from this frame, and so does the warm-up.
 void MotionDetector::reinitialise(const GrayFrame& frame) {
+    // A cautious noise guess until the warm-up has measured it: with 0, every
+    // pixel's threshold would start at its lowest and sensor noise would pass.
+    constexpr float kInitialNoise = 4.0f;
     reinit_pending_ = false;
     w_ = frame.width;
     h_ = frame.height;
@@ -161,9 +120,13 @@ void MotionDetector::reinitialise(const GrayFrame& frame) {
 // Seconds since the previous frame, from the capture clock. A frame stamped
 // earlier than the last one (a replay looping) keeps the nominal 1/30 s.
 double MotionDetector::advance_clock(const GrayFrame& frame) {
-    double dt = kDefaultDt;
+    constexpr double kNominalDt = 1.0 / 30.0;
+    // A longer gap is a pause, not motion: the Kalman filter must not
+    // extrapolate across it.
+    constexpr double kMaxGapS = 1.0;
+    double dt = kNominalDt;
     if (last_us_ != 0 && frame.captured_us > last_us_) {
-        dt = std::min(kMaxFrameGapS, (frame.captured_us - last_us_) / 1e6);
+        dt = std::min(kMaxGapS, (frame.captured_us - last_us_) / 1e6);
     }
     last_us_ = frame.captured_us;
     return dt;
@@ -173,6 +136,7 @@ double MotionDetector::advance_clock(const GrayFrame& frame) {
 // Seeding from a single frame would bake any object present at t=0 into the
 // model as a permanent negative ghost; averaging washes a moving target out.
 void MotionDetector::learn_warmup() {
+    constexpr float kNoiseRate = 0.1f;  // faster than after the warm-up (0.03)
     const float frames_averaged = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
@@ -180,7 +144,7 @@ void MotionDetector::learn_warmup() {
             bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / frames_averaged;
             const float deviation =
                 std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
-            noise_[i] += kWarmupNoiseRate * (deviation - noise_[i]);
+            noise_[i] += kNoiseRate * (deviation - noise_[i]);
             noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
         }
     });
@@ -250,6 +214,14 @@ std::vector<MotionDetector::Blob> MotionDetector::extract_blobs() {
 // ranks them, best first.
 std::vector<MotionDetector::Candidate> MotionDetector::select_candidates(
     const std::vector<Blob>& blobs) const {
+    // Ranking score. Empirical weights: they only order this frame's
+    // candidates; the shape filters below decide which ones are kept.
+    constexpr double kAreaFullPx = 800.0;    // a larger blob scores 1
+    constexpr double kEnergyFull = 60.0;     // mean grey-level difference
+    constexpr double kContinuityPx = 40.0;   // exp(-distance / kContinuityPx)
+    constexpr double kAreaWeight = 0.35, kFillWeight = 0.20,
+                     kEnergyWeight = 0.20, kContinuityWeight = 0.25;
+
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
     const int border_px = std::max(0, cfg_.border_ignore_px);
 
@@ -283,13 +255,13 @@ std::vector<MotionDetector::Candidate> MotionDetector::select_candidates(
         double continuity = 0.0;
         if (have_last_) {
             const double distance = std::hypot(cx - last_cx_, cy - last_cy_);
-            continuity = std::exp(-distance / kContinuityScalePx);
+            continuity = std::exp(-distance / kContinuityPx);
         }
-        const double area_score = std::min(1.0, static_cast<double>(blob.area) / kAreaForFullScore);
-        const double energy_score = std::min(1.0, blob.energy / kEnergyForFullScore);
-        const double score = kScoreAreaWeight * area_score + kScoreFillWeight * fill +
-                             kScoreEnergyWeight * energy_score +
-                             kScoreContinuityWeight * continuity;
+        const double area_score = std::min(1.0, static_cast<double>(blob.area) / kAreaFullPx);
+        const double energy_score = std::min(1.0, blob.energy / kEnergyFull);
+        const double score = kAreaWeight * area_score + kFillWeight * fill +
+                             kEnergyWeight * energy_score +
+                             kContinuityWeight * continuity;
         const std::size_t centre_index =
             static_cast<std::size_t>(std::clamp<int>(static_cast<int>(cy), 0, h_ - 1)) * w_ +
             std::clamp<int>(static_cast<int>(cx), 0, w_ - 1);
@@ -332,8 +304,9 @@ void MotionDetector::track_best(const std::vector<Candidate>& candidates,
         // The weighted measurement is trustworthy after blur+morph+weighting;
         // blend mostly toward it and let the filter mainly supply smoothing and
         // a velocity estimate for coasting.
-        out.cx = kMeasurementWeight * meas_x + kFilterWeight * filtered[0];
-        out.cy = kMeasurementWeight * meas_y + kFilterWeight * filtered[1];
+        constexpr double kMeasuredShare = 0.85, kFilteredShare = 0.15;
+        out.cx = kMeasuredShare * meas_x + kFilteredShare * filtered[0];
+        out.cy = kMeasuredShare * meas_y + kFilteredShare * filtered[1];
         last_cx_ = meas_x;
         last_cy_ = meas_y;
         have_last_ = true;
@@ -353,6 +326,7 @@ void MotionDetector::track_best(const std::vector<Candidate>& candidates,
 // only the best one is protected, simultaneous targets are absorbed into
 // the background before they can be emitted on following frames.
 void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
+    constexpr int kPadPx = 2;  // the background must not learn a target's edges
     fg_mask_.resize(bg_.size());
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
@@ -361,10 +335,10 @@ void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
     });
     for (const auto& candidate : candidates) {
         const Blob& blob = *candidate.blob;
-        for (int y = std::max(0, blob.y0 - kProtectionPadPx);
-             y <= std::min(h_ - 1, blob.y1 + kProtectionPadPx); ++y) {
-            for (int x = std::max(0, blob.x0 - kProtectionPadPx);
-                 x <= std::min(w_ - 1, blob.x1 + kProtectionPadPx); ++x) {
+        for (int y = std::max(0, blob.y0 - kPadPx);
+             y <= std::min(h_ - 1, blob.y1 + kPadPx); ++y) {
+            for (int x = std::max(0, blob.x0 - kPadPx);
+                 x <= std::min(w_ - 1, blob.x1 + kPadPx); ++x) {
                 const std::size_t index = static_cast<std::size_t>(y) * w_ + x;
                 if (mask_[index]) {
                     fg_mask_[index] = 1;
@@ -374,7 +348,7 @@ void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
             }
         }
     }
-    if (!candidates.empty()) dilate(fg_mask_, w_, h_, kProtectionPadPx, executor_);
+    if (!candidates.empty()) dilate(fg_mask_, w_, h_, kPadPx, executor_);
 }
 
 // M-of-N confirmation: the frame's detection is confirmed when a target was
@@ -391,24 +365,31 @@ int MotionDetector::confirm(DetectionResult& out) {
 // Fills out.blobs, best first, the tracked one with the filtered centroid.
 void MotionDetector::rate_blobs(const std::vector<Candidate>& candidates,
                                 int hits, DetectionResult& out) const {
+    // The VPS weights its triangulation by this quality.
+    constexpr double kBase = 0.15, kSupportWeight = 0.35, kSnrWeight = 0.25,
+                     kFillWeight = 0.15, kFilterWeight = 0.10;
+    constexpr double kSnrFull = 6.0, kFillFull = 0.6;
+    constexpr double kTightnessPx = 12.0;    // filter uncertainty that scores 0
+    constexpr double kUntrackedScore = 0.5;  // blobs the filter does not follow
+    constexpr double kClippedFactor = 0.6;   // cut by the edge: biased centroid
     if (!out.has_blob) return;
     const double support = static_cast<double>(hits) / static_cast<double>(cfg_.confirm_n);
     const double tight = std::clamp(
-        1.0 - centroid_kf_.position_uncertainty() / kTightnessScalePx, 0.0, 1.0);
+        1.0 - centroid_kf_.position_uncertainty() / kTightnessPx, 0.0, 1.0);
     out.blobs.reserve(candidates.size());
     for (std::size_t index = 0; index < candidates.size(); ++index) {
         const Candidate& candidate = candidates[index];
-        const double snr_score = std::min(1.0, candidate.snr / kSnrForFullScore);
-        const double fill_score = std::clamp(candidate.fill / kFillForFullScore, 0.0, 1.0);
-        const double filter_score = index == 0 ? tight : kUntrackedFilterScore;
+        const double snr_score = std::min(1.0, candidate.snr / kSnrFull);
+        const double fill_score = std::clamp(candidate.fill / kFillFull, 0.0, 1.0);
+        const double filter_score = index == 0 ? tight : kUntrackedScore;
         double quality = std::clamp(
-            kQualityBase + kQualitySupportWeight * support +
-                kQualitySnrWeight * snr_score + kQualityFillWeight * fill_score +
-                kQualityFilterWeight * filter_score,
+            kBase + kSupportWeight * support +
+                kSnrWeight * snr_score + kFillWeight * fill_score +
+                kFilterWeight * filter_score,
             0.0, 1.0);
         // Clipped target: the centroid is biased, so the bearing is worth
         // less to triangulation even though the detection itself is real.
-        if (candidate.clipped) quality *= kClippedQualityFactor;
+        if (candidate.clipped) quality *= kClippedFactor;
         out.blobs.push_back({
             index == 0 ? out.cx : candidate.cx,
             index == 0 ? out.cy : candidate.cy,
@@ -430,10 +411,15 @@ void MotionDetector::rate_blobs(const std::vector<Candidate>& candidates,
 // bg_hold_max_frames in a row; after an illumination jump everything catches
 // up fast. Noise is learnt only from quiet pixels.
 void MotionDetector::update_background(bool illumination_event) {
+    constexpr float kCatchUpRate = 0.25f;  // right after an illumination jump
+    constexpr float kNoiseRate = 0.03f;
+    // Only residuals below this many diff_threshold feed the noise, so a
+    // target never raises the threshold that has to find it.
+    constexpr float kNoiseResidualFactor = 3.0f;
     const double base = static_cast<double>(cfg_.diff_threshold);
     const float scene_rate = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
     const float protected_rate = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
-    const float unprotected_rate = illumination_event ? kCatchUpLearnRate : scene_rate;
+    const float unprotected_rate = illumination_event ? kCatchUpRate : scene_rate;
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
@@ -465,7 +451,7 @@ void MotionDetector::update_background(bool illumination_event) {
             // small residuals, so it remains a floor and never chases signal.
             if (!fg_mask_[i] &&
                 diff_[i] < kNoiseResidualFactor * static_cast<float>(base)) {
-                noise_[i] += kNoiseLearnRate * (diff_[i] - noise_[i]);
+                noise_[i] += kNoiseRate * (diff_[i] - noise_[i]);
                 noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
             }
         }

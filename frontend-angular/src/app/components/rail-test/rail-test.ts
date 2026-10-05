@@ -32,13 +32,10 @@ export class RailTestPage implements OnInit, OnDestroy {
   readonly ranges = [2, 2.5, 3];
 
   readonly bench = this.realtime.railBench;
-  // A completed classification that is not a drone hides the target.
-  private readonly rejected = computed(() => {
-    const classification = this.realtime.targetClassification();
-    return classification?.status === 'complete' && classification.label !== 'drone';
-  });
+  // The AI verdict never hides a track: there is one verdict for the whole
+  // scene, and it is "unknown" as soon as two cameras do not agree. The status
+  // bar shows it instead.
   readonly estimated = computed<Vec3m | null>(() => {
-    if (this.rejected()) return null;
     const update = this.realtime.fuseUpdate();
     const fuse = update?.lastFuse;
     if (fuse?.ok && fuse.point) return fuse.point;
@@ -46,9 +43,7 @@ export class RailTestPage implements OnInit, OnDestroy {
     return track ? { x: track.x, y: track.y, z: track.z } : null;
   });
   // Every track the fusion engine follows; the volume draws them one by one.
-  readonly tracks = computed<FuseTrack[]>(() =>
-    this.rejected() ? [] : (this.realtime.fuseUpdate()?.tracks ?? []),
-  );
+  readonly tracks = computed<FuseTrack[]>(() => this.realtime.fuseUpdate()?.tracks ?? []);
   readonly review = this.realtime.classificationReview;
   readonly classificationText = computed(() => {
     const classification = this.realtime.targetClassification();
@@ -60,8 +55,8 @@ export class RailTestPage implements OnInit, OnDestroy {
     if (classification.label === 'drone') {
       return `drone ${Math.round(classification.confidence * 100)}%`;
     }
-    if (classification.label === 'human') return 'humain ignoré';
-    return 'inconnu ignoré';
+    if (classification.label === 'human') return 'humain';
+    return 'inconnu';
   });
   readonly errorM = computed(() => {
     const bench = this.bench();

@@ -12,7 +12,10 @@ import { RealtimeService } from '../../services/realtime.service';
 import { NotificationService } from '../../services/notification.service';
 import { buildRailBenchState } from '../../config/rail-bench';
 import type { FuseUpdate } from '../../models/fuse-update.model';
-import type { ClassificationReview } from '../../models/target-classification.model';
+import type {
+  ClassificationReview,
+  TargetClassification,
+} from '../../models/target-classification.model';
 
 @Component({
   selector: 'app-rail-volume',
@@ -57,7 +60,7 @@ describe('RailTestPage', () => {
   const lastDetectionAt = signal<Record<string, number>>({
     jean: Date.now(),
   });
-  const targetClassification = signal(null);
+  const targetClassification = signal<TargetClassification | null>(null);
   const classificationReview = signal<ClassificationReview | null>(null);
   const stats = {
     jean: {
@@ -189,6 +192,51 @@ describe('RailTestPage', () => {
       expect(volume.tracks()).toHaveLength(2);
     } finally {
       fuseUpdate.set(single);
+    }
+  });
+
+  it('keeps the tracks on screen when the AI verdict is not a drone', () => {
+    const single = fuseUpdate();
+    fuseUpdate.set({
+      ...single,
+      tracks: [
+        {
+          timestampUs: 1_000_000,
+          confidence: 0.9,
+          cameras: ['jean', 'tanel', 'walid'],
+          classification: 'other',
+          objectId: 6,
+          x: -0.2,
+          y: 1.1,
+          z: 0.4,
+        },
+      ],
+    });
+    targetClassification.set({
+      type: 'target_classification',
+      requestId: 'request-1',
+      status: 'complete',
+      label: 'unknown',
+      confidence: 0,
+      cameras: ['jean', 'tanel', 'walid'],
+      receivedCameras: ['jean', 'tanel', 'walid'],
+      votes: [],
+      startedAt: 1,
+      completedAt: 2,
+    });
+    try {
+      const fixture = TestBed.createComponent(RailTestPage);
+      fixture.detectChanges();
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('IA inconnu');
+      expect(text).toContain('Cible suivie');
+      expect(text).toContain('Pistes 1');
+      const volume = fixture.debugElement.query(By.directive(RailVolumeStub))
+        .componentInstance as RailVolumeStub;
+      expect(volume.tracks()).toHaveLength(1);
+    } finally {
+      fuseUpdate.set(single);
+      targetClassification.set(null);
     }
   });
 

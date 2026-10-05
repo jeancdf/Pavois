@@ -98,6 +98,7 @@ private:
     double brightness_bias() const;
     bool threshold_against_background(double bias);
     std::vector<Blob> extract_blobs();
+    std::vector<Candidate> select_candidates(const std::vector<Blob>& blobs) const;
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

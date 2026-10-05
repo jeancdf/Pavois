@@ -245,32 +245,11 @@ std::vector<MotionDetector::Blob> MotionDetector::extract_blobs() {
     return connected_components(mask_, diff_);
 }
 
-DetectionResult MotionDetector::process(const GrayFrame& frame) {
-    DetectionResult out;
-    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
-
-    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
-        reinitialise(frame);
-    }
-
-    const double dt = advance_clock(frame);
-
-    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
-             executor_);
-
-    if (warmup_left_ > 0) {
-        learn_warmup();
-        return out;
-    }
-
-    const double bias = brightness_bias();
-
-    const bool illumination_event = threshold_against_background(bias);
-    const double base = static_cast<double>(cfg_.diff_threshold);
-
-    const std::vector<Blob> blobs =
-        illumination_event ? std::vector<Blob>{} : extract_blobs();
-
+// Keeps the blobs shaped like a target (size, fill, aspect, not edge
+// speckle), measures their weighted centroid and signal-to-noise ratio, and
+// ranks them, best first.
+std::vector<MotionDetector::Candidate> MotionDetector::select_candidates(
+    const std::vector<Blob>& blobs) const {
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
     const int b = std::max(0, cfg_.border_ignore_px);
 
@@ -321,6 +300,36 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
                      [](const Candidate& a, const Candidate& b) {
                          return a.score > b.score;
                      });
+    return candidates;
+}
+
+DetectionResult MotionDetector::process(const GrayFrame& frame) {
+    DetectionResult out;
+    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
+
+    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
+        reinitialise(frame);
+    }
+
+    const double dt = advance_clock(frame);
+
+    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
+             executor_);
+
+    if (warmup_left_ > 0) {
+        learn_warmup();
+        return out;
+    }
+
+    const double bias = brightness_bias();
+
+    const bool illumination_event = threshold_against_background(bias);
+    const double base = static_cast<double>(cfg_.diff_threshold);
+
+    const std::vector<Blob> blobs =
+        illumination_event ? std::vector<Blob>{} : extract_blobs();
+
+    const std::vector<Candidate> candidates = select_candidates(blobs);
     const Candidate* best = candidates.empty() ? nullptr : &candidates.front();
 
     // Kalman predict step happens every frame.

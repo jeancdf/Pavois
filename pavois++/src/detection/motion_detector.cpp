@@ -156,7 +156,6 @@ void MotionDetector::reinitialise(const GrayFrame& frame) {
     warmup_left_ = kWarmupFrames;
     confirm_hits_.clear();
     have_last_ = false;
-    frames_seen_ = 0;
 }
 
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
@@ -172,7 +171,6 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         dt = std::min(kMaxFrameGapS, (frame.captured_us - last_us_) / 1e6);
     }
     last_us_ = frame.captured_us;
-    ++frames_seen_;
 
     box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
              executor_);
@@ -362,7 +360,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
 
     while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
     const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);
-    out.confirmed = out.has_blob && hits >= cfg_.confirm_m && frames_seen_ > 3;
+    out.confirmed = out.has_blob && hits >= cfg_.confirm_m;
 
     // Quality: temporal support, fill, SNR, filter tightness.
     if (out.has_blob) {

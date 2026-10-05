@@ -118,7 +118,6 @@ private:
     double last_cx_ = 0.0;
     double last_cy_ = 0.0;
     bool have_last_ = false;
-    std::uint64_t frames_seen_ = 0;
     int warmup_left_ = 0;
 };
 

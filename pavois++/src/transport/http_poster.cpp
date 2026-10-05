@@ -1,5 +1,6 @@
 #include "pavois/transport/http_poster.hpp"
 
+#include "pavois/transport/message_auth.hpp"
 #include "pavois/util/jpeg_gray.hpp"
 
 #include <arpa/inet.h>
@@ -143,6 +144,19 @@ bool HttpPoster::send_once(const Job& job) {
         last_error_ = "JPEG exceeds 1 MiB";
         return false;
     }
+    const std::string secret = signing_secret();
+    if (secret.empty()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_error_ = "UDP_HMAC_SECRET missing or shorter than 32 characters";
+        return false;
+    }
+    std::string query = "cameraId=" + job.camera_id;
+    if (!job.query.empty()) query += '&' + job.query;
+    const std::string timestamp = std::to_string(unix_time_ms());
+    const std::string body(reinterpret_cast<const char*>(jpeg->data()), jpeg->size());
+    const std::string signature =
+        to_hex(hmac_sha256(secret, timestamp + '\n' + query + '\n' + body));
+
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -175,11 +189,11 @@ bool HttpPoster::send_once(const Job& job) {
     }
 
     std::ostringstream req;
-    req << "POST " << path_ << "?cameraId=" << job.camera_id;
-    if (!job.query.empty()) req << '&' << job.query;
-    req << " HTTP/1.1\r\n"
+    req << "POST " << path_ << '?' << query << " HTTP/1.1\r\n"
         << "Host: " << host_ << ':' << port_ << "\r\n"
         << "Content-Type: image/jpeg\r\n"
+        << "X-Pavois-Timestamp: " << timestamp << "\r\n"
+        << "X-Pavois-Signature: " << signature << "\r\n"
         << "Content-Length: " << jpeg->size() << "\r\n"
         << "Connection: close\r\n\r\n";
     const std::string head = req.str();
@@ -188,14 +202,19 @@ bool HttpPoster::send_once(const Job& job) {
         ok = send_all(fd, jpeg->data(), jpeg->size());
     }
     char buf[96];
-    ::recv(fd, buf, sizeof(buf), 0);
+    const ssize_t received = ok ? ::recv(fd, buf, sizeof(buf), 0) : -1;
     close_fd(fd);
     if (!ok) {
         std::lock_guard<std::mutex> lock(mutex_);
         last_error_ = "preview send failed";
         return false;
     }
+    const std::string status = received >= 12 ? std::string(buf + 9, 3) : std::string();
     std::lock_guard<std::mutex> lock(mutex_);
+    if (status.empty() || status[0] != '2') {
+        last_error_ = "preview rejected by the VPS: HTTP " + (status.empty() ? "?" : status);
+        return false;
+    }
     last_error_.clear();
     return true;
 }

@@ -1,14 +1,22 @@
-import { BadRequestException, Controller, Post, Query, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { PreviewService } from './preview.service';
+import { SignedUploadGuard } from '../common/signed-upload.guard';
 
 @Controller()
 export class PreviewController {
   constructor(private readonly previews: PreviewService) {}
 
-  /** JPEG live preview from a Pi (2 fps). Same trust model as UDP. */
   @SkipThrottle()
+  @UseGuards(SignedUploadGuard)
   @Post(['preview', 'api/preview'])
   ingest(
     @Query('cameraId') cameraId: string,

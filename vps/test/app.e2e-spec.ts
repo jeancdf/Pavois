@@ -5,14 +5,23 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { applyBodyParsers } from '../src/common/http-body';
 import { UdpService } from '../src/udp/udp.service';
+import { signUpload } from '../src/common/message-auth';
 
 const TEST_AUTH_TOKEN = 'e2e-test-token';
+const TEST_SHARED_SECRET = 'e2e-shared-secret-0123456789abcd';
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+function signedPreview(query: string, body: Buffer) {
+  const { timestamp, signature } = signUpload(query, body, TEST_SHARED_SECRET);
+  return { 'X-Pavois-Timestamp': timestamp, 'X-Pavois-Signature': signature };
+}
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
     process.env.WS_AUTH_TOKEN = TEST_AUTH_TOKEN;
+    process.env.UDP_HMAC_SECRET = TEST_SHARED_SECRET;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -65,7 +74,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/attitude (POST) accepts calibration and a frozen heading', () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     return request(app.getHttpServer())
       .post('/attitude')
       .set('Authorization', `Bearer ${token}`)
@@ -82,7 +91,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/attitude (POST) rejects a malformed calibration token', () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     return request(app.getHttpServer())
       .post('/attitude')
       .set('Authorization', `Bearer ${token}`)
@@ -96,31 +105,41 @@ describe('AppController (e2e)', () => {
       .expect(400);
   });
 
-  it('/preview (POST) accepts a jpeg thumbnail', () => {
-    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
+  it('/preview (POST) accepts a signed jpeg thumbnail', () => {
     return request(app.getHttpServer())
       .post('/preview?cameraId=jean')
       .set('Content-Type', 'image/jpeg')
-      .send(jpeg)
+      .set(signedPreview('cameraId=jean', JPEG))
+      .send(JPEG)
       .expect(201)
       .expect({ ok: true });
   });
 
   it('/api/preview (POST) accepts the nginx path', () => {
-    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3, 4, 5, 6, 7, 8]);
     return request(app.getHttpServer())
       .post('/api/preview?cameraId=jean')
       .set('Content-Type', 'image/jpeg')
-      .send(jpeg)
+      .set(signedPreview('cameraId=jean', JPEG))
+      .send(JPEG)
       .expect(201)
       .expect({ ok: true });
   });
 
-  it('/preview (POST) rejects a non-jpeg body', () => {
+  it('/preview (POST) rejects an unsigned image', () => {
     return request(app.getHttpServer())
       .post('/preview?cameraId=jean')
       .set('Content-Type', 'image/jpeg')
-      .send(Buffer.from('not-a-jpeg-body!!'))
+      .send(JPEG)
+      .expect(401);
+  });
+
+  it('/preview (POST) rejects a non-jpeg body', () => {
+    const body = Buffer.from('not-a-jpeg-body!!');
+    return request(app.getHttpServer())
+      .post('/preview?cameraId=jean')
+      .set('Content-Type', 'image/jpeg')
+      .set(signedPreview('cameraId=jean', body))
+      .send(body)
       .expect(400);
   });
 
@@ -129,7 +148,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/fusion (GET) returns an empty diagnostic snapshot', () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     return request(app.getHttpServer())
       .get('/fusion')
       .set('Authorization', `Bearer ${token}`)
@@ -144,7 +163,7 @@ describe('AppController (e2e)', () => {
   });
 
   it('/fusion (GET) keeps detections from three cameras', async () => {
-    const token = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
+    const token = TEST_AUTH_TOKEN;
     const udp = app.get(UdpService);
     const timestamp = Date.now();
     for (const cameraId of ['jean', 'tanel', 'walid']) {

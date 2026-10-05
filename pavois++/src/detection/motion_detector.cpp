@@ -296,7 +296,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
                      [](const Candidate& a, const Candidate& b) {
                          return a.score > b.score;
                      });
-    const Blob* best = candidates.empty() ? nullptr : candidates.front().blob;
+    const Candidate* best = candidates.empty() ? nullptr : &candidates.front();
 
     // Kalman predict step happens every frame.
     if (centroid_kf_.initialized()) centroid_kf_.predict(dt);
@@ -308,17 +308,14 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
                   fg_mask_.begin() + static_cast<std::ptrdiff_t>(last), 0);
     });
     if (best != nullptr) {
-        const double mx = best->wx / std::max(1e-6, best->wsum);
-        const double my = best->wy / std::max(1e-6, best->wsum);
+        const double mx = best->cx;
+        const double my = best->cy;
         out.has_blob = true;
         out.raw_cx = mx;
         out.raw_cy = my;
-        out.area = best->area;
-        const int bw = best->x1 - best->x0 + 1;
-        const int bh = best->y1 - best->y0 + 1;
-        out.fill_ratio = static_cast<double>(best->area) / static_cast<double>(std::max(1, bw * bh));
-
-        out.snr = candidates.front().snr;
+        out.area = best->blob->area;
+        out.fill_ratio = best->fill;
+        out.snr = best->snr;
 
         if (!centroid_kf_.initialized()) {
             centroid_kf_.init(2, {mx, my}, cfg_.centroid_process_noise, cfg_.centroid_meas_noise);

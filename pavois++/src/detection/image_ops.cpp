@@ -21,16 +21,6 @@ namespace {
 thread_local std::vector<std::uint16_t> t_acc;
 thread_local std::vector<std::uint8_t> t_scratch;
 
-template <typename Function>
-void for_each_range(ParallelExecutor* executor, std::size_t begin,
-                    std::size_t end, Function&& function) {
-    if (executor != nullptr && executor->thread_count() > 1) {
-        executor->for_each_range(begin, end, function);
-    } else {
-        function(begin, end);
-    }
-}
-
 }  // namespace
 
 void box_blur(const std::vector<std::uint8_t>& src,

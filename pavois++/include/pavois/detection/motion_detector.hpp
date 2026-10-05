@@ -52,6 +52,7 @@ struct DetectionResult {
 //   running-average background -> adaptive per-pixel threshold ->
 //   morphology -> connected components -> blob filtering & scoring ->
 //   2D constant-velocity Kalman on the centroid -> M-of-N confirmation.
+// process() runs these as the private steps declared below, in that order.
 class MotionDetector {
 public:
     explicit MotionDetector(const CameraConfig& cfg,
@@ -65,7 +66,7 @@ public:
 
     // Forgets the background: the next frame starts a new warm-up, as the
     // first one did. For a restarted capture, whose image no longer matches.
-    void reset() { w_ = 0; h_ = 0; }
+    void reset() { reinit_pending_ = true; }
 
     DetectionResult process(const GrayFrame& frame);
 
@@ -77,14 +78,43 @@ private:
         double energy = 0.0;                     // mean diff over blob
     };
 
+    // A blob that passed the shape filters, with what is needed to rank it.
+    struct Candidate {
+        const Blob* blob = nullptr;
+        double cx = 0.0;
+        double cy = 0.0;
+        double fill = 0.0;
+        double snr = 0.0;
+        double score = 0.0;
+        bool clipped = false;   // bounding box touches the frame edge
+    };
+
+    // Groups the mask's connected pixels into blobs; used by extract_blobs().
     std::vector<Blob> connected_components(const std::vector<std::uint8_t>& mask,
                                            const std::vector<float>& diff);
+
+    // The steps of process(), in the order it runs them.
+    void reinitialise(const GrayFrame& frame);
+    double advance_clock(const GrayFrame& frame);
+    void learn_warmup();
+    double brightness_bias() const;
+    bool threshold_against_background(double bias);
+    std::vector<Blob> extract_blobs();
+    std::vector<Candidate> select_candidates(const std::vector<Blob>& blobs) const;
+    void track_best(const std::vector<Candidate>& candidates, double dt,
+                    DetectionResult& out);
+    void protect_targets(const std::vector<Candidate>& candidates);
+    int confirm(DetectionResult& out);
+    void rate_blobs(const std::vector<Candidate>& candidates, int hits,
+                    DetectionResult& out) const;
+    void update_background(bool illumination_event);
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;
     int w_ = 0;
     int h_ = 0;
     bool want_debug_ = false;
+    bool reinit_pending_ = false;  // set by reset(), honoured by the next frame
 
     std::vector<float> bg_;        // background model (grey)
     std::vector<float> noise_;     // per-pixel EMA of |frame - bg| (sigma proxy)
@@ -103,7 +133,6 @@ private:
     double last_cx_ = 0.0;
     double last_cy_ = 0.0;
     bool have_last_ = false;
-    std::uint64_t frames_seen_ = 0;
     int warmup_left_ = 0;
 };
 

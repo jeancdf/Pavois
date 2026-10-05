@@ -9,11 +9,11 @@ import { CamerasService } from '../cameras/cameras.service';
 import { FusionService } from '../fusion/fusion.service';
 import { TracksService } from '../tracks/tracks.service';
 import { AlertsService } from '../alerts/alerts.service';
-import * as crypto from 'crypto';
 import { ClassificationService } from '../classification/classification.service';
 import { TuningService } from '../tuning/tuning.service';
 import { routeUdpLine } from './udp-route';
 import { CameraHealthService } from '../cameras/camera-health.service';
+import { MessageVerifier, signPacket } from '../common/message-auth';
 
 const classificationMock = () => ({
   considerFusion: jest.fn().mockReturnValue(null),
@@ -39,41 +39,22 @@ const cameraHealthMock = () => ({
   }),
 });
 
-describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
+describe('UdpService signed packets', () => {
+  const secret = 'udp-service-secret-0123456789abc';
+  const line = 'raw,jean,100,12345,10.0,20.0,5.0,0.95';
+  const from = { address: '10.0.0.7', port: 50123, family: 'IPv4', size: 0 };
   let service: UdpService;
+  let dispatch: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UdpService,
-        {
-          provide: EventsGateway,
-          useValue: { broadcast: jest.fn() },
-        },
-        {
-          provide: CamerasService,
-          useValue: { setHeadingDeg: jest.fn() },
-        },
-        {
-          provide: FusionService,
-          useValue: {
-            ingest: jest.fn(),
-            pullTrackUpdates: jest.fn().mockReturnValue([]),
-            snapshot: jest.fn().mockReturnValue({
-              lastFuse: null,
-              rawIntersections: [],
-              tracks: [],
-            }),
-          },
-        },
-        {
-          provide: TracksService,
-          useValue: { record: jest.fn() },
-        },
-        {
-          provide: AlertsService,
-          useValue: { processTrackAlert: jest.fn() },
-        },
+        { provide: EventsGateway, useValue: { broadcast: jest.fn() } },
+        { provide: CamerasService, useValue: { list: () => [] } },
+        { provide: FusionService, useValue: {} },
+        { provide: TracksService, useValue: {} },
+        { provide: AlertsService, useValue: {} },
         { provide: ClassificationService, useValue: classificationMock() },
         { provide: TuningService, useValue: tuningMock() },
         { provide: CameraHealthService, useValue: cameraHealthMock() },
@@ -81,83 +62,54 @@ describe('UdpService HMAC & Anti-Replay Security Unit Tests', () => {
     }).compile();
 
     service = module.get<UdpService>(UdpService);
+    (service as any).verifier = new MessageVerifier(secret);
+    dispatch = jest
+      .spyOn(service as any, 'dispatchRouted')
+      .mockImplementation(() => undefined);
   });
 
-  function createSignedPacket(
-    payloadStr: string,
-    secretKey: string,
-    timestampMsOverride?: number,
-  ): Buffer {
-    const timestampMs = BigInt(timestampMsOverride ?? Date.now());
-    const timestampBuf = Buffer.alloc(8);
-    timestampBuf.writeBigInt64BE(timestampMs, 0);
+  afterEach(() => {
+    delete process.env.UDP_HMAC_SECRET;
+  });
 
-    const payloadBuf = Buffer.from(payloadStr, 'utf-8');
+  const receive = (packet: Buffer) => (service as any).receive(packet, from);
 
-    const hmac = crypto.createHmac('sha256', secretKey);
-    hmac.update(timestampBuf);
-    hmac.update(payloadBuf);
-    const hmacBuf = hmac.digest();
+  it('dispatches a line signed with the shared secret', () => {
+    receive(buildSignedUdpPacket(line, secret));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch.mock.calls[0][1]).toBe(line);
+  });
 
-    return Buffer.concat([timestampBuf, hmacBuf, payloadBuf]);
-  }
+  it('drops an unsigned line', () => {
+    receive(Buffer.from(`${line}\n`));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 
-  describe('verifyUdpPacket HMAC Verification', () => {
-    const secretKey = 'my_super_secret_hmac_key_2026';
+  it('drops a line signed with another secret', () => {
+    receive(buildSignedUdpPacket(line, 'another-secret-0123456789abcdefg'));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 
-    it('should validate a correctly signed HMAC-SHA256 packet with fresh timestamp', () => {
-      const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
-      const packet = createSignedPacket(payload, secretKey);
+  it('drops a packet replayed after capture', () => {
+    const packet = buildSignedUdpPacket(line, secret);
+    receive(packet);
+    receive(packet);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
 
-      const result = (service as any).verifyUdpPacket(packet, secretKey);
-      expect(result.valid).toBe(true);
-      expect(result.payload.toString('utf-8')).toBe(payload);
-    });
+  it('drops a packet older than 2 s', () => {
+    receive(signPacket(Buffer.from(`${line}\n`), secret, Date.now() - 5000));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 
-    it('accepts a capture command signed by the VPS helper', () => {
-      const packet = buildSignedUdpPacket(
-        'capture,jean,request-1,9999999999999',
-        secretKey,
-      );
-      const result = (service as any).verifyUdpPacket(packet, secretKey);
-      expect(result.valid).toBe(true);
-      expect(result.payload.toString('utf-8')).toBe(
-        'capture,jean,request-1,9999999999999\n',
-      );
-    });
+  it('refuses to start without a shared secret', () => {
+    delete process.env.UDP_HMAC_SECRET;
+    expect(() => service.onModuleInit()).toThrow(/UDP_HMAC_SECRET/);
+  });
 
-    it('should reject a packet shorter than 40 bytes', () => {
-      const shortPacket = Buffer.from('short_data');
-      const result = (service as any).verifyUdpPacket(shortPacket, secretKey);
-
-      expect(result.valid).toBe(false);
-      expect(result.reason).toContain('Paquet trop court');
-    });
-
-    it('should reject a packet with an invalid HMAC signature', () => {
-      const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
-      const packet = createSignedPacket(payload, secretKey);
-
-      packet[10] ^= 0xff;
-
-      const result = (service as any).verifyUdpPacket(packet, secretKey);
-      expect(result.valid).toBe(false);
-      expect(result.reason).toContain('Signature HMAC invalide');
-    });
-
-    it('should reject a replayed packet with a timestamp older than 2000 ms (Anti-Replay)', () => {
-      const payload = 'raw,cam0,100,12345,10.0,20.0,5.0,0.95';
-      const oldTimestamp = Date.now() - 5000;
-      const expiredPacket = createSignedPacket(
-        payload,
-        secretKey,
-        oldTimestamp,
-      );
-
-      const result = (service as any).verifyUdpPacket(expiredPacket, secretKey);
-      expect(result.valid).toBe(false);
-      expect(result.reason).toContain('Rejet Anti-Replay');
-    });
+  it('refuses to start with a short secret', () => {
+    process.env.UDP_HMAC_SECRET = 'short';
+    expect(() => service.onModuleInit()).toThrow(/UDP_HMAC_SECRET/);
   });
 });
 
@@ -285,7 +237,7 @@ describe('UdpService fused track_update', () => {
 });
 
 describe('UdpService detector settings', () => {
-  const secret = 'tuning-secret';
+  const secret = 'tuning-secret-0123456789abcdefghij';
   const jean = { address: '10.0.0.7', port: 50123 };
 
   async function build(tuning = tuningMock()) {
@@ -311,8 +263,8 @@ describe('UdpService detector settings', () => {
     const receive = (line: string, from = jean) =>
       (udp as any).dispatchRouted(routeUdpLine(line), line, from);
     const payloadOf = (packet: Buffer) => {
-      const verified = (udp as any).verifyUdpPacket(packet, secret);
-      return verified.valid ? verified.payload.toString('utf8') : null;
+      const verified = new MessageVerifier(secret).verifyPacket(packet);
+      return verified.ok ? verified.payload.toString('utf8') : null;
     };
     return { udp, tuning, broadcast, send, receive, payloadOf };
   }

@@ -29,6 +29,7 @@ add_library(pavois_core STATIC
     src/sensors/imu.cpp
     src/transport/event_bus.cpp
     src/transport/http_poster.cpp
+    src/transport/message_auth.cpp
     src/transport/udp_sender.cpp
     src/util/debug_sink.cpp
     src/util/jpeg_gray.cpp

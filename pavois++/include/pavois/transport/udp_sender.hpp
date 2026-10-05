@@ -37,13 +37,14 @@ public:
     std::optional<CaptureRequest> take_capture_request(
         const std::string& camera_id);
     // Latest pending settings for this camera, if any. Only ever filled from a
-    // signed command: with no UDP_HMAC_SECRET a "set" is refused outright.
+    // signed command.
     std::optional<ConfigUpdate> take_config_update(const std::string& camera_id);
     std::string last_error() const;
 
 private:
     // Reads every queued datagram into the pending maps. Caller holds mutex_.
     void drain_commands();
+    bool accept_command(const std::string& packet, std::string& payload);
 
     int fd_ = -1;
     int port_ = 0;
@@ -52,6 +53,7 @@ private:
     mutable std::mutex mutex_;
     std::map<std::string, CaptureRequest> capture_requests_;
     std::map<std::string, ConfigUpdate> config_updates_;
+    std::map<std::string, std::uint64_t> seen_commands_;
 };
 
 }  // namespace pavois

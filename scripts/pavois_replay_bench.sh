@@ -252,7 +252,7 @@ PY
 done
 
 # -------------------------------------------------------------- vps backend --
-export UDP_HMAC_SECRET="${UDP_HMAC_SECRET:-pavois-replay-bench-secret}"
+export UDP_HMAC_SECRET="${UDP_HMAC_SECRET:-pavois-replay-bench-secret-local-only}"
 
 # The backend refuses the tokens published in .env.example (dev-pavois-token and
 # friends) and fails at boot rather than start with bypassable auth, so the bench

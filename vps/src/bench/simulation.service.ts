@@ -12,7 +12,6 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
     const isProd = process.env.NODE_ENV === 'production';
     const isSimEnabled = process.env.SIMULATION_MODE === 'true';
 
-    // Sécurité : SIMULATION_MODE strictement impossible en production
     if (isProd) {
       if (isSimEnabled) {
         this.logger.error(
@@ -48,8 +47,7 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
     }
 
     const udpPort = parseInt(process.env.UDP_PORT || '41234', 10);
-    const hmacSecret =
-      process.env.UDP_HMAC_SECRET || process.env.UDP_SECRET_KEY || '';
+    const hmacSecret = process.env.UDP_HMAC_SECRET ?? '';
 
     switch (scenarioName) {
       case 'mask_cam1': {

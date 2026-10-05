@@ -14,6 +14,7 @@
 #include "pavois/fusion/tracker.hpp"
 #include "pavois/fusion/triangulation.hpp"
 #include "pavois/transport/event_bus.hpp"
+#include "pavois/transport/message_auth.hpp"
 #include "pavois/math/kalman_cv.hpp"
 #include "pavois/math/linalg.hpp"
 #include "pavois/math/pose.hpp"
@@ -1207,6 +1208,47 @@ std::string signed_packet(const std::string& payload, const std::string& secret)
     return timestamp + std::string(reinterpret_cast<char*>(digest), size) + payload;
 }
 
+bool is_signed(const std::string& packet, const std::string& secret) {
+    if (packet.size() < 40) return false;
+    const std::string data = packet.substr(0, 8) + packet.substr(40);
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int size = 0;
+    HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
+         reinterpret_cast<const unsigned char*>(data.data()), data.size(), digest, &size);
+    return size == 32 && packet.compare(8, 32, reinterpret_cast<char*>(digest), 32) == 0;
+}
+
+void test_message_auth() {
+    check(to_hex(hmac_sha256("Jefe", "what do ya want for nothing?")) ==
+              "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+          "HMAC-SHA256 matches RFC 4231 test case 2");
+
+    const std::uint64_t ms = 0x0102030405060708ULL;
+    const std::string encoded = encode_timestamp(ms);
+    check(encoded.size() == 8 && encoded[0] == 0x01 && encoded[7] == 0x08,
+          "timestamps are written big-endian");
+    check(decode_timestamp(encoded.data()) == ms, "timestamps round-trip");
+
+    const std::uint64_t now = 1'800'000'000'000ULL;
+    check(is_fresh(now - 2000, now) && !is_fresh(now - 2001, now),
+          "a message older than 2 s is stale");
+    check(is_fresh(now + 1000, now) && !is_fresh(now + 1001, now),
+          "a message more than 1 s ahead is refused");
+
+    const std::string mac = hmac_sha256("key", "data");
+    std::string tampered = mac;
+    tampered[31] = static_cast<char>(tampered[31] ^ 0x01);
+    check(constant_time_equal(mac, mac.data()), "identical signatures match");
+    check(!constant_time_equal(mac, tampered.data()), "one flipped bit is detected");
+    check(!constant_time_equal(std::string(), mac.data()), "an empty signature never matches");
+
+    ::setenv("UDP_HMAC_SECRET", "too-short", 1);
+    check(signing_secret().empty(), "a secret under 32 characters is ignored");
+    ::setenv("UDP_HMAC_SECRET", "0123456789abcdef0123456789abcdef", 1);
+    check(signing_secret().size() == 32, "a 32-character secret is used");
+    ::unsetenv("UDP_HMAC_SECRET");
+}
+
 LiveSettings split_settings(const std::string& line) {
     LiveSettings fields;
     std::stringstream stream(line);
@@ -1451,20 +1493,33 @@ void test_live_tuning() {
             ::getsockname(server, reinterpret_cast<sockaddr*>(&addr), &addr_len) == 0;
         check(bound, "loopback UDP server binds");
         if (bound) {
-            const std::string secret = "selftest-secret";
+            const std::string secret = "selftest-secret-0123456789abcdef";
             ::unsetenv("UDP_HMAC_SECRET");
             UdpSender sender;
             check(sender.open("127.0.0.1", ntohs(addr.sin_port)), "detector opens its UDP link");
-            sender.send_line("hello");
 
-            timeval timeout{1, 0};
-            ::setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
             char buffer[256];
             sockaddr_in peer{};
             socklen_t peer_len = sizeof(peer);
-            const bool heard = ::recvfrom(server, buffer, sizeof(buffer), 0,
-                                          reinterpret_cast<sockaddr*>(&peer), &peer_len) > 0;
+            timeval timeout{0, 200'000};
+            ::setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            sender.send_line("hello");
+            check(::recvfrom(server, buffer, sizeof(buffer), 0,
+                             reinterpret_cast<sockaddr*>(&peer), &peer_len) < 0,
+                  "nothing leaves the detector without a secret");
+
+            ::setenv("UDP_HMAC_SECRET", secret.c_str(), 1);
+            timeout = timeval{1, 0};
+            ::setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            sender.send_line("hello");
+            peer_len = sizeof(peer);
+            const ssize_t received = ::recvfrom(server, buffer, sizeof(buffer), 0,
+                                                reinterpret_cast<sockaddr*>(&peer), &peer_len);
+            const bool heard = received > 40;
             check(heard, "server learns the detector endpoint");
+            check(heard && is_signed(std::string(buffer, buffer + received), secret) &&
+                      std::string(buffer + 40, buffer + received) == "hello\n",
+                  "every line leaves signed");
 
             auto send = [&](const std::string& packet) {
                 ::sendto(server, packet.data(), packet.size(), 0,
@@ -1488,14 +1543,16 @@ void test_live_tuning() {
             };
             const std::string expires = std::to_string(unix_ms() + 60'000);
 
-            send("set,jean,7,diff_threshold=20\n");
             send("capture,jean,request-1," + expires + "\n");
-            check(heard && await_capture("jean"), "unsigned capture still works without a secret");
-            check(!sender.take_config_update("jean"),
-                  "an unsigned set command is refused without a secret");
+            send("set,jean,7,diff_threshold=20\n");
+            send(signed_packet("capture,tanel,request-2," + expires + "\n", secret));
+            check(heard && await_capture("tanel"), "a signed capture request is accepted");
+            check(!sender.take_capture_request("jean"), "an unsigned capture request is refused");
+            check(!sender.take_config_update("jean"), "an unsigned set command is refused");
 
-            ::setenv("UDP_HMAC_SECRET", secret.c_str(), 1);
-            send(signed_packet("set,jean,7,diff_threshold=20,min_blob_area=30\n", secret));
+            const std::string set7 =
+                signed_packet("set,jean,7,diff_threshold=20,min_blob_area=30\n", secret);
+            send(set7);
             const auto update = await_config("jean");
             check(update && update->version == 7 && update->fields.size() == 2 &&
                       update->fields[0].first == "diff_threshold" &&
@@ -1505,13 +1562,15 @@ void test_live_tuning() {
                   "a signed set command is parsed");
             check(!sender.take_config_update("jean"), "a set command is delivered once");
 
-            send(signed_packet("set,jean,8,diff_threshold=1\n", "another-secret"));
+            send(set7);
+            send(signed_packet("set,jean,8,diff_threshold=1\n",
+                               "another-secret-0123456789abcdef"));
             send("set,jean,9,diff_threshold=1\n");
             send(signed_packet("set,tanel,3,adaptive_k=2\n", secret));
             const auto other = await_config("tanel");
             check(other && other->version == 3, "a set command reaches the camera it names");
             check(!sender.take_config_update("jean"),
-                  "forged and unsigned set commands are refused");
+                  "replayed, forged and unsigned set commands are refused");
 
             send(signed_packet("set,jean,0\n", secret));
             const auto reset = await_config("jean");
@@ -1526,6 +1585,7 @@ void test_live_tuning() {
 }  // namespace
 
 int main() {
+    test_message_auth();
     test_linalg();
     test_kalman_cv();
     test_image_ops();

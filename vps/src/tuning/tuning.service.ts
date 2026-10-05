@@ -98,9 +98,7 @@ export class TuningService {
   private readonly filePath = path.resolve(
     process.env.TUNING_FILE || 'data/tuning.json',
   );
-  private readonly detectorCommands = Boolean(
-    process.env.UDP_HMAC_SECRET || process.env.UDP_SECRET_KEY,
-  );
+  private readonly detectorCommands = Boolean(process.env.UDP_HMAC_SECRET);
   // Valeurs de démarrage du moteur, lues avant d'appliquer quoi que ce soit.
   private readonly fusionDefaults: TuningValues;
   private fusionOverrides: TuningValues = {};

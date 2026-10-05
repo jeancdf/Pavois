@@ -11,6 +11,10 @@ if [[ ! $build_jobs =~ ^[1-9][0-9]*$ ]]; then
   echo "PI_BUILD_JOBS must be a positive integer." >&2
   exit 1
 fi
+if [[ ! -e /etc/pavois/telemetry.env ]]; then
+  echo "Missing /etc/pavois/telemetry.env (UDP_HMAC_SECRET=..., root, mode 0600)." >&2
+  exit 1
+fi
 if [[ ! -d $install_dir || ! -w $install_dir ]]; then
   echo "Run sudo bash scripts/setup_pi.sh <deploy-user> on this Pi first." >&2
   exit 1

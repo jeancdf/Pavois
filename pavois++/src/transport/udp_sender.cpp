@@ -1,17 +1,16 @@
 #include "pavois/transport/udp_sender.hpp"
 
+#include "pavois/transport/message_auth.hpp"
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <openssl/hmac.h>
-#include <openssl/crypto.h>
-#include <chrono>
-#include <cstdint>
-#include <cstdlib>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <sstream>
 #include <vector>
 
@@ -25,39 +24,7 @@ void close_fd(int& fd) {
     }
 }
 
-std::uint64_t now_ms() {
-    return static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
-}
-
-bool verify_packet(const std::string& packet, const char* secret,
-                   std::string& payload) {
-    if (!secret || !*secret) {
-        payload = packet;
-        return true;
-    }
-    if (packet.size() < 40) return false;
-    std::uint64_t timestamp = 0;
-    for (int i = 0; i < 8; ++i) {
-        timestamp =
-            (timestamp << 8) |
-            static_cast<unsigned char>(packet[static_cast<std::size_t>(i)]);
-    }
-    const std::uint64_t now = now_ms();
-    if (timestamp + 2000ULL < now || timestamp > now + 1000ULL) return false;
-    payload.assign(packet.begin() + 40, packet.end());
-    const std::string signed_data = packet.substr(0, 8) + payload;
-    unsigned char expected[EVP_MAX_MD_SIZE];
-    unsigned int size = 0;
-    if (!HMAC(EVP_sha256(), secret, static_cast<int>(std::strlen(secret)),
-              reinterpret_cast<const unsigned char*>(signed_data.data()),
-              signed_data.size(), expected, &size) ||
-        size != 32) {
-        return false;
-    }
-    return CRYPTO_memcmp(expected, packet.data() + 8, 32) == 0;
-}
+constexpr std::uint64_t kCommandMemoryMs = kMaxAgeMs + 500;
 
 }  // namespace
 
@@ -122,36 +89,45 @@ void UdpSender::send_line(const std::string& line) {
     if (fd_ < 0) {
         return;
     }
-    std::string payload = line;
-    payload.push_back('\n');
-    const char* secret = std::getenv("UDP_HMAC_SECRET");
-    if (secret && *secret) {
-        const auto ms = now_ms();
-        std::string timestamp(8, '\0');
-        for (int i = 0; i < 8; ++i)
-            timestamp[i] = static_cast<char>((ms >> (56 - 8 * i)) & 0xff);
-        const std::string signed_data = timestamp + payload;
-        unsigned char digest[EVP_MAX_MD_SIZE];
-        unsigned int size = 0;
-        if (!HMAC(EVP_sha256(), secret, static_cast<int>(std::strlen(secret)),
-                  reinterpret_cast<const unsigned char*>(signed_data.data()),
-                  signed_data.size(), digest, &size) || size != 32) {
-            last_error_ = "UDP HMAC signing failed";
-            return;
-        }
-        payload = timestamp + std::string(reinterpret_cast<char*>(digest), size) + payload;
+    const std::string secret = signing_secret();
+    if (secret.empty()) {
+        last_error_ = "UDP_HMAC_SECRET missing or shorter than 32 characters";
+        return;
     }
-    const ssize_t rc = ::send(fd_, payload.data(), payload.size(), 0);
-    if (rc < 0) {
+    const std::string payload = line + '\n';
+    const std::string timestamp = encode_timestamp(unix_time_ms());
+    const std::string signature = hmac_sha256(secret, timestamp + payload);
+    if (signature.empty()) {
+        last_error_ = "UDP HMAC signing failed";
+        return;
+    }
+    const std::string packet = timestamp + signature + payload;
+    if (::send(fd_, packet.data(), packet.size(), 0) < 0) {
         last_error_ = std::strerror(errno);
     }
+}
+
+bool UdpSender::accept_command(const std::string& packet, std::string& payload) {
+    const std::string secret = signing_secret();
+    if (secret.empty() || packet.size() < kSignedHeaderBytes) return false;
+
+    const std::uint64_t now = unix_time_ms();
+    if (!is_fresh(decode_timestamp(packet.data()), now)) return false;
+
+    payload.assign(packet, kSignedHeaderBytes, std::string::npos);
+    const std::string expected =
+        hmac_sha256(secret, packet.substr(0, kTimestampBytes) + payload);
+    if (!constant_time_equal(expected, packet.data() + kTimestampBytes)) return false;
+
+    for (auto it = seen_commands_.begin(); it != seen_commands_.end();) {
+        it = now - it->second > kCommandMemoryMs ? seen_commands_.erase(it) : std::next(it);
+    }
+    return seen_commands_.emplace(expected, now).second;
 }
 
 void UdpSender::drain_commands() {
     if (fd_ < 0) return;
 
-    const char* secret = std::getenv("UDP_HMAC_SECRET");
-    const bool signed_link = secret && *secret;
     char buffer[2048];
     while (true) {
         const ssize_t size = ::recv(fd_, buffer, sizeof(buffer), MSG_DONTWAIT);
@@ -162,9 +138,8 @@ void UdpSender::drain_commands() {
             break;
         }
         std::string payload;
-        const std::string packet(buffer, buffer + size);
-        if (!verify_packet(packet, secret, payload)) {
-            last_error_ = "invalid UDP command signature";
+        if (!accept_command(std::string(buffer, buffer + size), payload)) {
+            last_error_ = "UDP command rejected";
             continue;
         }
         while (!payload.empty() &&
@@ -182,7 +157,7 @@ void UdpSender::drain_commands() {
             try {
                 CaptureRequest request{parts[2], std::stoull(parts[3])};
                 if (!parts[1].empty() && !request.request_id.empty() &&
-                    request.expires_ms >= now_ms()) {
+                    request.expires_ms >= unix_time_ms()) {
                     capture_requests_[parts[1]] = std::move(request);
                 }
             } catch (...) {
@@ -191,12 +166,6 @@ void UdpSender::drain_commands() {
         }
 
         if (parts[0] == "set") {
-            // A setting changes what the detector reports. Unlike a photo
-            // request it is never taken from an unauthenticated sender.
-            if (!signed_link) {
-                last_error_ = "set command refused: UDP_HMAC_SECRET is not set";
-                continue;
-            }
             if (parts.size() < 3 || parts[1].empty()) continue;
             ConfigUpdate update;
             try {
@@ -236,7 +205,7 @@ std::optional<UdpSender::CaptureRequest> UdpSender::take_capture_request(
     if (found == capture_requests_.end()) return std::nullopt;
     CaptureRequest request = std::move(found->second);
     capture_requests_.erase(found);
-    if (request.expires_ms < now_ms()) return std::nullopt;
+    if (request.expires_ms < unix_time_ms()) return std::nullopt;
     return request;
 }
 

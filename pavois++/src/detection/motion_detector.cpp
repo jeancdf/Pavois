@@ -12,13 +12,19 @@ namespace pavois {
 namespace {
 constexpr double kDefaultDt = 1.0 / 30.0;
 constexpr int kWarmupFrames = 12;
+
+// At least one hit to confirm, in a window at least that long: "2 of 1"
+// could never be reached.
+void sanitize_confirmation(CameraConfig& cfg) {
+    cfg.confirm_m = std::max(1, cfg.confirm_m);
+    cfg.confirm_n = std::max(cfg.confirm_m, cfg.confirm_n);
+}
 }
 
 MotionDetector::MotionDetector(const CameraConfig& cfg,
                                ParallelExecutor* executor)
     : cfg_(cfg), executor_(executor) {
-    cfg_.confirm_m = std::max(1, cfg_.confirm_m);
-    cfg_.confirm_n = std::max(cfg_.confirm_m, cfg_.confirm_n);
+    sanitize_confirmation(cfg_);
 }
 
 void MotionDetector::set_config(const CameraConfig& cfg) {
@@ -27,8 +33,7 @@ void MotionDetector::set_config(const CameraConfig& cfg) {
     // that mismatch as blobs.
     const bool blur_changed = cfg.blur_radius != cfg_.blur_radius;
     cfg_ = cfg;
-    cfg_.confirm_m = std::max(1, cfg_.confirm_m);
-    cfg_.confirm_n = std::max(cfg_.confirm_m, cfg_.confirm_n);
+    sanitize_confirmation(cfg_);
     if (blur_changed && w_ > 0) warmup_left_ = kWarmupFrames;
 }
 

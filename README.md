@@ -74,7 +74,7 @@ tant que les extrinsèques du banc ne sont pas calibrées. `altitude_m` et
 
 ```bash
 cd vps
-cp .env.example .env   # renseigner au minimum WS_AUTH_TOKEN (pas de valeur par défaut)
+cp .env.example .env   # renseigner au minimum WS_AUTH_TOKEN
 npm install
 npm run start:dev
 ```
@@ -104,9 +104,9 @@ via Docker Compose sur un serveur.
 
 ## Documentation
 
-Le dossier [documentation/](documentation/) contient la documentation
-scientifique et technique du projet (modèle mathématique, algorithmes,
-architecture, formats de données, limites connues) — voir
-[documentation/README.md](documentation/README.md) pour l'ordre de lecture
-conseillé. L'intégration UDP → WebSocket est détaillée dans
-[documentation/udp-integration.md](documentation/udp-integration.md).
+La documentation complète est dans [documentation/](documentation/README.md) :
+architecture, détecteur, fusion 3D, serveur, interface, protocoles,
+mathématiques, calibration, déploiement, sécurité, tests, état et limites.
+Commencer par [Découvrir PAVOIS](documentation/01-decouvrir-pavois.md). Les
+messages UDP, HTTP et WebSocket sont décrits dans
+[Protocoles](documentation/07-protocoles.md).

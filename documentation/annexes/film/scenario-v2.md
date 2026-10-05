@@ -2,7 +2,7 @@
 
 Scénario V2.1 • Montage révisé : coupes et raccords • Film 3D de 55 secondes • Sans voix off • 16:9, 24 images/s.
 
-Cette version remplace la proposition narrative V1. Son prototype Blender est documenté dans [animation/v2/README.md](../animation/v2/README.md) : 55 secondes, 15 plans, modèles de blocage, poste opérateur et 36 capteurs. La V1 de 32 secondes est conservée séparément. Les trois vignettes écran du prototype utilisent des projections vectorielles des caméras virtuelles ; la réalisation détaillée pourra les remplacer par des images caméra rendues.
+Cette version remplace la proposition narrative V1. Son prototype Blender est documenté dans [animation/v2/README.md](../../../animation/v2/README.md) : 55 secondes, 15 plans, modèles de blocage, poste opérateur et 36 capteurs. La V1 de 32 secondes est conservée séparément. Les trois vignettes écran du prototype utilisent des projections vectorielles des caméras virtuelles ; la réalisation détaillée pourra les remplacer par des images caméra rendues.
 
 ## Le parti pris
 

@@ -1,6 +1,6 @@
 # PAVOIS — Du mouvement à la position
 
-> Version V1 conservée comme référence de la première animatique. Le scénario courant est désormais [PAVOIS — Changer d’échelle (V2)](intro-animation-scenario-v2.md), avec vol du drone, champs de vision, opérateur et révélation d’un réseau étendu, sans voix off.
+> Version V1 conservée comme référence de la première animatique. Le scénario courant est désormais [PAVOIS — Changer d’échelle (V2)](scenario-v2.md), avec vol du drone, champs de vision, opérateur et révélation d’un réseau étendu, sans voix off.
 
 Scénario d’introduction 3D, version de travail du 13 septembre 2026.
 

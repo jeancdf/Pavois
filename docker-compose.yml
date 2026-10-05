@@ -1,63 +1,52 @@
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   vps-server:
+    <<: *hardening
     build:
       context: ./vps
       dockerfile: Dockerfile
     container_name: pavois-vps-server
-    restart: unless-stopped
     ports:
       - "41234:41234/udp"
-      - "3002:3002/tcp"
+      - "127.0.0.1:3002:3002/tcp"
     env_file:
       - ./vps/.env
     environment:
       ALERTS_DATA_DIR: /app/data
     volumes:
-      # Volume monté pour le journal JSONL (alerts.jsonl, tracks.jsonl, camera-states.jsonl),
-      # seul dossier inscriptible du conteneur en lecture seule
       - pavois-data:/app/data
-    # SÉCURITÉ NIVEAU 2 : Isolation et Confinement Docker
-    security_opt:
-      - no-new-privileges:true # Empêche l'escalade de privilèges (setuid)
-    read_only: true            # Système de fichiers hôte du conteneur en LECTURE SEULE
     tmpfs:
-      - /tmp:exec,mode=1777    # Espace temporaire en RAM uniquement
-    cap_drop:
-      - ALL                    # Supprime TOUTES les capacités noyau Linux
-    cap_add:
-      - NET_BIND_SERVICE       # Autorise uniquement le binding de ports si nécessaire
-    mem_limit: 512m            # Limite mémoire pour éviter crash DoS sur le VPS
+      - /tmp:noexec,nosuid,size=64m
+    mem_limit: 512m
     cpus: 1.0
 
   frontend-angular:
+    <<: *hardening
     build:
       context: ./frontend-angular
       dockerfile: Dockerfile
     container_name: pavois-frontend-angular
-    restart: unless-stopped
     depends_on:
       - vps-server
     environment:
       PAVOIS_API_URL: ${PAVOIS_API_URL:-}
-      # Empty = Angular uses ws://<page-host>/ws (Nginx proxy).
       PAVOIS_WS_BASE_URL: ${PAVOIS_WS_BASE_URL:-}
-      PAVOIS_DEV_TOKEN: ${PAVOIS_DEV_TOKEN:-}
     ports:
-      - "8080:80/tcp"
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
+      - "8080:8080/tcp"
     tmpfs:
-      - /tmp:exec,mode=1777
-      - /var/cache/nginx:exec,mode=1777
-      - /var/run:exec,mode=1777
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - CHOWN
-      - SETGID
-      - SETUID
+      - /tmp:noexec,nosuid,size=16m
     mem_limit: 256m
     cpus: 0.5
 

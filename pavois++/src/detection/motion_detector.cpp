@@ -12,6 +12,9 @@ namespace pavois {
 namespace {
 constexpr double kDefaultDt = 1.0 / 30.0;
 constexpr int kWarmupFrames = 12;
+// A longer gap is a pause, not motion: dt is capped so the Kalman filter does
+// not extrapolate across it.
+constexpr double kMaxFrameGapS = 1.0;
 
 // Per-pixel noise, in grey levels: a mean of |frame - background| that sets
 // how far above diff_threshold the pixel's own threshold sits.
@@ -47,6 +50,16 @@ constexpr double kTightnessScalePx = 12.0;      // filter uncertainty that score
 constexpr double kUntrackedFilterScore = 0.5;   // blobs the filter does not follow
 // A blob cut by the frame edge has a biased centroid: its bearing is worth less.
 constexpr double kClippedQualityFactor = 0.6;
+
+// Reported centroid: mostly the measurement, which blur, morphology and
+// weighting already make precise; the filter adds smoothing.
+constexpr double kMeasurementWeight = 0.85;
+constexpr double kFilterWeight = 0.15;
+
+// Background learning rate right after a global illumination jump.
+constexpr float kCatchUpLearnRate = 0.25f;
+// Margin around a target, in pixels, that the background must not learn.
+constexpr int kProtectionPadPx = 2;
 
 // At least one hit to confirm, in a window at least that long: "2 of 1"
 // could never be reached.
@@ -149,7 +162,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
 
     double dt = kDefaultDt;
     if (last_us_ != 0 && frame.captured_us > last_us_) {
-        dt = std::min(1.0, (frame.captured_us - last_us_) / 1e6);
+        dt = std::min(kMaxFrameGapS, (frame.captured_us - last_us_) / 1e6);
     }
     last_us_ = frame.captured_us;
     ++frames_seen_;
@@ -316,8 +329,8 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         // The weighted measurement is trustworthy after blur+morph+weighting;
         // blend mostly toward it and let the filter mainly supply smoothing and
         // a velocity estimate for coasting.
-        out.cx = 0.85 * mx + 0.15 * p[0];
-        out.cy = 0.85 * my + 0.15 * p[1];
+        out.cx = kMeasurementWeight * mx + kFilterWeight * p[0];
+        out.cy = kMeasurementWeight * my + kFilterWeight * p[1];
         last_cx_ = mx;
         last_cy_ = my;
         have_last_ = true;
@@ -335,13 +348,12 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Preserve every valid component in the slow-update foreground mask. If
     // only the best one is protected, simultaneous targets are absorbed into
     // the background before they can be emitted on following frames.
-    constexpr int pad = 2;
     for (const auto& candidate : candidates) {
         const Blob& blob = *candidate.blob;
-        for (int y = std::max(0, blob.y0 - pad);
-             y <= std::min(h_ - 1, blob.y1 + pad); ++y) {
-            for (int x = std::max(0, blob.x0 - pad);
-                 x <= std::min(w_ - 1, blob.x1 + pad); ++x) {
+        for (int y = std::max(0, blob.y0 - kProtectionPadPx);
+             y <= std::min(h_ - 1, blob.y1 + kProtectionPadPx); ++y) {
+            for (int x = std::max(0, blob.x0 - kProtectionPadPx);
+                 x <= std::min(w_ - 1, blob.x1 + kProtectionPadPx); ++x) {
                 const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
                 if (mask_[bi]) {
                     fg_mask_[bi] = 1;
@@ -351,7 +363,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             }
         }
     }
-    if (!candidates.empty()) dilate(fg_mask_, w_, h_, pad, executor_);
+    if (!candidates.empty()) dilate(fg_mask_, w_, h_, kProtectionPadPx, executor_);
 
     while (static_cast<int>(confirm_hits_.size()) > cfg_.confirm_n) confirm_hits_.pop_front();
     const int hits = std::accumulate(confirm_hits_.begin(), confirm_hits_.end(), 0);
@@ -395,7 +407,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Background + per-pixel noise update.
     const float a_bg = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
     const float a_fg = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
-    const float a_catchup = illumination_event ? 0.25f : a_bg;
+    const float a_catchup = illumination_event ? kCatchUpLearnRate : a_bg;
     for_each_range(executor_, 0, frame.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {

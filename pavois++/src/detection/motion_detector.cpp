@@ -93,44 +93,44 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
 
     for (int y = 0; y < h_; ++y) {
         for (int x = 0; x < w_; ++x) {
-            const std::size_t s = static_cast<std::size_t>(y) * w_ + x;
-            if (!mask[s] || cc_visited_[s]) continue;
+            const std::size_t seed = static_cast<std::size_t>(y) * w_ + x;
+            if (!mask[seed] || cc_visited_[seed]) continue;
 
-            Blob b;
-            b.x0 = b.x1 = x;
-            b.y0 = b.y1 = y;
+            Blob blob;
+            blob.x0 = blob.x1 = x;
+            blob.y0 = blob.y1 = y;
             stack.clear();
-            stack.push_back(static_cast<int>(s));
-            cc_visited_[s] = 1;
-            double esum = 0.0;
+            stack.push_back(static_cast<int>(seed));
+            cc_visited_[seed] = 1;
+            double diff_sum = 0.0;
             while (!stack.empty()) {
-                const int ci = stack.back();
+                const int pixel = stack.back();
                 stack.pop_back();
-                const int cx = ci % w_;
-                const int cy = ci / w_;
-                const double wgt = std::max(1.0, static_cast<double>(diff[ci]));
-                ++b.area;
-                b.wsum += wgt;
-                b.wx += wgt * cx;
-                b.wy += wgt * cy;
-                esum += diff[ci];
-                b.x0 = std::min(b.x0, cx);
-                b.x1 = std::max(b.x1, cx);
-                b.y0 = std::min(b.y0, cy);
-                b.y1 = std::max(b.y1, cy);
-                const int x0 = std::max(0, cx - 1), x1 = std::min(w_ - 1, cx + 1);
-                const int y0 = std::max(0, cy - 1), y1 = std::min(h_ - 1, cy + 1);
+                const int px = pixel % w_;
+                const int py = pixel / w_;
+                const double weight = std::max(1.0, static_cast<double>(diff[pixel]));
+                ++blob.area;
+                blob.wsum += weight;
+                blob.wx += weight * px;
+                blob.wy += weight * py;
+                diff_sum += diff[pixel];
+                blob.x0 = std::min(blob.x0, px);
+                blob.x1 = std::max(blob.x1, px);
+                blob.y0 = std::min(blob.y0, py);
+                blob.y1 = std::max(blob.y1, py);
+                const int x0 = std::max(0, px - 1), x1 = std::min(w_ - 1, px + 1);
+                const int y0 = std::max(0, py - 1), y1 = std::min(h_ - 1, py + 1);
                 for (int ny = y0; ny <= y1; ++ny) {
                     for (int nx = x0; nx <= x1; ++nx) {
-                        const std::size_t ni = static_cast<std::size_t>(ny) * w_ + nx;
-                        if (!mask[ni] || cc_visited_[ni]) continue;
-                        cc_visited_[ni] = 1;
-                        stack.push_back(static_cast<int>(ni));
+                        const std::size_t neighbour = static_cast<std::size_t>(ny) * w_ + nx;
+                        if (!mask[neighbour] || cc_visited_[neighbour]) continue;
+                        cc_visited_[neighbour] = 1;
+                        stack.push_back(static_cast<int>(neighbour));
                     }
                 }
             }
-            b.energy = esum / static_cast<double>(std::max<std::size_t>(1, b.area));
-            blobs.push_back(b);
+            blob.energy = diff_sum / static_cast<double>(std::max<std::size_t>(1, blob.area));
+            blobs.push_back(blob);
         }
     }
     return blobs;
@@ -173,14 +173,14 @@ double MotionDetector::advance_clock(const GrayFrame& frame) {
 // Seeding from a single frame would bake any object present at t=0 into the
 // model as a permanent negative ghost; averaging washes a moving target out.
 void MotionDetector::learn_warmup() {
-    const float n = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
+    const float frames_averaged = static_cast<float>(kWarmupFrames - warmup_left_ + 1);
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
-            bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / n;
-            const float d =
+            bg_[i] += (static_cast<float>(blur_[i]) - bg_[i]) / frames_averaged;
+            const float deviation =
                 std::fabs(static_cast<float>(blur_[i]) - bg_[i]);
-            noise_[i] += kWarmupNoiseRate * (d - noise_[i]);
+            noise_[i] += kWarmupNoiseRate * (deviation - noise_[i]);
             noise_[i] = std::clamp(noise_[i], kNoiseFloor, kNoiseCeiling);
         }
     });
@@ -210,29 +210,29 @@ bool MotionDetector::threshold_against_background(double bias) {
     diff_.resize(bg_.size());
     mask_.resize(bg_.size());
     const double base = static_cast<double>(cfg_.diff_threshold);
-    std::atomic<std::size_t> hot{0};
+    std::atomic<std::size_t> hot_pixels{0};
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         std::size_t local_hot = 0;
         for (std::size_t i = first; i < last; ++i) {
-            const float d = std::fabs(
+            const float deviation = std::fabs(
                 (static_cast<float>(blur_[i]) - bg_[i]) -
                 static_cast<float>(bias));
-            diff_[i] = d;
+            diff_[i] = deviation;
             const double threshold = base + cfg_.adaptive_k * noise_[i];
-            if (d > threshold) {
+            if (deviation > threshold) {
                 mask_[i] = 255;
                 ++local_hot;
             } else {
                 mask_[i] = 0;
             }
         }
-        hot.fetch_add(local_hot, std::memory_order_relaxed);
+        hot_pixels.fetch_add(local_hot, std::memory_order_relaxed);
     });
 
     // Global illumination / exposure jump: almost everything moved -> bail,
     // and let the background catch up fast.
-    const double hot_ratio = static_cast<double>(hot.load(std::memory_order_relaxed)) /
+    const double hot_ratio = static_cast<double>(hot_pixels.load(std::memory_order_relaxed)) /
                              static_cast<double>(bg_.size());
     return hot_ratio > cfg_.illumination_hot_ratio;
 }
@@ -251,54 +251,54 @@ std::vector<MotionDetector::Blob> MotionDetector::extract_blobs() {
 std::vector<MotionDetector::Candidate> MotionDetector::select_candidates(
     const std::vector<Blob>& blobs) const {
     const double frame_area = static_cast<double>(w_) * static_cast<double>(h_);
-    const int b = std::max(0, cfg_.border_ignore_px);
+    const int border_px = std::max(0, cfg_.border_ignore_px);
 
     std::vector<Candidate> candidates;
     candidates.reserve(blobs.size());
-    for (const auto& bl : blobs) {
-        const int bw = bl.x1 - bl.x0 + 1;
-        const int bh = bl.y1 - bl.y0 + 1;
-        if (bl.area < cfg_.min_blob_area) continue;
-        if (static_cast<double>(bl.area) > cfg_.max_blob_area_ratio * frame_area) continue;
-        const double fill = static_cast<double>(bl.area) / static_cast<double>(std::max(1, bw * bh));
+    for (const auto& blob : blobs) {
+        const int box_w = blob.x1 - blob.x0 + 1;
+        const int box_h = blob.y1 - blob.y0 + 1;
+        if (blob.area < cfg_.min_blob_area) continue;
+        if (static_cast<double>(blob.area) > cfg_.max_blob_area_ratio * frame_area) continue;
+        const double fill = static_cast<double>(blob.area) / static_cast<double>(std::max(1, box_w * box_h));
         if (fill < cfg_.min_blob_fill_ratio) continue;
-        const double aspect = static_cast<double>(std::max(bw, bh)) / static_cast<double>(std::max(1, std::min(bw, bh)));
+        const double aspect = static_cast<double>(std::max(box_w, box_h)) / static_cast<double>(std::max(1, std::min(box_w, box_h)));
         if (aspect > cfg_.max_blob_aspect) continue;
 
-        const double cx = bl.wx / std::max(1e-6, bl.wsum);
-        const double cy = bl.wy / std::max(1e-6, bl.wsum);
+        const double cx = blob.wx / std::max(1e-6, blob.wsum);
+        const double cy = blob.wy / std::max(1e-6, blob.wsum);
         // Reject on the CENTROID, not the bounding box: a target crossing the
         // frame edge keeps a centroid well inside and stays detectable. Even in
         // the margin, keep a blob that is far too big to be edge speckle --
         // that is a real object on its way in or out of frame.
         const bool in_margin =
-            cx < b || cy < b || cx >= w_ - b || cy >= h_ - b;
+            cx < border_px || cy < border_px || cx >= w_ - border_px || cy >= h_ - border_px;
         const double edge_keep_area =
             cfg_.border_keep_area_mult * static_cast<double>(cfg_.min_blob_area);
-        if (in_margin && static_cast<double>(bl.area) < edge_keep_area) continue;
+        if (in_margin && static_cast<double>(blob.area) < edge_keep_area) continue;
         // A clipped bounding box means the measured centroid is biased toward
         // frame centre, so flag it and let quality carry the uncertainty.
         const bool clipped =
-            bl.x0 <= 0 || bl.y0 <= 0 || bl.x1 >= w_ - 1 || bl.y1 >= h_ - 1;
+            blob.x0 <= 0 || blob.y0 <= 0 || blob.x1 >= w_ - 1 || blob.y1 >= h_ - 1;
         double continuity = 0.0;
         if (have_last_) {
-            const double dist = std::hypot(cx - last_cx_, cy - last_cy_);
-            continuity = std::exp(-dist / kContinuityScalePx);
+            const double distance = std::hypot(cx - last_cx_, cy - last_cy_);
+            continuity = std::exp(-distance / kContinuityScalePx);
         }
-        const double area_score = std::min(1.0, static_cast<double>(bl.area) / kAreaForFullScore);
-        const double energy_score = std::min(1.0, bl.energy / kEnergyForFullScore);
+        const double area_score = std::min(1.0, static_cast<double>(blob.area) / kAreaForFullScore);
+        const double energy_score = std::min(1.0, blob.energy / kEnergyForFullScore);
         const double score = kScoreAreaWeight * area_score + kScoreFillWeight * fill +
                              kScoreEnergyWeight * energy_score +
                              kScoreContinuityWeight * continuity;
-        const std::size_t ci =
+        const std::size_t centre_index =
             static_cast<std::size_t>(std::clamp<int>(static_cast<int>(cy), 0, h_ - 1)) * w_ +
             std::clamp<int>(static_cast<int>(cx), 0, w_ - 1);
-        const double noise_here = std::max(1.0, static_cast<double>(noise_[ci]));
-        candidates.push_back({&bl, cx, cy, fill, bl.energy / noise_here, score, clipped});
+        const double noise_here = std::max(1.0, static_cast<double>(noise_[centre_index]));
+        candidates.push_back({&blob, cx, cy, fill, blob.energy / noise_here, score, clipped});
     }
     std::stable_sort(candidates.begin(), candidates.end(),
-                     [](const Candidate& a, const Candidate& b) {
-                         return a.score > b.score;
+                     [](const Candidate& lhs, const Candidate& rhs) {
+                         return lhs.score > rhs.score;
                      });
     return candidates;
 }
@@ -314,37 +314,37 @@ void MotionDetector::track_best(const std::vector<Candidate>& candidates,
     if (centroid_kf_.initialized()) centroid_kf_.predict(dt);
 
     if (best != nullptr) {
-        const double mx = best->cx;
-        const double my = best->cy;
+        const double meas_x = best->cx;
+        const double meas_y = best->cy;
         out.has_blob = true;
-        out.raw_cx = mx;
-        out.raw_cy = my;
+        out.raw_cx = meas_x;
+        out.raw_cy = meas_y;
         out.area = best->blob->area;
         out.fill_ratio = best->fill;
         out.snr = best->snr;
 
         if (!centroid_kf_.initialized()) {
-            centroid_kf_.init(2, {mx, my}, cfg_.centroid_process_noise, cfg_.centroid_meas_noise);
+            centroid_kf_.init(2, {meas_x, meas_y}, cfg_.centroid_process_noise, cfg_.centroid_meas_noise);
         } else {
-            centroid_kf_.update({mx, my});
+            centroid_kf_.update({meas_x, meas_y});
         }
-        const auto p = centroid_kf_.position();
+        const auto filtered = centroid_kf_.position();
         // The weighted measurement is trustworthy after blur+morph+weighting;
         // blend mostly toward it and let the filter mainly supply smoothing and
         // a velocity estimate for coasting.
-        out.cx = kMeasurementWeight * mx + kFilterWeight * p[0];
-        out.cy = kMeasurementWeight * my + kFilterWeight * p[1];
-        last_cx_ = mx;
-        last_cy_ = my;
+        out.cx = kMeasurementWeight * meas_x + kFilterWeight * filtered[0];
+        out.cy = kMeasurementWeight * meas_y + kFilterWeight * filtered[1];
+        last_cx_ = meas_x;
+        last_cy_ = meas_y;
         have_last_ = true;
         confirm_hits_.push_back(1);
 
     } else {
         confirm_hits_.push_back(0);
         if (centroid_kf_.initialized()) {
-            const auto p = centroid_kf_.position();
-            out.cx = p[0];
-            out.cy = p[1];
+            const auto filtered = centroid_kf_.position();
+            out.cx = filtered[0];
+            out.cy = filtered[1];
         }
     }
 }
@@ -365,10 +365,10 @@ void MotionDetector::protect_targets(const std::vector<Candidate>& candidates) {
              y <= std::min(h_ - 1, blob.y1 + kProtectionPadPx); ++y) {
             for (int x = std::max(0, blob.x0 - kProtectionPadPx);
                  x <= std::min(w_ - 1, blob.x1 + kProtectionPadPx); ++x) {
-                const std::size_t bi = static_cast<std::size_t>(y) * w_ + x;
-                if (mask_[bi]) {
-                    fg_mask_[bi] = 1;
-                    fg_hold_[bi] =
+                const std::size_t index = static_cast<std::size_t>(y) * w_ + x;
+                if (mask_[index]) {
+                    fg_mask_[index] = 1;
+                    fg_hold_[index] =
                         static_cast<std::uint16_t>(std::max(0, cfg_.bg_hold_frames));
                 }
             }
@@ -431,9 +431,9 @@ void MotionDetector::rate_blobs(const std::vector<Candidate>& candidates,
 // up fast. Noise is learnt only from quiet pixels.
 void MotionDetector::update_background(bool illumination_event) {
     const double base = static_cast<double>(cfg_.diff_threshold);
-    const float a_bg = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
-    const float a_fg = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
-    const float a_catchup = illumination_event ? kCatchUpLearnRate : a_bg;
+    const float scene_rate = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
+    const float protected_rate = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
+    const float unprotected_rate = illumination_event ? kCatchUpLearnRate : scene_rate;
     for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
@@ -459,7 +459,7 @@ void MotionDetector::update_background(bool illumination_event) {
             } else {
                 fg_streak_[i] = 0;
             }
-            const float rate = protect ? a_fg : a_catchup;
+            const float rate = protect ? protected_rate : unprotected_rate;
             bg_[i] += rate * (static_cast<float>(blur_[i]) - bg_[i]);
             // Update the noise estimate only from quiet pixels, and only from
             // small residuals, so it remains a floor and never chases signal.

@@ -6,7 +6,7 @@ import { routes } from './app.routes';
 
 describe('App', () => {
   beforeEach(async () => {
-    localStorage.removeItem('pavois_token');
+    sessionStorage.removeItem('pavois_token');
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [provideHttpClient(), provideRouter(routes)],

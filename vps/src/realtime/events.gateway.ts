@@ -44,14 +44,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const ip = getClientIp(request);
     console.log(`[WS] Nouvelle tentative de connexion depuis IP: ${ip}`);
 
-    // 0. Vérification de l'adresse IP (Whitelist)
     if (!isIpAllowed(ip)) {
       console.warn(`[WS] Connexion refusée : IP non autorisée (${ip})`);
       client.close(4403, 'Forbidden IP');
       return;
     }
 
-    // 1. Vérification de l'Origine (Origin header)
     const origin = request.headers.origin;
     const allowedOriginsStr = process.env.ALLOWED_ORIGINS;
     if (allowedOriginsStr) {
@@ -65,7 +63,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     }
 
-    // 2. Limitation du nombre de connexions simultanées par IP
     const currentConns = ipConnections.get(ip) || 0;
     if (currentConns >= MAX_CONNECTIONS_PER_IP) {
       console.warn(
@@ -77,8 +74,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ipConnections.set(ip, currentConns + 1);
     clientIps.set(client, ip);
 
-    // 3. Authentification
-    // Token lu prioritairement depuis le header de handshake ou cookie
     const urlObj = new URL(request.url || '', 'http://localhost');
     const queryToken = urlObj.searchParams.get('token');
 
@@ -140,7 +135,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }),
     );
 
-    // 4. Ingestion des messages entrants & limitation de débit
     client.on('message', async (message) => {
       const rateInfo = clientRateLimits.get(client);
       if (rateInfo) {

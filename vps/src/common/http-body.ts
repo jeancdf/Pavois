@@ -8,5 +8,5 @@ export function applyBodyParsers(app: INestApplication): void {
   app.use('/classification/capture', raw({ type: '*/*', limit: '1mb' }));
   app.use('/api/classification/capture', raw({ type: '*/*', limit: '1mb' }));
   app.use(json({ limit: '32kb' }));
-  app.use(urlencoded({ extended: true }));
+  app.use(urlencoded({ extended: true, limit: '32kb' }));
 }

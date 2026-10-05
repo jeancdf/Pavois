@@ -7,8 +7,8 @@ import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
 // in the same file (and parallel files on CI) does not throw.
 setupTestBed();
 
-function initLocalStorageMock(): void {
-  const existing = globalThis.localStorage;
+function installStorageMock(name: 'localStorage' | 'sessionStorage'): void {
+  const existing = globalThis[name];
   if (existing && typeof existing.getItem === 'function') {
     return;
   }
@@ -29,11 +29,12 @@ function initLocalStorageMock(): void {
       return storageMap.size;
     },
   };
-  Object.defineProperty(globalThis, 'localStorage', {
+  Object.defineProperty(globalThis, name, {
     value: mockStorage,
     writable: true,
     configurable: true,
   });
 }
 
-initLocalStorageMock();
+installStorageMock('localStorage');
+installStorageMock('sessionStorage');

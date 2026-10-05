@@ -15,14 +15,14 @@ export class AuthService {
   readonly pending = this._pending.asReadonly();
 
   constructor() {
-    const stored = localStorage.getItem(TOKEN_KEY);
+    const stored = sessionStorage.getItem(TOKEN_KEY);
     if (stored) {
       void this.restoreSession(stored);
     }
   }
 
   getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(TOKEN_KEY);
   }
 
   /**
@@ -39,12 +39,12 @@ export class AuthService {
   }
 
   clearToken(): void {
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     this._isAuthenticated.set(false);
   }
 
   private persistToken(token: string): void {
-    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(TOKEN_KEY, token);
     this._isAuthenticated.set(true);
   }
 

@@ -5,25 +5,32 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash, timingSafeEqual } from 'crypto';
 import { IncomingMessage } from 'http';
-
-// Contrôles d'accès communs au WebSocket et à l'API HTTP.
 
 export interface OperatorIdentity {
   valid: boolean;
   username: string;
 }
 
+export const MIN_TOKEN_LENGTH = 24;
+
+const PLACEHOLDER_AUTH_TOKENS = new Set([
+  'dev-pavois-token',
+  'change-me',
+  'staging-token-change-me',
+]);
+const OPERATOR_NAME = /^[\p{L}\p{N}._-]{1,32}$/u;
+const DENIED: OperatorIdentity = { valid: false, username: '' };
+
 export function getClientIp(request: IncomingMessage): string {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-    return ip.trim();
+  const realIp = request.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim().length > 0) {
+    return realIp.trim();
   }
-  return request.socket.remoteAddress || 'unknown';
+  return request.socket.remoteAddress ?? 'unknown';
 }
 
-/** Liste blanche ALLOWED_IPS : sans valeur, toutes les IP sont acceptées. */
 export function isIpAllowed(ip: string): boolean {
   const allowedIpsStr = process.env.ALLOWED_IPS;
   if (!allowedIpsStr) return true;
@@ -31,66 +38,51 @@ export function isIpAllowed(ip: string): boolean {
   return allowedIps.includes(ip);
 }
 
-/** Valeurs d'exemple : jamais acceptées en PROD ou si configurées. */
-const PLACEHOLDER_AUTH_TOKENS = new Set([
-  'dev-pavois-token',
-  'change-me',
-  'staging-token-change-me',
-]);
-
-export function assertAuthTokenConfigured(): void {
-  const token = process.env.WS_AUTH_TOKEN;
-  if (
-    process.env.NODE_ENV === 'production' &&
-    (!token || PLACEHOLDER_AUTH_TOKENS.has(token))
-  ) {
+export function assertAuthTokenConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const token = env.WS_AUTH_TOKEN ?? '';
+  if (!token) {
+    throw new Error('WS_AUTH_TOKEN est obligatoire');
+  }
+  if (env.NODE_ENV !== 'production') return;
+  if (PLACEHOLDER_AUTH_TOKENS.has(token) || token.length < MIN_TOKEN_LENGTH) {
     throw new Error(
-      "WS_AUTH_TOKEN est absent ou correspond à une valeur d'exemple (.env.example). " +
-        "Définissez un jeton secret réel dans l'environnement avant de démarrer le serveur en production.",
+      `WS_AUTH_TOKEN doit être un secret d'au moins ${MIN_TOKEN_LENGTH} caractères, pas une valeur d'exemple`,
     );
   }
 }
 
-/**
- * Valide et extrait l'identité de l'opérateur à partir du jeton.
- * Format supporté :
- * 1) "op:<username>:<secret>" (ex: "op:alice:secret-token")
- * 2) "<secret>" (opérateur par défaut "opérateur-1")
- */
 export function verifyOperatorToken(
   token: string | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
 ): OperatorIdentity {
-  const expectedToken = process.env.WS_AUTH_TOKEN || 'dev-pavois-token';
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (!token) {
-    return { valid: false, username: '' };
-  }
-
-  // En production, aucun jeton de dev ou placeholder n'est accepté
-  if (isProduction && PLACEHOLDER_AUTH_TOKENS.has(token)) {
-    return { valid: false, username: '' };
-  }
+  const expected = env.WS_AUTH_TOKEN;
+  if (!token || !expected) return DENIED;
 
   if (token.startsWith('op:')) {
-    const parts = token.split(':');
-    if (parts.length === 3 && parts[1] && parts[2] === expectedToken) {
-      return { valid: true, username: parts[1] };
-    }
+    const separator = token.indexOf(':', 3);
+    if (separator < 0) return DENIED;
+    const username = token.slice(3, separator);
+    const secret = token.slice(separator + 1);
+    return OPERATOR_NAME.test(username) && sameSecret(secret, expected)
+      ? { valid: true, username }
+      : DENIED;
   }
 
-  if (token === expectedToken) {
-    return { valid: true, username: 'opérateur-1' };
-  }
-
-  return { valid: false, username: '' };
+  return sameSecret(token, expected)
+    ? { valid: true, username: 'opérateur-1' }
+    : DENIED;
 }
 
-export function isValidAuthToken(token: string | null | undefined): boolean {
-  return verifyOperatorToken(token).valid;
+function sameSecret(candidate: string, expected: string): boolean {
+  return timingSafeEqual(digest(candidate), digest(expected));
 }
 
-/** Jeton transmis en `Authorization: Bearer <token>`. */
+function digest(value: string): Buffer {
+  return createHash('sha256').update(value, 'utf8').digest();
+}
+
 @Injectable()
 export class AuthTokenGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -103,9 +95,8 @@ export class AuthTokenGuard implements CanActivate {
     const token = authorization?.startsWith('Bearer ')
       ? authorization.slice('Bearer '.length)
       : null;
-    const authResult = verifyOperatorToken(token);
-    if (!authResult.valid) {
-      throw new UnauthorizedException('Jeton d\'authentification invalide');
+    if (!verifyOperatorToken(token).valid) {
+      throw new UnauthorizedException("Jeton d'authentification invalide");
     }
     return true;
   }

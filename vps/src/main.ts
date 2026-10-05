@@ -1,56 +1,67 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-process.on('unhandledRejection', (reason) => {
-  console.error('[SAFETY NET] Promesse rejetée non gérée :', reason);
-});
-process.on('uncaughtException', (error) => {
-  console.error('[SAFETY NET] Exception non captée :', error);
-});
-
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { AppModule } from './app.module';
 import { applyBodyParsers } from './common/http-body';
 import { assertAuthTokenConfigured } from './auth/access-control';
+import { readSharedSecret } from './common/message-auth';
+
+const DEV_ORIGINS =
+  'http://localhost:4200,http://localhost:5173,http://localhost:8080,http://localhost:3000';
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[PROCESS] Promesse rejetée non gérée :', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[PROCESS] Exception non gérée, arrêt :', error);
+  process.exit(1);
+});
 
 async function bootstrap() {
   try {
     assertAuthTokenConfigured();
+    readSharedSecret();
   } catch (error) {
     console.error(`[BOOT] ${(error as Error).message}`);
     process.exit(1);
   }
 
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  app.set('trust proxy', 'loopback, uniquelocal');
   applyBodyParsers(app);
-
-  // 1. En-têtes HTTP de sécurité (Helmet)
   app.use(helmet());
 
-  // 2. Configuration CORS Stricte (pas d'origine '*')
-  const rawOrigins =
-    process.env.ALLOWED_ORIGINS ||
-    'http://localhost:4200,http://localhost:5173,http://localhost:8080,http://localhost:3000';
-  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim());
+  const production = process.env.NODE_ENV === 'production';
+  const fallbackOrigins = production ? '' : DEV_ORIGINS;
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || fallbackOrigins)
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.warn(`[CORS] Requête rejetée pour l'origine non autorisée : ${origin}`);
+        console.warn(`[CORS] Origine refusée : ${origin}`);
         callback(null, false);
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   });
 
-  // 3. Validation stricte des DTOs (Rejet des objets corrompus/champs non whitelistés)
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -63,6 +74,6 @@ async function bootstrap() {
   const host = process.env.HOST ?? '0.0.0.0';
   const port = process.env.PORT ?? 3002;
   await app.listen(port, host);
-  console.log(`[HTTP] Serveur NestJS Niveau 3 démarré sur http://${host}:${port}`);
+  console.log(`[HTTP] Serveur démarré sur http://${host}:${port}`);
 }
-bootstrap();
+void bootstrap();

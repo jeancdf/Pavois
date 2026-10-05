@@ -3,7 +3,6 @@ declare global {
     __PAVOIS_ENV__?: {
       apiUrl?: string;
       wsBaseUrl?: string;
-      devToken?: string;
     };
   }
 }
@@ -16,8 +15,6 @@ const originUrl = new URL(origin);
 const wsScheme = originUrl.protocol === 'https:' ? 'wss' : 'ws';
 // Same host:port as the page; Nginx proxies /ws to Nest.
 const fallbackWsBaseUrl = `${wsScheme}://${originUrl.host}/ws`;
-const isLocalhost = ['localhost', '127.0.0.1'].includes(originUrl.hostname);
-const fallbackDevToken = isLocalhost ? 'dev-pavois-token' : '';
 
 function resolveRuntimeValue(value: string | undefined, fallback: string): string {
   return value && value.trim().length > 0 ? value : fallback;
@@ -26,11 +23,7 @@ function resolveRuntimeValue(value: string | undefined, fallback: string): strin
 export const environment = {
   production: false,
   apiUrl: resolveRuntimeValue(runtimeEnv?.apiUrl, fallbackApiUrl),
-  // URL de base sans token — le token est injecté dynamiquement par AuthService
   wsBaseUrl: resolveRuntimeValue(runtimeEnv?.wsBaseUrl, fallbackWsBaseUrl),
-  // Token de dev pré-rempli automatiquement en local pour éviter de saisir à
-  // chaque démarrage. Ne jamais mettre de valeur ici en production.
-  devToken: resolveRuntimeValue(runtimeEnv?.devToken, fallbackDevToken),
   // Origine du repère local ENU : ancienne position GPS de cam0. Les positions des
   // caméras viennent désormais du backend (événement `camera_positions`).
   geoOrigin: { lat: 48.82608, lng: 2.3659, alt: 58.52 },

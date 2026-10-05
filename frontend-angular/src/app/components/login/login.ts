@@ -1,7 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
-import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-login',
@@ -12,9 +11,7 @@ import { environment } from '../../../environments/environment';
 export class LoginScreen {
   private readonly auth = inject(AuthService);
 
-  readonly tokenInput = signal(
-    environment.production ? '' : (environment.devToken ?? ''),
-  );
+  readonly tokenInput = signal('');
   readonly error = signal<string | null>(null);
   readonly submitting = signal(false);
   readonly busy = computed(

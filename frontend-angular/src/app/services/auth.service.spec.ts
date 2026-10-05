@@ -12,7 +12,7 @@ describe('AuthService', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    localStorage.removeItem('pavois_token');
+    sessionStorage.removeItem('pavois_token');
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
@@ -22,7 +22,7 @@ describe('AuthService', () => {
 
   afterEach(() => {
     http.verify();
-    localStorage.removeItem('pavois_token');
+    sessionStorage.removeItem('pavois_token');
   });
 
   it('rejects an invented token and stays logged out', async () => {
@@ -38,7 +38,7 @@ describe('AuthService', () => {
 
     await expect(attempt).rejects.toThrow('jeton refusé');
     expect(service.isAuthenticated()).toBe(false);
-    expect(localStorage.getItem('pavois_token')).toBeNull();
+    expect(sessionStorage.getItem('pavois_token')).toBeNull();
   });
 
   it('opens the session only after the backend accepts the token', async () => {
@@ -48,6 +48,6 @@ describe('AuthService', () => {
     await attempt;
 
     expect(service.isAuthenticated()).toBe(true);
-    expect(localStorage.getItem('pavois_token')).toBe('dev-pavois-token');
+    expect(sessionStorage.getItem('pavois_token')).toBe('dev-pavois-token');
   });
 });

@@ -425,46 +425,16 @@ void MotionDetector::rate_blobs(const std::vector<Candidate>& candidates,
     out.quality = out.blobs.front().quality;
 }
 
-DetectionResult MotionDetector::process(const GrayFrame& frame) {
-    DetectionResult out;
-    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
-
-    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
-        reinitialise(frame);
-    }
-
-    const double dt = advance_clock(frame);
-
-    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
-             executor_);
-
-    if (warmup_left_ > 0) {
-        learn_warmup();
-        return out;
-    }
-
-    const double bias = brightness_bias();
-
-    const bool illumination_event = threshold_against_background(bias);
+// Background and per-pixel noise update. Protected pixels (current targets,
+// and recent ones while their hold lasts) learn at the slow rate, for at most
+// bg_hold_max_frames in a row; after an illumination jump everything catches
+// up fast. Noise is learnt only from quiet pixels.
+void MotionDetector::update_background(bool illumination_event) {
     const double base = static_cast<double>(cfg_.diff_threshold);
-
-    const std::vector<Blob> blobs =
-        illumination_event ? std::vector<Blob>{} : extract_blobs();
-
-    const std::vector<Candidate> candidates = select_candidates(blobs);
-    track_best(candidates, dt, out);
-
-    protect_targets(candidates);
-
-    const int hits = confirm(out);
-
-    rate_blobs(candidates, hits, out);
-
-    // Background + per-pixel noise update.
     const float a_bg = static_cast<float>(std::clamp(cfg_.bg_learn_rate, 0.0, 1.0));
     const float a_fg = static_cast<float>(std::clamp(cfg_.bg_learn_rate_fg, 0.0, 1.0));
     const float a_catchup = illumination_event ? kCatchUpLearnRate : a_bg;
-    for_each_range(executor_, 0, frame.size(),
+    for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         for (std::size_t i = first; i < last; ++i) {
             // Recently-foreground pixels keep the slow alpha even once the blob
@@ -500,6 +470,43 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
             }
         }
     });
+}
+
+DetectionResult MotionDetector::process(const GrayFrame& frame) {
+    DetectionResult out;
+    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
+
+    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
+        reinitialise(frame);
+    }
+
+    const double dt = advance_clock(frame);
+
+    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
+             executor_);
+
+    if (warmup_left_ > 0) {
+        learn_warmup();
+        return out;
+    }
+
+    const double bias = brightness_bias();
+
+    const bool illumination_event = threshold_against_background(bias);
+
+    const std::vector<Blob> blobs =
+        illumination_event ? std::vector<Blob>{} : extract_blobs();
+
+    const std::vector<Candidate> candidates = select_candidates(blobs);
+    track_best(candidates, dt, out);
+
+    protect_targets(candidates);
+
+    const int hits = confirm(out);
+
+    rate_blobs(candidates, hits, out);
+
+    update_background(illumination_event);
 
     if (want_debug_) {
         out.mask = mask_;

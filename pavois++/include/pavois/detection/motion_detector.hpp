@@ -105,6 +105,7 @@ private:
     int confirm(DetectionResult& out);
     void rate_blobs(const std::vector<Candidate>& candidates, int hits,
                     DetectionResult& out) const;
+    void update_background(bool illumination_event);
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

@@ -34,6 +34,20 @@ constexpr double kScoreFillWeight = 0.20;
 constexpr double kScoreEnergyWeight = 0.20;
 constexpr double kScoreContinuityWeight = 0.25;
 
+// Quality in [0, 1] sent with every blob; the VPS weights the triangulation
+// by it.
+constexpr double kQualityBase = 0.15;
+constexpr double kQualitySupportWeight = 0.35;  // hits in the confirm window
+constexpr double kQualitySnrWeight = 0.25;
+constexpr double kQualityFillWeight = 0.15;
+constexpr double kQualityFilterWeight = 0.10;   // how sure the Kalman filter is
+constexpr double kSnrForFullScore = 6.0;
+constexpr double kFillForFullScore = 0.6;
+constexpr double kTightnessScalePx = 12.0;      // filter uncertainty that scores 0
+constexpr double kUntrackedFilterScore = 0.5;   // blobs the filter does not follow
+// A blob cut by the frame edge has a biased centroid: its bearing is worth less.
+constexpr double kClippedQualityFactor = 0.6;
+
 // At least one hit to confirm, in a window at least that long: "2 of 1"
 // could never be reached.
 void sanitize_confirmation(CameraConfig& cfg) {
@@ -346,20 +360,22 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Quality: temporal support, fill, SNR, filter tightness.
     if (out.has_blob) {
         const double support = static_cast<double>(hits) / static_cast<double>(cfg_.confirm_n);
-        const double tight = std::clamp(1.0 - centroid_kf_.position_uncertainty() / 12.0, 0.0, 1.0);
+        const double tight = std::clamp(
+            1.0 - centroid_kf_.position_uncertainty() / kTightnessScalePx, 0.0, 1.0);
         out.blobs.reserve(candidates.size());
         for (std::size_t index = 0; index < candidates.size(); ++index) {
             const Candidate& candidate = candidates[index];
-            const double snr_score = std::min(1.0, candidate.snr / 6.0);
-            const double fill_score = std::clamp(candidate.fill / 0.6, 0.0, 1.0);
-            const double filter_score = index == 0 ? tight : 0.5;
+            const double snr_score = std::min(1.0, candidate.snr / kSnrForFullScore);
+            const double fill_score = std::clamp(candidate.fill / kFillForFullScore, 0.0, 1.0);
+            const double filter_score = index == 0 ? tight : kUntrackedFilterScore;
             double quality = std::clamp(
-                0.15 + 0.35 * support + 0.25 * snr_score +
-                    0.15 * fill_score + 0.10 * filter_score,
+                kQualityBase + kQualitySupportWeight * support +
+                    kQualitySnrWeight * snr_score + kQualityFillWeight * fill_score +
+                    kQualityFilterWeight * filter_score,
                 0.0, 1.0);
             // Clipped target: the centroid is biased, so the bearing is worth
             // less to triangulation even though the detection itself is real.
-            if (candidate.clipped) quality *= 0.6;
+            if (candidate.clipped) quality *= kClippedQualityFactor;
             out.blobs.push_back({
                 index == 0 ? out.cx : candidate.cx,
                 index == 0 ? out.cy : candidate.cy,

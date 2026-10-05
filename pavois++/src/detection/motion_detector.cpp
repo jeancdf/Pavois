@@ -12,16 +12,6 @@ namespace pavois {
 namespace {
 constexpr double kDefaultDt = 1.0 / 30.0;
 constexpr int kWarmupFrames = 12;
-
-template <typename Function>
-void for_each_range(ParallelExecutor* executor, std::size_t begin,
-                    std::size_t end, Function&& function) {
-    if (executor != nullptr && executor->thread_count() > 1) {
-        executor->for_each_range(begin, end, function);
-    } else {
-        function(begin, end);
-    }
-}
 }
 
 MotionDetector::MotionDetector(const CameraConfig& cfg,

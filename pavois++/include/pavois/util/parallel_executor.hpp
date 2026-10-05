@@ -51,4 +51,18 @@ private:
     std::exception_ptr worker_error_;
 };
 
+// Runs function(first, last) over [begin, end): split between the executor's
+// threads when there is more than one, called once on the whole range
+// otherwise. A template, so the serial path calls the lambda directly instead
+// of going through a std::function.
+template <typename Function>
+void for_each_range(ParallelExecutor* executor, std::size_t begin,
+                    std::size_t end, Function&& function) {
+    if (executor != nullptr && executor->thread_count() > 1) {
+        executor->for_each_range(begin, end, function);
+    } else {
+        function(begin, end);
+    }
+}
+
 }  // namespace pavois

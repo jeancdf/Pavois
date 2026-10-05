@@ -96,6 +96,7 @@ private:
     double advance_clock(const GrayFrame& frame);
     void learn_warmup();
     double brightness_bias() const;
+    bool threshold_against_background(double bias);
 
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;

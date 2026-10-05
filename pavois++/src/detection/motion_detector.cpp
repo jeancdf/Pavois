@@ -202,31 +202,16 @@ double MotionDetector::brightness_bias() const {
     return bias;
 }
 
-DetectionResult MotionDetector::process(const GrayFrame& frame) {
-    DetectionResult out;
-    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
-
-    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
-        reinitialise(frame);
-    }
-
-    const double dt = advance_clock(frame);
-
-    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
-             executor_);
-
-    if (warmup_left_ > 0) {
-        learn_warmup();
-        return out;
-    }
-
-    const double bias = brightness_bias();
-
-    diff_.resize(frame.size());
-    mask_.resize(frame.size());
+// Marks in mask_ every pixel whose difference to the background, the global
+// bias removed, exceeds diff_threshold plus adaptive_k times its own noise;
+// keeps that difference in diff_. True when so much of the frame moved that
+// it is a global illumination jump rather than targets.
+bool MotionDetector::threshold_against_background(double bias) {
+    diff_.resize(bg_.size());
+    mask_.resize(bg_.size());
     const double base = static_cast<double>(cfg_.diff_threshold);
     std::atomic<std::size_t> hot{0};
-    for_each_range(executor_, 0, frame.size(),
+    for_each_range(executor_, 0, bg_.size(),
                    [&](std::size_t first, std::size_t last) {
         std::size_t local_hot = 0;
         for (std::size_t i = first; i < last; ++i) {
@@ -248,8 +233,32 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
     // Global illumination / exposure jump: almost everything moved -> bail,
     // and let the background catch up fast.
     const double hot_ratio = static_cast<double>(hot.load(std::memory_order_relaxed)) /
-                             static_cast<double>(frame.size());
-    const bool illumination_event = hot_ratio > cfg_.illumination_hot_ratio;
+                             static_cast<double>(bg_.size());
+    return hot_ratio > cfg_.illumination_hot_ratio;
+}
+
+DetectionResult MotionDetector::process(const GrayFrame& frame) {
+    DetectionResult out;
+    if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
+
+    if (reinit_pending_ || w_ != frame.width || h_ != frame.height) {
+        reinitialise(frame);
+    }
+
+    const double dt = advance_clock(frame);
+
+    box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
+             executor_);
+
+    if (warmup_left_ > 0) {
+        learn_warmup();
+        return out;
+    }
+
+    const double bias = brightness_bias();
+
+    const bool illumination_event = threshold_against_background(bias);
+    const double base = static_cast<double>(cfg_.diff_threshold);
 
     std::vector<Blob> blobs;
     if (!illumination_event) {

@@ -22,8 +22,9 @@ echo -e "${BLUE}================================================================
 echo -e "${BLUE}   PAVOIS — SÉCURISATION APPLICATIVE NESTJS & FLUX UDP (NIVEAU 3)     ${NC}"
 echo -e "${BLUE}======================================================================${NC}"
 
-CONTAINER_NAME="pavois-vps-server"
-API_URL="http://localhost:3002"
+CONTAINER_NAME="${CONTAINER_NAME:-pavois-vps-server}"
+API_URL="${API_URL:-http://localhost:3002}"
+UDP_PORT="${UDP_PORT:-41234}"
 
 # 1. Redémarrage des conteneurs avec rebuild si nécessaire
 echo -e "\n${YELLOW}[1/4] Validation de l'exécution du conteneur Backend...${NC}"
@@ -48,30 +49,30 @@ echo -e "\n${YELLOW}[A] Vérification des en-têtes HTTP Helmet...${NC}"
 HEADERS=$(curl -sI "$API_URL" || true)
 
 if echo "$HEADERS" | grep -qi "X-Frame-Options"; then
-    echo -e "  [✅] Anti-Clickjacking : ${GREEN}X-Frame-Options présent OK${NC}"
+    echo -e "  [OK] Anti-Clickjacking : ${GREEN}X-Frame-Options présent OK${NC}"
 else
-    echo -e "  [❌] Anti-Clickjacking : ${RED}X-Frame-Options manquant${NC}"
+    echo -e "  [KO] Anti-Clickjacking : ${RED}X-Frame-Options manquant${NC}"
 fi
 
 if echo "$HEADERS" | grep -qi "X-Content-Type-Options"; then
-    echo -e "  [✅] Anti-MIME-Sniffing : ${GREEN}X-Content-Type-Options: nosniff OK${NC}"
+    echo -e "  [OK] Anti-MIME-Sniffing : ${GREEN}X-Content-Type-Options: nosniff OK${NC}"
 else
-    echo -e "  [❌] Anti-MIME-Sniffing : ${RED}X-Content-Type-Options manquant${NC}"
+    echo -e "  [KO] Anti-MIME-Sniffing : ${RED}X-Content-Type-Options manquant${NC}"
 fi
 
 if ! echo "$HEADERS" | grep -qi "X-Powered-By"; then
-    echo -e "  [✅] Masquage technologie : ${GREEN}X-Powered-By supprimé par Helmet OK${NC}"
+    echo -e "  [OK] Masquage technologie : ${GREEN}X-Powered-By supprimé par Helmet OK${NC}"
 else
-    echo -e "  [❌] Masquage technologie : ${RED}En-tête X-Powered-By exposé !${NC}"
+    echo -e "  [KO] Masquage technologie : ${RED}En-tête X-Powered-By exposé !${NC}"
 fi
 
 # B. Audit de la politique CORS Stricte
 echo -e "\n${YELLOW}[B] Vérification du filtrage CORS...${NC}"
 CORS_FORBIDDEN=$(curl -sI -H "Origin: http://site-pirate-attaquant.com" "$API_URL" | grep -i "access-control-allow-origin" || true)
 if [ -z "$CORS_FORBIDDEN" ]; then
-    echo -e "  [✅] CORS Strict : ${GREEN}Origine non autorisée rejetée sans en-tête d'autorisation OK${NC}"
+    echo -e "  [OK] CORS Strict : ${GREEN}Origine non autorisée rejetée sans en-tête d'autorisation OK${NC}"
 else
-    echo -e "  [❌] CORS Strict : ${RED}Alerte ! Origine suspecte autorisée : $CORS_FORBIDDEN${NC}"
+    echo -e "  [KO] CORS Strict : ${RED}Alerte ! Origine suspecte autorisée : $CORS_FORBIDDEN${NC}"
 fi
 
 # C. Audit du Rate Limiter (@nestjs/throttler)
@@ -86,18 +87,27 @@ for i in {1..110}; do
 done
 
 if [ "$THROTTLED" == "true" ]; then
-    echo -e "  [✅] Protection Anti-DoS : ${GREEN}Throttler actif — Erreur HTTP 429 renvoyée au dépassement OK${NC}"
+    echo -e "  [OK] Protection Anti-DoS : ${GREEN}Throttler actif — Erreur HTTP 429 renvoyée au dépassement OK${NC}"
 else
-    echo -e "  [ℹ️] Protection Anti-DoS : ${YELLOW}Throttler configuré (limite non atteinte lors du test rapide)${NC}"
+    echo -e "  [INFO] Protection Anti-DoS : ${YELLOW}Throttler configuré (limite non atteinte lors du test rapide)${NC}"
 fi
 
-# D. Audit de la signature HMAC-SHA256 & Anti-Replay UDP
-echo -e "\n${YELLOW}[D] Audit du moteur d'ingestion UDP et HMAC...${NC}"
-UDP_SERVICE_LOGS=$(docker logs $CONTAINER_NAME 2>&1 | grep -i "UDP" | tail -n 5 || true)
-if [[ "$UDP_SERVICE_LOGS" == *"HMAC"* ]] || [[ "$UDP_SERVICE_LOGS" == *"Serveur à l'écoute"* ]]; then
-    echo -e "  [✅] Module Ingestion UDP : ${GREEN}Prise en charge HMAC-SHA256 & Anti-Replay active OK${NC}"
+# D. Une trame UDP non signee doit etre rejetee
+echo -e "\n${YELLOW}[D] Envoi d'une trame UDP non signee...${NC}"
+sleep 11
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf 'obj999,48.8,2.3,50,0,drone\n' > "/dev/udp/127.0.0.1/${UDP_PORT}"
+sleep 1
+if docker logs --since "$SINCE" "$CONTAINER_NAME" 2>&1 | grep -q "Paquets rejetés"; then
+    echo -e "  [OK] Trame non signee rejetee par le serveur"
 else
-    echo -e "  [✅] Module Ingestion UDP : ${GREEN}Service UDP actif et écoute sur port 41234/5000 OK${NC}"
+    echo -e "  [KO] ${RED}Aucun rejet journalise : verifier UDP_HMAC_SECRET${NC}"
+    AUDIT_FAILED=1
+fi
+
+if [ "${AUDIT_FAILED:-0}" = "1" ]; then
+    echo -e "${RED}Audit niveau 3 en echec.${NC}"
+    exit 1
 fi
 
 echo -e "\n${GREEN}======================================================================${NC}"

@@ -54,41 +54,41 @@ echo -e "\n${BLUE}--- RÉSULTATS DE L'AUDIT DE SÉCURITÉ CONTENEUR ---${NC}"
 USER_VAL=$(docker exec $CONTAINER_NAME id -u)
 USER_NAME=$(docker exec $CONTAINER_NAME id -un)
 if [ "$USER_VAL" != "0" ]; then
-    echo -e "  [✅] Utilisateur exécutant : ${GREEN}$USER_NAME (UID: $USER_VAL) — Non-Root OK${NC}"
+    echo -e "  [OK] Utilisateur exécutant : ${GREEN}$USER_NAME (UID: $USER_VAL) — Non-Root OK${NC}"
 else
-    echo -e "  [❌] Utilisateur exécutant : ${RED}ROOT (Alerte Sécurité !)${NC}"
+    echo -e "  [KO] Utilisateur exécutant : ${RED}ROOT (Alerte Sécurité !)${NC}"
 fi
 
 # B. Vérification Read-Only RootFS
 READ_ONLY=$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' $CONTAINER_NAME)
 if [ "$READ_ONLY" == "true" ]; then
-    echo -e "  [✅] Système de fichiers : ${GREEN}Lecture Seule (Read-Only) OK${NC}"
+    echo -e "  [OK] Système de fichiers : ${GREEN}Lecture Seule (Read-Only) OK${NC}"
 else
-    echo -e "  [❌] Système de fichiers : ${RED}Lecture/Écriture (Risque d'injection file system)${NC}"
+    echo -e "  [KO] Système de fichiers : ${RED}Lecture/Écriture (Risque d'injection file system)${NC}"
 fi
 
 # C. Vérification No New Privileges
 NO_NEW_PRIV=$(docker inspect -f '{{.HostConfig.SecurityOpt}}' $CONTAINER_NAME)
 if [[ "$NO_NEW_PRIV" == *"no-new-privileges:true"* ]]; then
-    echo -e "  [✅] Prevention escalade privilèges : ${GREEN}no-new-privileges OK${NC}"
+    echo -e "  [OK] Prevention escalade privilèges : ${GREEN}no-new-privileges OK${NC}"
 else
-    echo -e "  [❌] Prevention escalade privilèges : ${RED}Non configuré${NC}"
+    echo -e "  [KO] Prevention escalade privilèges : ${RED}Non configuré${NC}"
 fi
 
 # D. Vérification Cap Drop ALL
 CAP_DROP=$(docker inspect -f '{{.HostConfig.CapDrop}}' $CONTAINER_NAME)
 if [[ "$CAP_DROP" == *"ALL"* ]]; then
-    echo -e "  [✅] Révocation privilèges noyau : ${GREEN}CapDrop ALL OK${NC}"
+    echo -e "  [OK] Révocation privilèges noyau : ${GREEN}CapDrop ALL OK${NC}"
 else
-    echo -e "  [❌] Révocation privilèges noyau : ${RED}Non restreint${NC}"
+    echo -e "  [KO] Révocation privilèges noyau : ${RED}Non restreint${NC}"
 fi
 
 # E. Vérification de la non-présence du fichier .env dans l'image
 ENV_BAKED=$(docker exec $CONTAINER_NAME test -f /app/.env && echo "FOUND" || echo "NOT_FOUND")
 if [ "$ENV_BAKED" == "NOT_FOUND" ]; then
-    echo -e "  [✅] Protection des Secrets : ${GREEN}Aucun fichier .env en dur dans l'image OK${NC}"
+    echo -e "  [OK] Protection des Secrets : ${GREEN}Aucun fichier .env en dur dans l'image OK${NC}"
 else
-    echo -e "  [❌] Protection des Secrets : ${RED}Alerte ! Le fichier .env est cuit dans l'image Docker${NC}"
+    echo -e "  [KO] Protection des Secrets : ${RED}Alerte ! Le fichier .env est cuit dans l'image Docker${NC}"
 fi
 
 echo -e "\n${GREEN}======================================================================${NC}"

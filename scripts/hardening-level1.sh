@@ -167,13 +167,13 @@ ufw default allow outgoing > /dev/null
 SSH_PORT=$(sshd -T 2>/dev/null | grep "^port " | awk '{print $2}' || echo "22")
 ufw allow ${SSH_PORT}/tcp comment 'Accès SSH sécurisé' > /dev/null
 
-# 3. Autoriser HTTPS (443) pour l'API / WebApp
-ufw allow 443/tcp comment 'Trafic Web HTTPS' > /dev/null
+ufw delete allow 443/tcp > /dev/null 2>&1 || true
+ufw delete allow 5000/udp > /dev/null 2>&1 || true
+ufw allow 8080/tcp comment 'Interface operateur' > /dev/null
+ufw allow 8081/tcp comment 'Interface operateur staging' > /dev/null
+ufw allow 41234/udp comment 'Trames signees des Pi' > /dev/null
+ufw allow 41235/udp comment 'Trames signees des Pi (staging)' > /dev/null
 
-# 4. Autoriser le port d'ingestion UDP des caméras (5000)
-ufw allow 5000/udp comment 'Ingestion Télémétrie Caméras UDP' > /dev/null
-
-# 5. Activer UFW en mode non-interactif
 echo "y" | ufw enable > /dev/null
 
 echo -e "${GREEN}[OK] UFW activé en mode DEFAULT DROP.${NC}"
@@ -206,5 +206,5 @@ echo -e "${GREEN}===============================================================
 echo -e "Résumé des protections activées :"
 echo -e "  • SSH : Root désactivé, Mots de passe désactivés (Clés SSH obligatoires)."
 echo -e "  • Noyau : Protection SYN Flood, Anti-IP Spoofing & ICMP Hardening via sysctl."
-echo -e "  • Pare-feu UFW : Entrées bloquées par défaut, uniquement ports ${SSH_PORT}/tcp, 443/tcp et 5000/udp."
+echo -e "  • Pare-feu UFW : Entrées bloquées par défaut, uniquement ${SSH_PORT}/tcp, 8080-8081/tcp et 41234-41235/udp."
 echo -e "${BLUE}======================================================================${NC}"

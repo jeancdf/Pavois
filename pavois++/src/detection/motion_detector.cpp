@@ -136,29 +136,33 @@ std::vector<MotionDetector::Blob> MotionDetector::connected_components(
     return blobs;
 }
 
+// First frame, new frame size: every per-pixel buffer starts again from this
+// frame, and so does the warm-up.
+void MotionDetector::reinitialise(const GrayFrame& frame) {
+    w_ = frame.width;
+    h_ = frame.height;
+    bg_.resize(frame.size());
+    noise_.assign(frame.size(), kInitialNoise);
+    fg_hold_.assign(frame.size(), 0);
+    fg_streak_.assign(frame.size(), 0);
+    for_each_range(executor_, 0, frame.size(),
+                   [&](std::size_t first, std::size_t last) {
+        for (std::size_t i = first; i < last; ++i) {
+            bg_[i] = frame.pixels[i];
+        }
+    });
+    centroid_kf_ = KalmanCV();
+    warmup_left_ = kWarmupFrames;
+    confirm_hits_.clear();
+    have_last_ = false;
+    frames_seen_ = 0;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
 
-    if (w_ != frame.width || h_ != frame.height) {
-        w_ = frame.width;
-        h_ = frame.height;
-        bg_.resize(frame.size());
-        noise_.assign(frame.size(), kInitialNoise);
-        fg_hold_.assign(frame.size(), 0);
-        fg_streak_.assign(frame.size(), 0);
-        for_each_range(executor_, 0, frame.size(),
-                       [&](std::size_t first, std::size_t last) {
-            for (std::size_t i = first; i < last; ++i) {
-                bg_[i] = frame.pixels[i];
-            }
-        });
-        centroid_kf_ = KalmanCV();
-        warmup_left_ = kWarmupFrames;
-        confirm_hits_.clear();
-        have_last_ = false;
-        frames_seen_ = 0;
-    }
+    if (w_ != frame.width || h_ != frame.height) reinitialise(frame);
 
     double dt = kDefaultDt;
     if (last_us_ != 0 && frame.captured_us > last_us_) {

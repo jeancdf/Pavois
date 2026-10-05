@@ -91,6 +91,9 @@ private:
     std::vector<Blob> connected_components(const std::vector<std::uint8_t>& mask,
                                            const std::vector<float>& diff);
 
+    // The steps of process(), in the order it runs them.
+    void reinitialise(const GrayFrame& frame);
+
     CameraConfig cfg_;
     ParallelExecutor* executor_ = nullptr;
     int w_ = 0;

@@ -158,6 +158,17 @@ void MotionDetector::reinitialise(const GrayFrame& frame) {
     have_last_ = false;
 }
 
+// Seconds since the previous frame, from the capture clock. A frame stamped
+// earlier than the last one (a replay looping) keeps the nominal 1/30 s.
+double MotionDetector::advance_clock(const GrayFrame& frame) {
+    double dt = kDefaultDt;
+    if (last_us_ != 0 && frame.captured_us > last_us_) {
+        dt = std::min(kMaxFrameGapS, (frame.captured_us - last_us_) / 1e6);
+    }
+    last_us_ = frame.captured_us;
+    return dt;
+}
+
 DetectionResult MotionDetector::process(const GrayFrame& frame) {
     DetectionResult out;
     if (frame.width <= 0 || frame.height <= 0 || frame.empty()) return out;
@@ -166,11 +177,7 @@ DetectionResult MotionDetector::process(const GrayFrame& frame) {
         reinitialise(frame);
     }
 
-    double dt = kDefaultDt;
-    if (last_us_ != 0 && frame.captured_us > last_us_) {
-        dt = std::min(kMaxFrameGapS, (frame.captured_us - last_us_) / 1e6);
-    }
-    last_us_ = frame.captured_us;
+    const double dt = advance_clock(frame);
 
     box_blur(frame.pixels, blur_, w_, h_, std::max(0, cfg_.blur_radius),
              executor_);

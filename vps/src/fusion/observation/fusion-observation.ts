@@ -132,6 +132,8 @@ export function pruneHistory(
 ): FusionObservation[] {
   // Relatif au plus récent de CETTE caméra (unix-us ou compteur boot).
   const keepUs = historyWindowMs * 1000;
+  // On conserve les observations dont le timestamp est suffisamment récent :
+  // on calcule la borne minimale minUs en soustrayant la fenêtre keepUs du timestamp le plus récent.
   const minUs = latestTimestampUs(deque) - keepUs;
   const minRecv = nowMs - historyWindowMs;
   const kept: FusionObservation[] = [];

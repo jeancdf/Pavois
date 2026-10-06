@@ -126,10 +126,13 @@ export class FusionService implements OnModuleDestroy {
     deque.push(obs);
     this.deques.set(obs.cameraId, deque);
     this.remember(obs);
+    //logique de nettoyage
     for (const cameraId of [...this.deques.keys()]) {
       this.prune(cameraId, nowMs);
     }
+    //update des croisements bruts pour le test bench
     this.updateRawIntersections(obs.timestampUs);
+    //on lance le calcul de la fusion
     this.processTicks(obs.timestampUs);
   }
 

@@ -1,33 +1,64 @@
-/** Une détection envoyée par un Pi : une tache dans l'image d'une caméra. */
+/**
+ * Une détection envoyée par un Pi : une tache dans l'image d'une caméra.
+ * Les champs sans `?` viennent toujours du message. Les autres peuvent
+ * manquer : la pose et l'optique sont alors complétées par la config.
+ */
 export interface FusionObservation {
+  /** Identifiant de la caméra qui a vu la tache. */
   cameraId: string;
+  /** Numéro de l'image sur ce Pi. */
   frameIndex: number;
+  /** Heure de la prise de vue, en microsecondes, horloge du Pi. */
   timestampUs: number;
+  /** Centre de la tache, en pixels. x vers la droite, y vers le bas. */
   x: number;
   y: number;
+  /** Aire de la tache, en pixels. */
   size: number;
+  /** Score de la détection : plus il est haut, plus la tache est sûre. */
   confidence: number;
+  /** Heure d'arrivée du message sur le VPS, en millisecondes. */
   receivedAtMs: number;
+  /** Cap de la caméra, en degrés. 0 = Nord, sens horaire. */
   headingDeg?: number;
+  /** Inclinaison vers le haut, en degrés. 0 = horizontal. */
   elevationDeg?: number;
+  /** Roulis de la caméra, en degrés. */
   rollDeg?: number;
+  /** Champ de vision horizontal, en degrés. Sert si fx et fy manquent. */
   fovDeg?: number;
+  /** Focale horizontale de l'objectif, en pixels. */
   fx?: number;
+  /** Focale verticale de l'objectif, en pixels. */
   fy?: number;
+  /** Centre optique horizontal, en pixels. */
   cx?: number;
+  /** Centre optique vertical, en pixels. */
   cy?: number;
+  /** Distorsion radiale : courbure des bords (barillet ou coussinet). */
   k1?: number;
   k2?: number;
+  /** Distorsion tangentielle : objectif légèrement de travers. */
   p1?: number;
   p2?: number;
+  /** Distorsion radiale d'ordre plus fort que k1 et k2. */
   k3?: number;
+  /** Latitude GPS de la caméra, en degrés. Pas la position de la tache. */
   lat?: number;
+  /** Longitude GPS de la caméra, en degrés. */
   lon?: number;
+  /** Altitude GPS de la caméra, en mètres. */
   alt?: number;
+  /**
+   * Position mesurée de la caméra, en mètres, repère Est-Nord-Haut.
+   * Prioritaire sur le GPS quand les trois sont présents.
+   */
   camX?: number;
   camY?: number;
   camZ?: number;
+  /** Largeur de l'image, en pixels. Présente avec fx, fy, cx et cy. */
   imageWidth?: number;
+  /** Hauteur de l'image, en pixels. */
   imageHeight?: number;
 }
 

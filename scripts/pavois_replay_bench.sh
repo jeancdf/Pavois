@@ -25,6 +25,12 @@
 #
 # First run extracts the replay frames (a few minutes, several GB) into the
 # work directory and reuses them afterwards.
+#
+# --add-drones draws synthetic drones into the replayed frames, consistently in
+# all three cameras: the first third of the window shows the recording alone,
+# the second third one more drone, the last third two more. See
+# scripts/lib/pavois_bench_drones.py, which can also write a synthetic
+# recording to try the bench without footage.
 
 set -euo pipefail
 
@@ -45,6 +51,7 @@ SKIP_FRONTEND=0
 PREVIEW_FPS=60
 declare -A POSE_OVERRIDE=()
 KEEP_FRAMES=0
+ADD_DRONES=0
 
 # Rail geometry: 1 m rig, adjacent baseline 3/7 m. These positions go with the
 # pose offsets fitted further down for the recording. The real rail is the other
@@ -55,7 +62,7 @@ die() { printf '\n[bench] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[bench] %s\n' "$*"; }
 
 usage() {
-  sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -74,6 +81,7 @@ while [ $# -gt 0 ]; do
     # that camera instead of its IMU median plus the built-in offsets.
     --pose)        POSE_OVERRIDE["${2%%=*}"]="${2#*=}"; shift 2 ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
+    --add-drones)  ADD_DRONES=1; shift ;;
     -h|--help)     usage ;;
     *)             die "unknown argument: $1 (try --help)" ;;
   esac
@@ -251,6 +259,43 @@ PY
   fi
 done
 
+# ----------------------------------------------------- extra drones (opt.) --
+# Drawn with the same poses, field of view and frame size the detectors get, so
+# the vps triangulates them like the recorded drone. Rendered fresh each run
+# (poses may change) into the run directory; untouched frames are hard links.
+FRAME_ROOT="$CACHE_DIR"
+if [ "$ADD_DRONES" = 1 ]; then
+  log "drawing extra drones into the replay frames"
+  DRONE_SPEC="$RUN_DIR/drones.json"
+  python3 - "$WINDOW_JSON" "$DRONE_SPEC" "$FOV_DEG" "$WIDTH" "$HEIGHT" \
+    "$(for cam in "${CAMERAS[@]}"; do
+         printf '%s=%s,%s,%s,%s ' "$cam" "${RAIL_X[$cam]}" "${HEADING[$cam]}" \
+           "${ELEVATION[$cam]}" "${ROLL[$cam]}"
+       done)" <<'PY'
+import json, sys
+plan = json.load(open(sys.argv[1]))
+cams = []
+for item in sys.argv[6].split():
+    cam, values = item.split("=")
+    x, h, e, r = (float(v) for v in values.split(","))
+    cams.append({"id": cam, "x": x, "heading": h, "elevation": e, "roll": r})
+stamps = [c["timestamps"] for c in plan["cams"].values()]
+json.dump({"fov": float(sys.argv[3]), "width": int(sys.argv[4]), "height": int(sys.argv[5]),
+           "t0_us": min(s[0] for s in stamps), "t1_us": max(s[-1] for s in stamps),
+           "cameras": cams}, open(sys.argv[2], "w"))
+PY
+  FRAME_ROOT="$RUN_DIR/frames-drones"
+  drone_pids=()
+  for cam in "${CAMERAS[@]}"; do
+    python3 "$REPO_ROOT/scripts/lib/pavois_bench_drones.py" add --cameras "$DRONE_SPEC" \
+      --cam "$cam" --src "$CACHE_DIR/$cam" --dst "$FRAME_ROOT/$cam" &
+    drone_pids+=($!)
+  done
+  for pid in "${drone_pids[@]}"; do
+    wait "$pid" || die "drawing the extra drones failed"
+  done
+fi
+
 # -------------------------------------------------------------- vps backend --
 export UDP_HMAC_SECRET="${UDP_HMAC_SECRET:-pavois-replay-bench-secret}"
 
@@ -413,7 +458,7 @@ classification.enabled=false
 imu.enabled=false
 
 camera.0.id=$cam
-camera.0.device=$CACHE_DIR/$cam
+camera.0.device=$FRAME_ROOT/$cam
 camera.0.enabled=true
 camera.0.width=$WIDTH
 camera.0.height=$HEIGHT
@@ -457,6 +502,7 @@ cat <<BANNER
 
    The footage is replayed on its recorded clock, so the three
    cameras stay in step and the VPS can fuse them.
+$( [ "$ADD_DRONES" = 1 ] && printf '\n   EXTRA DRONES: first third of the loop = the recording\n   alone, second third = 1 more drone, last third = 2 more.\n' )
 
    NOTE: camera headings come from each node's BNO08x, which
    measures its housing rather than the optical axis. Bearings
